@@ -1,1 +1,1 @@
-# sercom
+# Packet Based Binary Serial Protocol
