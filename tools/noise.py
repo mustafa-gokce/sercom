@@ -42,8 +42,19 @@ def process(data: bytes, args) -> bytes:
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("input")
-    parser.add_argument("output")
+    parser.add_argument(
+        "input",
+        nargs="?",
+        default="-",
+        help="Input port path, - or omitted for stdin"
+    )
+
+    parser.add_argument(
+        "output",
+        nargs="?",
+        default="-",
+        help="Output port path, - or omitted for stdout"
+    )
 
     parser.add_argument(
         "--drop",
@@ -103,8 +114,15 @@ def main():
 
     args = parser.parse_args()
 
-    input_fd = os.open(args.input, os.O_RDWR | os.O_NOCTTY)
-    output_fd = os.open(args.output, os.O_RDWR | os.O_NOCTTY)
+    if args.input == "-":
+        input_fd = 0
+    else:
+        input_fd = os.open(args.input, os.O_RDWR | os.O_NOCTTY)
+
+    if args.output == "-":
+        output_fd = 1
+    else:
+        output_fd = os.open(args.output, os.O_RDWR | os.O_NOCTTY)
 
     burst_remaining = 0
 
