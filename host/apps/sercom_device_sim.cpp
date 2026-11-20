@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,6 +21,7 @@ enum class OptionType : uint8_t {
     NAME = 2,       // device name of the simulated device
     LOG_PERIOD = 3, // heartbeat log period
     HELP = 4,       // request of the usage text
+    TRACE = 5,      // print of every frame on the serial port
 };
 
 /*
@@ -101,6 +104,9 @@ std::string_view fromOptionType(const OptionType optionType)
     case OptionType::HELP: {
         return {"--help"};
     }
+    case OptionType::TRACE: {
+        return {"--trace"};
+    }
     case OptionType::UNKNOWN:
     default: {
         return {};
@@ -122,6 +128,9 @@ OptionType toOptionType(const std::string_view optionType)
     if (optionType == std::string_view("--help")) {
         return OptionType::HELP;
     }
+    if (optionType == std::string_view("--trace")) {
+        return OptionType::TRACE;
+    }
     return OptionType::UNKNOWN;
 }
 
@@ -132,12 +141,13 @@ void printUsage(const std::string_view programName)
     // print the usage text
     const std::string usage
         = std::string("Usage: ") + std::string(programName)
-          + " <port> [--baud N] [--name NAME] [--log-period MILLISECONDS]\n"
+          + " <port> [--baud N] [--name NAME] [--log-period MILLISECONDS] [--trace]\n"
             "Simulates the demo device on a serial port or pseudo terminal.\n"
             "Options:\n"
             "  --baud N                             baud rate of the serial port\n"
             "  --name NAME                          device name of the simulated device\n"
-            "  --log-period MILLISECONDS            heartbeat log period, none by default";
+            "  --log-period MILLISECONDS            heartbeat log period, none by default\n"
+            "  --trace                              print every frame in both directions";
     HostUtils::printLine(usage);
 }
 
@@ -147,8 +157,20 @@ bool parseCommandLine(const int argc,
 {
     using namespace sercom;
 
+    // get the arguments without the trace option
+    const std::vector<std::string> givenArguments(argv + 1, argv + argc);
+    std::vector<std::string> arguments;
+    std::copy_if(givenArguments.cbegin(),
+                 givenArguments.cend(),
+                 std::back_inserter(arguments),
+                 [](const std::string &argument) {
+                     return toOptionType(argument) != OptionType::TRACE;
+                 });
+
+    // set the trace option when it was given
+    commandLine.traced = arguments.size() < givenArguments.size();
+
     // serial port argument must be given
-    const std::vector<std::string> arguments(argv + 1, argv + argc);
     if (arguments.empty()) {
         HostUtils::logWarning("Missing serial port argument");
         return false;
