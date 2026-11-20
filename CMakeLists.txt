@@ -58,6 +58,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # create core library
 add_library(${PROJECT_NAME}_core_lib
+    core/include/Definitions.h core/src/Definitions.cpp
+
     core/include/ByteCodec.h core/src/ByteCodec.cpp
 
     core/include/Clock.h core/src/Clock.cpp
