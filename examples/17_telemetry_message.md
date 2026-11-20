@@ -105,6 +105,7 @@ Then run `echo $?` to see the exit code. It prints `0`.
 - `app/include/Messages.h` and `app/src/Messages.cpp`: `TelemetryReportResponse` and
   `TELEMETRY_REPORT_RESPONSE_SIZE`.
 - `app/src/DeviceApplication.cpp`: the device sends the report once per telemetry period.
+- `host/src/CliApplication.cpp`: the `telemetry` command of `sercom_cli` prints the reports.
 - `docs/PROTOCOL.md`: the message table with `TELEMETRY_REPORT_RESPONSE`.
 - Lectures: L60 "Message structs with serialize and deserialize" and L63 "Validating payloads";
   the byte order is L22 "Endianness and byte-wise serialization"; the ESP32 measures the heap and
