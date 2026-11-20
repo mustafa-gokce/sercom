@@ -31,7 +31,7 @@ void queueLog(sercom::Messages::LogLevelType logLevelType, std::string_view text
 [[noreturn]] void protocolTask(void *parameter);
 
 /*
- * Report the free heap periodically.
+ * Report the free heap and the stack headroom of the protocol task periodically.
  */
 [[noreturn]] void heartbeatTask(void *parameter);
 

@@ -29,6 +29,7 @@
  */
 static StreamBufferHandle_t receiveStreamBuffer = nullptr; // bytes from the receive task
 static QueueHandle_t logQueue = nullptr;                   // log lines from any task
+static TaskHandle_t protocolTaskHandle = nullptr;          // protocol task for stack reports
 
 // initialize device
 static sercom::UartTransport::UartTransport uartTransport(Serial);
@@ -76,7 +77,7 @@ void setup()
                             FirmwareSettings::PROTOCOL_TASK_STACK_SIZE,
                             nullptr,
                             FirmwareSettings::PROTOCOL_TASK_PRIORITY,
-                            nullptr,
+                            &protocolTaskHandle,
                             FirmwareSettings::APPLICATION_CORE);
     xTaskCreatePinnedToCore(uartReceiveTask,
                             "uart_receive",
@@ -213,8 +214,10 @@ void heartbeatTask([[maybe_unused]] void *parameter)
         [[maybe_unused]] const int debugMessageLength
             = std::snprintf(debugMessage.data(),
                             debugMessage.size(),
-                            "Heartbeat: free heap %" PRIu32 " bytes",
-                            esp32Platform.getFreeHeapSize());
+                            "Heartbeat: free heap %" PRIu32
+                            " bytes, protocol stack headroom %" PRIu32 " bytes",
+                            esp32Platform.getFreeHeapSize(),
+                            static_cast<uint32_t>(uxTaskGetStackHighWaterMark(protocolTaskHandle)));
         queueLog(Messages::LogLevelType::DEBUG, debugMessage.data());
     }
 }
