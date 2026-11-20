@@ -802,6 +802,37 @@ TEST_CASE_METHOD(TestLink,
 }
 
 TEST_CASE_METHOD(TestLink,
+                 "Several messages in flight are matched to their own acknowledgements",
+                 "[Link][testMessagesInFlight]")
+{
+    // send three acknowledged messages whose second data frame is lost
+    static constexpr uint8_t messageCount = 3;
+    testTransport.setFilter(
+        [](const size_t sendCount, [[maybe_unused]] const std::vector<uint8_t> &data) noexcept {
+            return sendCount != 2;
+        });
+    std::vector<uint16_t> messageCounters;
+    for (uint8_t messageIndex = 0; messageIndex < messageCount; ++messageIndex) {
+        CAPTURE(messageIndex);
+        REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({messageIndex}))
+                == Definitions::SendStatusType::SENT);
+        messageCounters.push_back(messageCounter);
+    }
+    pump();
+    REQUIRE(testLinkHandler.getDeliveryResults().size() == static_cast<size_t>(2));
+    REQUIRE(testLink->getPendingCount() == static_cast<size_t>(1));
+
+    // let the retransmit timeout pass
+    advance(getLinkConfiguration().retransmitTimeout);
+
+    // check that the retransmission confirms the second message
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(messageCount));
+    REQUIRE(deliveryResults.back().messageCounter == messageCounters.at(1));
+    REQUIRE(anotherLinkHandler.getMessages().size() == static_cast<size_t>(messageCount));
+}
+
+TEST_CASE_METHOD(TestLink,
                  "A sender never outruns the duplicate history of its receiver",
                  "[Link][testAcknowledgedSpread]")
 {
