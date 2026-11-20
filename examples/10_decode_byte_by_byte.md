@@ -113,6 +113,7 @@ The exit code `0` means the decoder found exactly one frame and dropped no byte.
 
 - `core/include/FrameDecoder.h` and `core/src/FrameDecoder.cpp`: `onReceivedByte()`,
   `processBuffer()` and the handler interface.
+- `core/src/Link.cpp`: the link layer feeds every received read into its decoder.
 - `docs/PROTOCOL.md`, section "4. Receiver rules (frame layer)".
 - Lectures: L43 "Decoder design options", L46 "CRC check and copying the frame out" and L50
   "Handler interface and decoder statistics".
