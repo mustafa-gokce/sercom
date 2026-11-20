@@ -228,6 +228,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_host_lib
     )
 
+    # create byte by byte decoding example executable
+    add_executable(${PROJECT_NAME}_example_10_decode_byte_by_byte
+        examples/10_decode_byte_by_byte.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_10_decode_byte_by_byte PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+    )
+
     # create resynchronization after garbage example executable
     add_executable(${PROJECT_NAME}_example_11_resync_after_garbage
         examples/11_resync_after_garbage.cpp
