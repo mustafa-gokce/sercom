@@ -15,11 +15,20 @@ Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
 5. `cmake -S .. -B . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
 6. `cmake --build .`
 
+### ESP32
+1. Open a terminal.
+2. Install PlatformIO: `pip install platformio`
+3. Go to the source directory.
+4. `pio run -d firmware/esp32`
+
 ## Run tests
 ### Linux
 1. Open a terminal.
 2. Go to the build directory.
 3. `./sercom_test --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
+
+### ESP32
+1. Build the firmware as above, the protocol code is tested on Linux.
 
 ## Run application
 ### Linux
