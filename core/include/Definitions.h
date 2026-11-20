@@ -22,6 +22,10 @@ constexpr size_t HEADER_SIZE = SYNC_SIZE + VERSION_SIZE + FLAGS_SIZE + MESSAGE_C
                                + MESSAGE_TYPE_SIZE + PAYLOAD_LENGTH_SIZE; // header size in bytes
 constexpr size_t FRAME_OVERHEAD = HEADER_SIZE + CRC_SIZE; // frame size without payload in bytes
 
+constexpr uint32_t CRC32_POLYNOMIAL = 0xEDB88320U;      // reflected polynomial of CRC-32/ISO-HDLC
+constexpr uint32_t CRC32_INITIAL_VALUE = 0xFFFFFFFFU;   // CRC32 register before the first byte
+constexpr uint32_t CRC32_FINAL_XOR_VALUE = 0xFFFFFFFFU; // value XORed into the CRC32 register
+
 /*
  * Frame flag type.
  */
