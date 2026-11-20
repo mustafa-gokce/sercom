@@ -82,6 +82,16 @@ namespace sercom::HostUtils {
                                  uint32_t &value);
 
 /*
+ * Parse a command line argument that counts units to a duration up to the maximum.
+ * Warn the user and get false when the argument is no such duration.
+ */
+[[nodiscard]] bool parseDurationArgument(std::string_view argument,
+                                         std::string_view argumentName,
+                                         std::chrono::milliseconds unit,
+                                         std::chrono::milliseconds maximum,
+                                         std::chrono::milliseconds &duration);
+
+/*
  * Parse a command line argument to a baud rate that the serial port supports.
  * Warn the user and get false when the argument is no such baud rate.
  */

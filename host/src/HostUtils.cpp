@@ -260,6 +260,25 @@ bool parseArgument(const std::string_view argument,
     return true;
 }
 
+bool parseDurationArgument(const std::string_view argument,
+                           const std::string_view argumentName,
+                           const std::chrono::milliseconds unit,
+                           const std::chrono::milliseconds maximum,
+                           std::chrono::milliseconds &duration)
+{
+    // argument must count the units up to the maximum
+    uint32_t unitCount = 0;
+    if (!parseArgument(argument, argumentName, 0, static_cast<uint32_t>(maximum / unit), unitCount)) {
+        return false;
+    }
+
+    // set the duration
+    duration = unitCount * unit;
+
+    // argument parsed successfully
+    return true;
+}
+
 bool parseBaudRateArgument(const std::string_view argument, uint32_t &baudRate)
 {
     // argument must be a baud rate that the serial port supports
