@@ -15,9 +15,11 @@ Link::Link(Transport::Transport &transport,
     , clock(clock)
     , configuration(configuration)
     , frameDecoder(*this, configuration.interByteTimeout)
+    , nextReceivedMessageIndex(0)
     , nextMessageCounter(0)
     , statistics()
     , pendingMessages()
+    , receivedMessages()
 {}
 
 Link::~Link() {}
@@ -201,6 +203,23 @@ void Link::onReceivedFrame(const Frame::Frame &frame)
         return;
     }
 
+    // message must not be a retransmission of a delivered message
+    const ReceivedMessage *receivedMessage
+        = frame.getFlag(Definitions::FrameFlagType::RETRANSMISSION)
+              ? this->getReceivedMessageWithMessageCounter(frame.getMessageCounter(),
+                                                           frame.getMessageType())
+              : nullptr;
+    if (receivedMessage != nullptr) {
+        // keep track of duplicate frames
+        ++this->statistics.duplicateFrameCounter;
+
+        // answer with the remembered message status
+        this->sendAcknowledgement(frame, receivedMessage->messageStatusType);
+
+        // do not proceed further
+        return;
+    }
+
     // keep track of messages
     ++this->statistics.deliveredMessageCounter;
 
@@ -208,6 +227,9 @@ void Link::onReceivedFrame(const Frame::Frame &frame)
     const Definitions::MessageStatusType messageStatusType = this->handler.onReceivedMessage(frame);
 
     // answer with the message status of the application
+    this->rememberReceivedMessage(frame.getMessageCounter(),
+                                  frame.getMessageType(),
+                                  messageStatusType);
     this->sendAcknowledgement(frame, messageStatusType);
 }
 
@@ -327,6 +349,56 @@ void Link::handleAcknowledgement(const Frame::Frame &frame)
                                    iterator->messageType,
                                    Definitions::DeliveryFailureType::REJECTED,
                                    remoteMessageStatusType);
+}
+
+const ReceivedMessage *Link::getReceivedMessageWithMessageCounter(const uint16_t messageCounter,
+                                                                  const uint16_t messageType) const
+{
+    // received message must be found
+    const std::array<ReceivedMessage, Settings::DefaultDuplicateHistorySize>::const_iterator &iterator
+        = std::find_if(this->receivedMessages.cbegin(),
+                       this->receivedMessages.cend(),
+                       [messageCounter, messageType](const ReceivedMessage &receivedMessage) {
+                           return receivedMessage.used
+                                  && receivedMessage.messageCounter == messageCounter
+                                  && receivedMessage.messageType == messageType;
+                       });
+    if (iterator == this->receivedMessages.cend()) {
+        return nullptr;
+    }
+
+    // expose the received message
+    return &*iterator;
+}
+
+void Link::rememberReceivedMessage(const uint16_t messageCounter,
+                                   const uint16_t messageType,
+                                   const Definitions::MessageStatusType messageStatusType)
+{
+    // refresh the entry of a counter that a restarted peer reuses
+    const std::array<ReceivedMessage, Settings::DefaultDuplicateHistorySize>::iterator &iterator
+        = std::find_if(this->receivedMessages.begin(),
+                       this->receivedMessages.end(),
+                       [messageCounter, messageType](const ReceivedMessage &receivedMessage) {
+                           return receivedMessage.used
+                                  && receivedMessage.messageCounter == messageCounter
+                                  && receivedMessage.messageType == messageType;
+                       });
+    if (iterator != this->receivedMessages.end()) {
+        iterator->messageStatusType = messageStatusType;
+        return;
+    }
+
+    // overwrite the oldest entry
+    ReceivedMessage &receivedMessage = this->receivedMessages[this->nextReceivedMessageIndex];
+    receivedMessage.used = true;
+    receivedMessage.messageCounter = messageCounter;
+    receivedMessage.messageType = messageType;
+    receivedMessage.messageStatusType = messageStatusType;
+
+    // move to the next entry of the ring
+    this->nextReceivedMessageIndex = (this->nextReceivedMessageIndex + 1)
+                                     % this->receivedMessages.size();
 }
 
 } // namespace sercom::Link

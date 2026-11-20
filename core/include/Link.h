@@ -42,6 +42,7 @@ struct LinkStatistics
     uint64_t incomingRejectionCounter = 0;         // NACK frames of a pending message
     uint64_t retransmissionCounter = 0;            // frames sent again after a timeout
     uint64_t failedDeliveryCounter = 0;            // timed out or rejected messages
+    uint64_t duplicateFrameCounter = 0;            // retransmissions of delivered messages
     uint64_t unexpectedAcknowledgementCounter = 0; // ACK or NACK frames without a pending message
     uint64_t transportErrorCounter = 0;            // frames the transport could not take
     FrameDecoder::DecoderStatistics decoderStatistics; // decoder statistics
@@ -59,6 +60,18 @@ struct PendingMessage
     uint8_t retransmissionCount = 0;                             // retransmissions so far
     std::chrono::milliseconds lastSentTimestamp{};               // time of the latest transmission
     std::array<uint8_t, Settings::MaximumPayloadSize> payload{}; // payload for retransmissions
+};
+
+/*
+ * Acknowledged message that was received recently.
+ */
+struct ReceivedMessage
+{
+    bool used = false;           // entry holds a message
+    uint16_t messageCounter = 0; // message counter of the message
+    uint16_t messageType = 0;    // message type of the message
+    Definitions::MessageStatusType messageStatusType
+        = Definitions::MessageStatusType::UNKNOWN; // message status sent back
 };
 
 class LinkHandler
@@ -107,7 +120,7 @@ class Link final : public FrameDecoder::FrameDecoderHandler
 {
 public:
     /*
-     * Link layer with message counters, acknowledgements and retransmissions.
+     * Link layer with message counters, acknowledgements, retransmissions and duplicate detection.
      */
     explicit Link(Transport::Transport &transport,
                   LinkHandler &handler,
@@ -194,15 +207,32 @@ private:
      */
     void handleAcknowledgement(const Frame::Frame &frame);
 
+    /*
+     * Find a recently received acknowledged message with its message counter and message type.
+     * It is null when no such message is remembered.
+     */
+    [[nodiscard]] const ReceivedMessage *getReceivedMessageWithMessageCounter(
+        uint16_t messageCounter, uint16_t messageType) const;
+
+    /*
+     * Remember a received acknowledged message and the message status sent back.
+     */
+    void rememberReceivedMessage(uint16_t messageCounter,
+                                 uint16_t messageType,
+                                 Definitions::MessageStatusType messageStatusType);
+
 private:
     Transport::Transport &transport;         // reference for transport
     LinkHandler &handler;                    // reference to handler
     const Clock::Clock &clock;               // reference for clock
     const LinkConfiguration configuration;   // link configuration
     FrameDecoder::FrameDecoder frameDecoder; // decoder of the received bytes
+    size_t nextReceivedMessageIndex;         // history entry to overwrite next
     uint16_t nextMessageCounter;             // message counter of the next message
     LinkStatistics statistics;               // link statistics
     std::array<PendingMessage, Settings::MaximumPendingFrames> pendingMessages; // sent messages
+    std::array<ReceivedMessage, Settings::DefaultDuplicateHistorySize>
+        receivedMessages; // history of received messages
 };
 
 } // namespace sercom::Link
