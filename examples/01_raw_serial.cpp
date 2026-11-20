@@ -1,14 +1,11 @@
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#if defined(__linux__)
-#include <unistd.h>
-#endif
 
 #include "../host/include/HostSettings.h"
 #include "../host/include/HostUtils.h"
@@ -37,6 +34,7 @@ int main(int argc, char *argv[]);
 int main(int argc, char *argv[])
 {
     using namespace sercom;
+    using namespace std::chrono_literals;
 
     // command line must be valid
     std::string portName;
@@ -61,10 +59,7 @@ int main(int argc, char *argv[])
      * The frames of the rest of the repository add both.
      */
     static constexpr std::string_view message = "a=1;b=2;c=3;\n";
-    const ssize_t writeResult = ::write(serialPort.getFileDescriptor(),
-                                        message.data(),
-                                        message.size());
-    if (writeResult != static_cast<ssize_t>(message.size())) {
+    if (!serialPort.sendData(reinterpret_cast<const uint8_t *>(message.data()), message.size())) {
         // warn the user
         const std::string warningMessage = "Can not send the message on " + portName;
         HostUtils::logWarning(warningMessage);
@@ -74,16 +69,15 @@ int main(int argc, char *argv[])
     }
 
     // notify the user
-    const std::string debugMessage = "Sent " + std::to_string(writeResult) + " bytes on "
+    const std::string debugMessage = "Sent " + std::to_string(message.size()) + " bytes on "
                                      + portName;
     HostUtils::logDebug(debugMessage);
 
-    // read of the answer must succeed
+    // read of the answer must succeed or time out
+    static constexpr std::chrono::milliseconds readTimeout = 1 * 1000ms;
+    size_t size = 0;
     std::vector<uint8_t> readBuffer(HostSettings::READ_BUFFER_SIZE);
-    const ssize_t readResult = ::read(serialPort.getFileDescriptor(),
-                                      readBuffer.data(),
-                                      readBuffer.size());
-    if (readResult < 0) {
+    if (!serialPort.read(readBuffer.data(), readBuffer.size(), size, readTimeout)) {
         // warn the user
         const std::string warningMessage = "Can not read the serial port " + portName;
         HostUtils::logWarning(warningMessage);
@@ -94,7 +88,7 @@ int main(int argc, char *argv[])
 
     // iterate over the received bytes
     std::for_each(readBuffer.cbegin(),
-                  std::next(readBuffer.cbegin(), readResult),
+                  std::next(readBuffer.cbegin(), static_cast<ptrdiff_t>(size)),
                   printReceivedByte);
 
     // close the serial port
