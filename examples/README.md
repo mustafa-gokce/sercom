@@ -33,6 +33,7 @@ because its messages travel over the link layer of example 18.
 | S08 | L48 (also L71) | 13 | Inter Byte Timeout | A mock clock moves past the inter byte timeout, the decoder drops a half frame and accepts the next one | [guide](13_inter_byte_timeout.md), [source](13_inter_byte_timeout.cpp) |
 | S08 | L49 (also L43, L74) | 14 | Two Frames in One Read | Two frames arrive in one read, then one frame arrives split over two reads | [guide](14_two_frames_one_read.md), [source](14_two_frames_one_read.cpp) |
 | S09 | L55 (also L18, L47, L50) | 03 | Decode a Noisy Stream | Damages 1000 frames with seeded random noise and decodes the frames that arrived intact | [guide](03_decode_noisy_stream.md), [source](03_decode_noisy_stream.cpp) |
+| S10 | L62 (also L50, L59, L74) | 25 | Dispatch Messages | Switches on the message type of four decoded frames and calls one function per type, an unknown type included | [guide](25_dispatch_messages.md), [source](25_dispatch_messages.cpp) |
 
 ## Building the examples
 1. Open a terminal.
