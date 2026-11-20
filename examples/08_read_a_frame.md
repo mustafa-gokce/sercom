@@ -43,7 +43,7 @@ the frame. It only refuses more bytes than the largest frame has; the real check
 The function `printFields` at the end of the file calls one getter per field: `getVersion`, `getFlags`,
 `getMessageCounter`, `getMessageType`, `getPayloadLength`, `getPayload` and `getCRC32`. A *getter* is a function
 that returns one value of an object. The getters read the fields from the bytes. A field of two or four bytes is
-read least significant byte first.
+read least significant byte first (see example 04).
 
 ## Step 3: Run the program
 
@@ -133,11 +133,25 @@ Print the exit code with `echo $?` and you see `0`.
    Put the new CRC32 bytes `0xF0, 0xDD, 0x69, 0xBC` into `crcBytes`. Now `getCRC32()` shows `0xBC69DDF0`, both
    checks say yes, and the program exits with 0 again.
 
+3. Read the payload as a ping request. Add these lines after `printChecks(frame);` in `main`:
+
+   ```cpp
+       // print the payload as a ping request
+       const Messages::PingRequest pingRequest(frame);
+       const std::string timestampLine = "request timestamp "
+                                         + std::to_string(pingRequest.getRequestTimestamp().count())
+                                         + " ms";
+       HostUtils::printLine(timestampLine);
+   ```
+
+   The first block now ends with the line `request timestamp 1000 ms`.
+
 ## Where this is used
 
 - `core/include/Frame.h` and `core/src/Frame.cpp` define the frame, its getters, `getLikelyValid` and `getCRCValid`.
 - `core/src/FrameDecoder.cpp` builds a `Frame::Frame` from the received bytes and checks it with `getCRCValid`
   before it hands the frame on.
+- `app/src/Messages.cpp` builds every message, for example `Messages::PingRequest`, from a received frame.
 - `docs/PROTOCOL.md` describes the frame format and the same example frame.
 - Lectures: L27 "Anatomy of a frame", L29 "Version, flags, counter and type" and L46 "CRC check and copying the
   frame out".
