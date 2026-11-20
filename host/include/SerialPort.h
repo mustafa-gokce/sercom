@@ -1,19 +1,23 @@
 #ifndef SERCOM_SERIAL_PORT_H
 #define SERCOM_SERIAL_PORT_H
 
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
+#include "../../core/include/Transport.h"
+
 namespace sercom::SerialPort {
 
-class SerialPort final
+class SerialPort final : public Transport::Transport
 {
 public:
     /*
      * Serial port on Linux in raw 8N1 mode without flow control.
      */
     SerialPort();
-    ~SerialPort();
+    ~SerialPort() final;
 
     // delete copy constructor and copy assignment operator
     SerialPort(const SerialPort &) = delete;
@@ -35,6 +39,20 @@ public:
      * Closing a closed port does nothing.
      */
     void close();
+
+    /*
+     * Wait up to the timeout for bytes and read at most the capacity of what is available.
+     * Get true with a size of zero when no byte arrived within the timeout.
+     */
+    [[nodiscard]] bool read(uint8_t *data,
+                            size_t capacity,
+                            size_t &size,
+                            std::chrono::milliseconds timeout);
+
+    /*
+     * Send every byte of the data and wait while the driver buffer is full.
+     */
+    [[nodiscard]] bool sendData(const uint8_t *data, size_t size) final;
 
 public:
     /*
