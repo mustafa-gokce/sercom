@@ -51,6 +51,81 @@ DecodeErrorType toDecodeErrorType(const std::string_view decodeErrorType)
     return DecodeErrorType::UNKNOWN;
 }
 
+uint8_t fromMessageStatusType(const MessageStatusType messageStatusType)
+{
+    return static_cast<uint8_t>(messageStatusType);
+}
+
+MessageStatusType toMessageStatusType(const uint8_t messageStatusType)
+{
+    switch (static_cast<MessageStatusType>(messageStatusType)) {
+    case MessageStatusType::ACCEPTED: {
+        return MessageStatusType::ACCEPTED;
+    }
+    case MessageStatusType::UNSUPPORTED_MESSAGE_TYPE: {
+        return MessageStatusType::UNSUPPORTED_MESSAGE_TYPE;
+    }
+    case MessageStatusType::MALFORMED_PAYLOAD: {
+        return MessageStatusType::MALFORMED_PAYLOAD;
+    }
+    case MessageStatusType::BUSY: {
+        return MessageStatusType::BUSY;
+    }
+    case MessageStatusType::INVALID_ARGUMENT: {
+        return MessageStatusType::INVALID_ARGUMENT;
+    }
+    case MessageStatusType::UNKNOWN:
+    default: {
+        return MessageStatusType::UNKNOWN;
+    }
+    }
+}
+
+std::string_view fromSendStatusType(const SendStatusType sendStatusType)
+{
+    switch (sendStatusType) {
+    case SendStatusType::SENT: {
+        return {"SENT"};
+    }
+    case SendStatusType::WINDOW_FULL: {
+        return {"WINDOW_FULL"};
+    }
+    case SendStatusType::PAYLOAD_TOO_LONG: {
+        return {"PAYLOAD_TOO_LONG"};
+    }
+    case SendStatusType::TRANSPORT_ERROR: {
+        return {"TRANSPORT_ERROR"};
+    }
+    case SendStatusType::INVALID_ARGUMENT: {
+        return {"INVALID_ARGUMENT"};
+    }
+    case SendStatusType::UNKNOWN:
+    default: {
+        return {"UNKNOWN"};
+    }
+    }
+}
+
+SendStatusType toSendStatusType(const std::string_view sendStatusType)
+{
+    if (sendStatusType == std::string_view("SENT")) {
+        return SendStatusType::SENT;
+    }
+    if (sendStatusType == std::string_view("WINDOW_FULL")) {
+        return SendStatusType::WINDOW_FULL;
+    }
+    if (sendStatusType == std::string_view("PAYLOAD_TOO_LONG")) {
+        return SendStatusType::PAYLOAD_TOO_LONG;
+    }
+    if (sendStatusType == std::string_view("TRANSPORT_ERROR")) {
+        return SendStatusType::TRANSPORT_ERROR;
+    }
+    if (sendStatusType == std::string_view("INVALID_ARGUMENT")) {
+        return SendStatusType::INVALID_ARGUMENT;
+    }
+    return SendStatusType::UNKNOWN;
+}
+
 bool isFrameFlagSet(const uint8_t flags, const FrameFlagType frameFlagType)
 {
     // expose whether the bit of the flag is set
