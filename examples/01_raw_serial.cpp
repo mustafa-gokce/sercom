@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -8,13 +7,12 @@
 #include <vector>
 
 #if defined(__linux__)
-#include <fcntl.h>
-#include <termios.h>
 #include <unistd.h>
 #endif
 
 #include "../host/include/HostSettings.h"
 #include "../host/include/HostUtils.h"
+#include "../host/include/SerialPort.h"
 
 /*
  * Print the usage text.
@@ -39,7 +37,6 @@ int main(int argc, char *argv[]);
 int main(int argc, char *argv[])
 {
     using namespace sercom;
-    using namespace std::chrono_literals;
 
     // command line must be valid
     std::string portName;
@@ -48,9 +45,9 @@ int main(int argc, char *argv[])
         return HostSettings::INVALID_COMMAND_LINE_EXIT_CODE;
     }
 
-    // device must open without becoming the controlling terminal
-    const int fileDescriptor = ::open(portName.c_str(), O_RDWR | O_NOCTTY);
-    if (fileDescriptor < 0) {
+    // serial port must open
+    SerialPort::SerialPort serialPort;
+    if (!serialPort.open(portName, HostSettings::DEFAULT_BAUD_RATE)) {
         // warn the user
         const std::string warningMessage = "Can not open the serial port " + portName;
         HostUtils::logWarning(warningMessage);
@@ -59,79 +56,18 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // current settings of the device must be readable
-    termios tty = termios();
-    if (::tcgetattr(fileDescriptor, &tty) != 0) {
-        // warn the user
-        const std::string warningMessage = "Can not configure the serial port " + portName;
-        HostUtils::logWarning(warningMessage);
-
-        // close the device
-        ::close(fileDescriptor);
-
-        // do not proceed further
-        return 1;
-    }
-
-    // use raw mode with 8 data bits and no parity
-    ::cfmakeraw(&tty);
-
-    // use one stop bit without flow control
-    tty.c_cflag &= ~static_cast<tcflag_t>(CSTOPB);
-    tty.c_cflag &= ~static_cast<tcflag_t>(CRTSCTS);
-
-    // enable the receiver and ignore the modem lines
-    tty.c_cflag |= CREAD | CLOCAL;
-
-    // NOTE: termios counts the read timeout in tenths of a second
-    static constexpr std::chrono::milliseconds readTimeout = 1 * 1000ms;
-    static constexpr std::chrono::milliseconds readTimeoutUnit = 100ms;
-    tty.c_cc[VMIN] = 0;
-    tty.c_cc[VTIME] = static_cast<cc_t>(readTimeout / readTimeoutUnit);
-
-    // baud rate must apply in both directions
-    static constexpr speed_t speed = B115200;
-    if (::cfsetispeed(&tty, speed) != 0 || ::cfsetospeed(&tty, speed) != 0) {
-        // warn the user
-        const std::string warningMessage = "Can not configure the serial port " + portName;
-        HostUtils::logWarning(warningMessage);
-
-        // close the device
-        ::close(fileDescriptor);
-
-        // do not proceed further
-        return 1;
-    }
-
-    // settings must apply immediately
-    if (::tcsetattr(fileDescriptor, TCSANOW, &tty) != 0) {
-        // warn the user
-        const std::string warningMessage = "Can not configure the serial port " + portName;
-        HostUtils::logWarning(warningMessage);
-
-        // close the device
-        ::close(fileDescriptor);
-
-        // do not proceed further
-        return 1;
-    }
-
-    // NOTE: toggling DTR or RTS resets many ESP32 boards
-    ::tcflush(fileDescriptor, TCIOFLUSH);
-
     /*
      * Message must be sent as text without frame boundaries and error detection.
      * The frames of the rest of the repository add both.
      */
     static constexpr std::string_view message = "a=1;b=2;c=3;\n";
-    const ssize_t writeResult = ::write(fileDescriptor, message.data(), message.size());
+    const ssize_t writeResult = ::write(serialPort.getFileDescriptor(),
+                                        message.data(),
+                                        message.size());
     if (writeResult != static_cast<ssize_t>(message.size())) {
         // warn the user
         const std::string warningMessage = "Can not send the message on " + portName;
         HostUtils::logWarning(warningMessage);
-
-        // close the device
-        ::close(fileDescriptor);
 
         // do not proceed further
         return 1;
@@ -144,14 +80,13 @@ int main(int argc, char *argv[])
 
     // read of the answer must succeed
     std::vector<uint8_t> readBuffer(HostSettings::READ_BUFFER_SIZE);
-    const ssize_t readResult = ::read(fileDescriptor, readBuffer.data(), readBuffer.size());
+    const ssize_t readResult = ::read(serialPort.getFileDescriptor(),
+                                      readBuffer.data(),
+                                      readBuffer.size());
     if (readResult < 0) {
         // warn the user
         const std::string warningMessage = "Can not read the serial port " + portName;
         HostUtils::logWarning(warningMessage);
-
-        // close the device
-        ::close(fileDescriptor);
 
         // do not proceed further
         return 1;
@@ -163,7 +98,7 @@ int main(int argc, char *argv[])
                   printReceivedByte);
 
     // close the serial port
-    ::close(fileDescriptor);
+    serialPort.close();
     HostUtils::printLine("Serial device closed.");
 
     // example finished successfully
@@ -175,9 +110,10 @@ void printUsage(const std::string_view programName)
     using namespace sercom;
 
     // print the usage text
-    const std::string usage
-        = std::string("Usage: ") + std::string(programName)
-          + " <serial-port>\nSends a text to the serial port and prints the answer.";
+    const std::string usage = std::string("Usage: ") + std::string(programName)
+                              + " <serial-port>\nSends a text to the serial port at "
+                              + std::to_string(HostSettings::DEFAULT_BAUD_RATE)
+                              + " 8N1 and prints the answer.";
     HostUtils::printLine(usage);
 }
 
