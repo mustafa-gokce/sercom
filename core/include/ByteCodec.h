@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 namespace sercom::ByteCodec {
 
@@ -61,9 +62,29 @@ public:
     void writeUint32(uint32_t value);
 
     /*
+     * Write an int16_t value in two's complement.
+     */
+    void writeInt16(int16_t value);
+
+    /*
+     * Write an int32_t value in two's complement.
+     */
+    void writeInt32(int32_t value);
+
+    /*
+     * Write a 32 bit IEEE 754 floating point value.
+     */
+    void writeFloat32(float value);
+
+    /*
      * Write raw bytes.
      */
     void writeBytes(const uint8_t *data, size_t size);
+
+    /*
+     * Write a string of at most 255 characters after its length in one byte.
+     */
+    void writeString(const char *text, size_t length);
 
 public:
     /*
@@ -130,9 +151,29 @@ public:
     [[nodiscard]] bool readUint32(uint32_t &value);
 
     /*
+     * Read an int16_t value in two's complement.
+     */
+    [[nodiscard]] bool readInt16(int16_t &value);
+
+    /*
+     * Read an int32_t value in two's complement.
+     */
+    [[nodiscard]] bool readInt32(int32_t &value);
+
+    /*
+     * Read a 32 bit IEEE 754 floating point value.
+     */
+    [[nodiscard]] bool readFloat32(float &value);
+
+    /*
      * Read raw bytes.
      */
     [[nodiscard]] bool readBytes(uint8_t *data, size_t size);
+
+    /*
+     * Read a string after its length in one byte and terminate it with a null character.
+     */
+    [[nodiscard]] bool readString(char *text, size_t capacity);
 
 public:
     /*
@@ -165,5 +206,9 @@ private:
 };
 
 } // namespace sercom::ByteCodec
+
+// check definitions
+static_assert(sizeof(float) == sizeof(uint32_t), "Float must be 32 bits wide");
+static_assert(std::numeric_limits<float>::is_iec559, "Float must be IEEE 754");
 
 #endif // SERCOM_BYTE_CODEC_H
