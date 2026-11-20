@@ -251,6 +251,31 @@ bool parseArgument(const std::string_view argument,
     return true;
 }
 
+std::string_view getMessageStatusTypeText(const Definitions::MessageStatusType messageStatusType)
+{
+    switch (messageStatusType) {
+    case Definitions::MessageStatusType::ACCEPTED: {
+        return {"ACCEPTED"};
+    }
+    case Definitions::MessageStatusType::UNSUPPORTED_MESSAGE_TYPE: {
+        return {"UNSUPPORTED_MESSAGE_TYPE"};
+    }
+    case Definitions::MessageStatusType::MALFORMED_PAYLOAD: {
+        return {"MALFORMED_PAYLOAD"};
+    }
+    case Definitions::MessageStatusType::BUSY: {
+        return {"BUSY"};
+    }
+    case Definitions::MessageStatusType::INVALID_ARGUMENT: {
+        return {"INVALID_ARGUMENT"};
+    }
+    case Definitions::MessageStatusType::UNKNOWN:
+    default: {
+        return {"UNKNOWN"};
+    }
+    }
+}
+
 std::string getFrameFlagsText(const uint8_t flags)
 {
     // add the name of every set flag
