@@ -10,6 +10,8 @@
 
 #include "../../core/include/Clock.h"
 #include "../../core/include/Definitions.h"
+#include "../../core/include/Frame.h"
+#include "../../core/include/FrameTracer.h"
 #include "../../core/include/Link.h"
 
 namespace sercom::HostUtils {
@@ -113,6 +115,22 @@ namespace sercom::HostUtils {
  * Get the names of the set flags of a FLAGS field as text.
  */
 [[nodiscard]] std::string getFrameFlagsText(uint8_t flags);
+
+/*
+ * Get a traced frame as one line of text.
+ */
+[[nodiscard]] std::string getTracedFrameLine(FrameTracer::TraceDirectionType traceDirectionType,
+                                             const Frame::Frame &frame,
+                                             std::chrono::milliseconds currentTime);
+
+/*
+ * Get traced bytes outside a frame as one line of text.
+ * Text stands escaped in quotes and other bytes stand in hex.
+ */
+[[nodiscard]] std::string getUnframedDataLine(FrameTracer::TraceDirectionType traceDirectionType,
+                                              const uint8_t *data,
+                                              size_t size,
+                                              std::chrono::milliseconds currentTime);
 
 /*
  * Print a result line to standard output.
