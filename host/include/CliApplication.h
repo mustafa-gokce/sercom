@@ -3,6 +3,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -12,6 +13,9 @@
 #include "../../app/include/DeviceClient.h"
 #include "../../app/include/Messages.h"
 #include "../../core/include/Definitions.h"
+#include "../../core/include/Frame.h"
+#include "../../core/include/FrameTracer.h"
+#include "../../core/include/TraceTransport.h"
 
 #include "../include/HostSettings.h"
 #include "../include/HostUtils.h"
@@ -58,6 +62,7 @@ struct CommandLine
     uint32_t echoPayloadSize = HostSettings::DEFAULT_ECHO_PAYLOAD_SIZE; // echo payload size in bytes
     std::chrono::milliseconds duration
         = HostSettings::DEFAULT_COMMAND_DURATION_MSEC; // command duration in milliseconds
+    bool traced = false;                               // every frame on the serial port is printed
 };
 
 /*
@@ -70,7 +75,8 @@ struct PendingEcho
     uint16_t messageCounter = 0;             // message counter of the latest echo request
 };
 
-class CliApplication final : public DeviceClient::DeviceClientHandler
+class CliApplication final : public DeviceClient::DeviceClientHandler,
+                             public FrameTracer::FrameTracerHandler
 {
 public:
     /*
@@ -139,6 +145,22 @@ private:
                          Messages::MessageType messageType,
                          Definitions::DeliveryFailureType deliveryFailureType,
                          Definitions::MessageStatusType remoteMessageStatusType) final;
+
+private:
+    /*
+     * Listen for a traced frame and print it when the frames are traced.
+     */
+    void onReceivedTracedFrame(FrameTracer::TraceDirectionType traceDirectionType,
+                               const Frame::Frame &frame,
+                               std::chrono::milliseconds currentTime) final;
+
+    /*
+     * Listen for traced bytes outside a frame and print them when the frames are traced.
+     */
+    void onReceivedUnframedData(FrameTracer::TraceDirectionType traceDirectionType,
+                                const uint8_t *data,
+                                size_t size,
+                                std::chrono::milliseconds currentTime) final;
 
 private:
     /*
@@ -263,6 +285,8 @@ private:
     const CommandLine commandLine;                          // command line arguments
     SerialPort::SerialPort serialPort;                      // serial port to the device
     const HostUtils::SteadyClock clock;                     // steady clock of the host
+    FrameTracer::FrameTracer frameTracer;                   // tracer of the serial port bytes
+    TraceTransport::TraceTransport traceTransport;          // serial port tracing the sent bytes
     DeviceClient::DeviceClient deviceClient;                // protocol client of the device
     bool finished;                                          // command is finished
     int exitCode;                                           // exit code of the process

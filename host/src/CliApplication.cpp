@@ -63,7 +63,9 @@ CommandType toCommandType(const std::string_view commandType)
 
 CliApplication::CliApplication(const CommandLine &commandLine)
     : commandLine(commandLine)
-    , deviceClient(this->serialPort, this->clock, *this)
+    , frameTracer(*this, this->clock, FrameTracer::TraceDirectionType::HOST_TO_DEVICE)
+    , traceTransport(this->serialPort, this->frameTracer)
+    , deviceClient(this->traceTransport, this->clock, *this)
     , finished(false)
     , exitCode(0)
     , waitingForResponse(false)
@@ -376,6 +378,38 @@ void CliApplication::onRequestFailed(const uint16_t messageCounter,
     }
 }
 
+void CliApplication::onReceivedTracedFrame(
+    const FrameTracer::TraceDirectionType traceDirectionType,
+    const Frame::Frame &frame,
+    [[maybe_unused]] const std::chrono::milliseconds currentTime)
+{
+    // frames must be traced
+    if (!this->commandLine.traced) {
+        return;
+    }
+
+    // print the traced frame at the time of the log lines
+    const std::chrono::milliseconds elapsedTime = HostUtils::getElapsedTime();
+    HostUtils::printLine(HostUtils::getTracedFrameLine(traceDirectionType, frame, elapsedTime));
+}
+
+void CliApplication::onReceivedUnframedData(
+    const FrameTracer::TraceDirectionType traceDirectionType,
+    const uint8_t *data,
+    const size_t size,
+    [[maybe_unused]] const std::chrono::milliseconds currentTime)
+{
+    // frames must be traced
+    if (!this->commandLine.traced) {
+        return;
+    }
+
+    // print the traced bytes outside a frame at the time of the log lines
+    const std::chrono::milliseconds elapsedTime = HostUtils::getElapsedTime();
+    HostUtils::printLine(
+        HostUtils::getUnframedDataLine(traceDirectionType, data, size, elapsedTime));
+}
+
 void CliApplication::cleanUp()
 {
     // notify the user
@@ -431,14 +465,16 @@ void CliApplication::processSerialPort()
         return;
     }
 
-    // hand the received data to the device client
+    // hand the received data to the frame tracer and the device client
+    this->frameTracer.onReceivedData(this->readBuffer.data(), size);
     this->deviceClient.onReceivedData(this->readBuffer.data(), size);
 }
 
 void CliApplication::maintain()
 {
-    // maintain the device client
+    // maintain the device client and the frame tracer
     this->deviceClient.maintain();
+    this->frameTracer.maintain();
 
     // attempt to reconnect the serial port periodically
     const std::chrono::milliseconds currentTime = this->clock.getTime();
