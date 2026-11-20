@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <thread>
+#include <utility>
 
 #include "../../core/include/ByteCodec.h"
 
@@ -27,6 +28,9 @@ std::string_view fromCommandType(const CommandType commandType)
     case CommandType::MONITOR: {
         return {"monitor"};
     }
+    case CommandType::STRESS: {
+        return {"stress"};
+    }
     case CommandType::UNKNOWN:
     default: {
         return {};
@@ -51,6 +55,9 @@ CommandType toCommandType(const std::string_view commandType)
     if (commandType == std::string_view("monitor")) {
         return CommandType::MONITOR;
     }
+    if (commandType == std::string_view("stress")) {
+        return CommandType::STRESS;
+    }
     return CommandType::UNKNOWN;
 }
 
@@ -69,9 +76,12 @@ CliApplication::CliApplication(const CommandLine &commandLine)
     , outgoingPingRequestCounter(0)
     , incomingPingResponseCounter(0)
     , failedPingRequestCounter(0)
+    , nextEchoSequenceNumber(0)
     , verifiedEchoResponseCounter(0)
     , corruptedEchoResponseCounter(0)
     , unexpectedEchoResponseCounter(0)
+    , lostEchoRequestCounter(0)
+    , busyEchoRequestCounter(0)
     , echoRoundTripTimeSum(0)
     , maximumEchoRoundTripTime(0)
     , readBuffer()
@@ -117,6 +127,11 @@ int CliApplication::run()
     // get the exit code of an interrupted command
     if (!this->finished) {
         this->exitCode = HostSettings::INTERRUPTED_EXIT_CODE;
+    }
+
+    // print the stress report of the stress command
+    if (this->commandLine.commandType == CommandType::STRESS) {
+        this->printStressReport();
     }
 
     // expose the exit code
@@ -325,11 +340,17 @@ void CliApplication::onRequestConfirmed([[maybe_unused]] const uint16_t messageC
     this->startTimestamp = this->clock.getTime();
 }
 
-void CliApplication::onRequestFailed([[maybe_unused]] const uint16_t messageCounter,
+void CliApplication::onRequestFailed(const uint16_t messageCounter,
                                      const Messages::MessageType messageType,
                                      const Definitions::DeliveryFailureType deliveryFailureType,
                                      const Definitions::MessageStatusType remoteMessageStatusType)
 {
+    // failed request must not be a stress echo request
+    if (messageType == Messages::MessageType::ECHO_REQUEST) {
+        this->handleFailedEchoRequest(messageCounter, remoteMessageStatusType);
+        return;
+    }
+
     // failed ping request must belong to the ping command
     if (messageType == Messages::MessageType::PING_REQUEST
         && (this->commandLine.commandType != CommandType::PING || !this->waitingForResponse)) {
@@ -516,7 +537,8 @@ void CliApplication::startCommand()
     case CommandType::PING:
     case CommandType::INFO:
     case CommandType::LED:
-    case CommandType::TELEMETRY: {
+    case CommandType::TELEMETRY:
+    case CommandType::STRESS: {
         return;
     }
 
@@ -565,6 +587,12 @@ void CliApplication::progressCommand()
     case CommandType::TELEMETRY:
     case CommandType::MONITOR: {
         this->progressListenCommand();
+        break;
+    }
+
+    // advance the stress command
+    case CommandType::STRESS: {
+        this->progressStressCommand();
         break;
     }
 
@@ -679,6 +707,55 @@ void CliApplication::progressListenCommand()
     this->finish(0);
 }
 
+void CliApplication::progressStressCommand()
+{
+    // iterate over the pending echo requests
+    const std::chrono::milliseconds currentTime = this->clock.getTime();
+    std::vector<uint32_t> lostSequenceNumbers;
+    std::for_each(this->pendingEchoes.cbegin(),
+                  this->pendingEchoes.cend(),
+                  [&lostSequenceNumbers,
+                   currentTime](const std::pair<const uint32_t, PendingEcho> &pendingEcho) {
+                      // echo response must be overdue
+                      if (currentTime - pendingEcho.second.requestTimestamp
+                          <= HostSettings::ECHO_LOSS_TIMEOUT_MSEC) {
+                          return;
+                      }
+
+                      // remember the lost echo request
+                      lostSequenceNumbers.push_back(pendingEcho.first);
+                  });
+
+    // iterate over the lost echo requests
+    std::for_each(lostSequenceNumbers.cbegin(),
+                  lostSequenceNumbers.cend(),
+                  [this](const uint32_t lostSequenceNumber) {
+                      this->forgetLostEchoRequest(lostSequenceNumber);
+                  });
+
+    // keep the configured number of echo requests in flight
+    bool echoRequestSent = true;
+    while (echoRequestSent
+           && this->pendingEchoes.size() - this->retrySequenceNumbers.size()
+                  < this->commandLine.echoWindowSize
+           && this->deviceClient.getSendRequestAllowed()) {
+        echoRequestSent = this->sendStressEchoRequest();
+    }
+
+    // every echo request must be answered or lost
+    if (this->nextEchoSequenceNumber < this->commandLine.requestCount
+        || !this->pendingEchoes.empty()) {
+        return;
+    }
+
+    // finish the stress command with its result
+    const bool stressCommandPassed = this->verifiedEchoResponseCounter
+                                         == this->commandLine.requestCount
+                                     && this->corruptedEchoResponseCounter == 0
+                                     && this->unexpectedEchoResponseCounter == 0;
+    this->finish(stressCommandPassed ? 0 : 1);
+}
+
 void CliApplication::sendCommandRequest()
 {
     // send the request of the command
@@ -716,6 +793,7 @@ void CliApplication::sendCommandRequest()
     // send no request for the other commands
     case CommandType::PING:
     case CommandType::MONITOR:
+    case CommandType::STRESS:
     case CommandType::UNKNOWN:
     default: {
         return;
@@ -729,6 +807,74 @@ void CliApplication::sendCommandRequest()
 
     // keep track of the request
     this->lastRequestTimestamp = this->clock.getTime();
+}
+
+bool CliApplication::sendStressEchoRequest()
+{
+    // send a busy echo request again first
+    if (!this->retrySequenceNumbers.empty()) {
+        return this->sendEchoRequestAgain();
+    }
+
+    // echo requests must remain
+    if (this->nextEchoSequenceNumber >= this->commandLine.requestCount) {
+        return false;
+    }
+
+    // next echo request must be sent
+    if (!this->sendEchoRequest(this->nextEchoSequenceNumber, this->clock.getTime())) {
+        return false;
+    }
+
+    // continue with the next sequence number
+    ++this->nextEchoSequenceNumber;
+
+    // echo request sent successfully
+    return true;
+}
+
+bool CliApplication::sendEchoRequestAgain()
+{
+    // get the newest busy echo request
+    const uint32_t sequenceNumber = this->retrySequenceNumbers.back();
+    this->retrySequenceNumbers.pop_back();
+
+    // echo request must still be pending
+    const std::map<uint32_t, PendingEcho>::const_iterator &pendingEchoIterator
+        = this->pendingEchoes.find(sequenceNumber);
+    if (pendingEchoIterator == this->pendingEchoes.cend()) {
+        return true;
+    }
+
+    // echo request must be sent again
+    if (!this->sendEchoRequest(sequenceNumber, pendingEchoIterator->second.requestTimestamp)) {
+        this->retrySequenceNumbers.push_back(sequenceNumber);
+        return false;
+    }
+
+    // echo request sent again successfully
+    return true;
+}
+
+bool CliApplication::sendEchoRequest(const uint32_t sequenceNumber,
+                                     const std::chrono::milliseconds requestTimestamp)
+{
+    // echo request must be sent
+    const std::vector<uint8_t> echoPayload = this->getEchoPayload(sequenceNumber);
+    uint16_t messageCounter = 0;
+    const Definitions::SendStatusType sendStatusType
+        = this->deviceClient.sendEchoRequest(echoPayload.data(), echoPayload.size(), messageCounter);
+    if (!this->checkSendStatus(Messages::MessageType::ECHO_REQUEST, sendStatusType)) {
+        return false;
+    }
+
+    // remember the pending echo request
+    PendingEcho &pendingEcho = this->pendingEchoes[sequenceNumber];
+    pendingEcho.requestTimestamp = requestTimestamp;
+    pendingEcho.messageCounter = messageCounter;
+
+    // echo request sent successfully
+    return true;
 }
 
 bool CliApplication::checkSendStatus(const Messages::MessageType messageType,
@@ -761,11 +907,116 @@ bool CliApplication::checkSendStatus(const Messages::MessageType messageType,
     return true;
 }
 
+void CliApplication::handleFailedEchoRequest(
+    const uint16_t messageCounter, const Definitions::MessageStatusType remoteMessageStatusType)
+{
+    // echo request must be pending
+    const std::map<uint32_t, PendingEcho>::const_iterator &pendingEchoIterator
+        = std::find_if(this->pendingEchoes.cbegin(),
+                       this->pendingEchoes.cend(),
+                       [messageCounter](const std::pair<const uint32_t, PendingEcho> &pendingEcho) {
+                           return pendingEcho.second.messageCounter == messageCounter;
+                       });
+    if (pendingEchoIterator == this->pendingEchoes.cend()) {
+        return;
+    }
+
+    // send a busy echo request again
+    if (remoteMessageStatusType == Definitions::MessageStatusType::BUSY) {
+        // keep track of busy echo requests
+        ++this->busyEchoRequestCounter;
+
+        // remember the echo request to send it again
+        this->retrySequenceNumbers.push_back(pendingEchoIterator->first);
+    }
+
+    // forget a lost echo request
+    else {
+        // keep track of lost echo requests
+        ++this->lostEchoRequestCounter;
+
+        // forget the echo request
+        this->pendingEchoes.erase(pendingEchoIterator);
+    }
+}
+
+void CliApplication::forgetLostEchoRequest(const uint32_t sequenceNumber)
+{
+    // do not send the lost echo request again
+    this->retrySequenceNumbers.erase(std::remove(this->retrySequenceNumbers.begin(),
+                                                 this->retrySequenceNumbers.end(),
+                                                 sequenceNumber),
+                                     this->retrySequenceNumbers.end());
+
+    // keep track of lost echo requests
+    ++this->lostEchoRequestCounter;
+    this->pendingEchoes.erase(sequenceNumber);
+}
+
 void CliApplication::finish(const int exitCode)
 {
     // finish with the exit code
     this->finished = true;
     this->exitCode = exitCode;
+}
+
+void CliApplication::printStressReport() const
+{
+    // get the average round trip time
+    const uint64_t echoResponseCount = this->verifiedEchoResponseCounter
+                                       + this->corruptedEchoResponseCounter;
+    const double averageRoundTripTime = echoResponseCount == 0
+                                            ? 0.0
+                                            : static_cast<double>(this->echoRoundTripTimeSum.count())
+                                                  / static_cast<double>(echoResponseCount);
+
+    // get the payload throughput of both directions
+    const std::chrono::milliseconds elapsedTime = this->clock.getTime() - this->startTimestamp;
+    const double elapsedSeconds = static_cast<double>(elapsedTime.count()) / 1000.0;
+    const double payloadThroughput = elapsedSeconds <= 0.0
+                                         ? 0.0
+                                         : static_cast<double>(this->verifiedEchoResponseCounter)
+                                               * static_cast<double>(
+                                                   this->commandLine.echoPayloadSize)
+                                               * 2.0 / elapsedSeconds;
+
+    // print the stress report
+    HostUtils::printLine("stress report");
+    HostUtils::printLine(
+        HostUtils::getReportLine("requests", std::to_string(this->commandLine.requestCount)));
+    HostUtils::printLine(
+        HostUtils::getReportLine("verified replies",
+                                 std::to_string(this->verifiedEchoResponseCounter)));
+    HostUtils::printLine(
+        HostUtils::getReportLine("corrupted replies",
+                                 std::to_string(this->corruptedEchoResponseCounter)));
+    HostUtils::printLine(
+        HostUtils::getReportLine("unexpected replies",
+                                 std::to_string(this->unexpectedEchoResponseCounter)));
+    HostUtils::printLine(
+        HostUtils::getReportLine("lost requests", std::to_string(this->lostEchoRequestCounter)));
+    HostUtils::printLine(
+        HostUtils::getReportLine("busy retries", std::to_string(this->busyEchoRequestCounter)));
+    HostUtils::printLine(
+        HostUtils::getReportLine("average latency (ms)",
+                                 HostUtils::getDecimalText(averageRoundTripTime, 1)));
+    HostUtils::printLine(
+        HostUtils::getReportLine("maximum latency (ms)",
+                                 std::to_string(this->maximumEchoRoundTripTime.count())));
+    HostUtils::printLine(
+        HostUtils::getReportLine("elapsed (s)", HostUtils::getDecimalText(elapsedSeconds, 1)));
+    HostUtils::printLine(HostUtils::getReportLine("payload throughput (B/s)",
+                                                  HostUtils::getDecimalText(payloadThroughput, 0)));
+
+    // print the link statistics of the host
+    HostUtils::printLine("host link statistics");
+    const std::vector<std::string> linkStatisticsLines = HostUtils::getLinkStatisticsLines(
+        this->deviceClient.getLinkStatistics());
+    std::for_each(linkStatisticsLines.cbegin(),
+                  linkStatisticsLines.cend(),
+                  [](const std::string &linkStatisticsLine) {
+                      HostUtils::printLine(linkStatisticsLine);
+                  });
 }
 
 std::string CliApplication::getSerialPortText() const
