@@ -98,7 +98,8 @@ The exit code `0` means the device got the message once and the host got its ack
 3. Lose the answer (this breaks the program on purpose). Delete the line
    `deviceTransport.deliverData(hostLink);`. The line `device -> host  #0  SET_LED_REQUEST  ACK`
    still prints, because `MockTransport` prints a frame when it is sent, not when it arrives. The
-   host keeps `host pending messages: 1` and the exit code is `1`.
+   host keeps `host pending messages: 1` and the exit code is `1`. Example 19 shows how the link
+   heals such a loss.
 
 ## Where this is used
 
