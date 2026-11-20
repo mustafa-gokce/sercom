@@ -169,6 +169,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
     )
+
+    # create capture dump executable
+    add_executable(${PROJECT_NAME}_dump
+        host/apps/sercom_dump.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_dump PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+    )
 endif()
 
 # create example executables
