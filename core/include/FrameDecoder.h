@@ -17,12 +17,13 @@ namespace sercom::FrameDecoder {
  */
 struct DecoderStatistics
 {
-    uint64_t incomingByteCounter = 0;   // bytes handed to the decoder
-    uint64_t discardedByteCounter = 0;  // bytes that did not end up in a valid frame
-    uint64_t incomingFrameCounter = 0;  // frames that passed every check
-    uint64_t invalidVersionCounter = 0; // frame candidates with an unsupported version
-    uint64_t payloadTooLongCounter = 0; // frame candidates with a payload above the limit
-    uint64_t crcMismatchCounter = 0;    // frame candidates with a wrong CRC32
+    uint64_t incomingByteCounter = 0;     // bytes handed to the decoder
+    uint64_t discardedByteCounter = 0;    // bytes that did not end up in a valid frame
+    uint64_t incomingFrameCounter = 0;    // frames that passed every check
+    uint64_t invalidVersionCounter = 0;   // frame candidates with an unsupported version
+    uint64_t payloadTooLongCounter = 0;   // frame candidates with a payload above the limit
+    uint64_t crcMismatchCounter = 0;      // frame candidates with a wrong CRC32
+    uint64_t interByteTimeoutCounter = 0; // partial frames dropped after a silent line
 };
 
 class FrameDecoderHandler
@@ -60,8 +61,11 @@ class FrameDecoder final
 public:
     /*
      * Decoder of a byte stream into frames that finds the sync word again after any error.
+     * An inter byte timeout of 0 milliseconds turns the timeout check off.
      */
-    explicit FrameDecoder(FrameDecoderHandler &handler);
+    explicit FrameDecoder(
+        FrameDecoderHandler &handler,
+        std::chrono::milliseconds interByteTimeout = Settings::DEFAULT_INTER_BYTE_TIMEOUT_MSEC);
     ~FrameDecoder();
 
     // delete copy constructor and copy assignment operator
@@ -82,6 +86,12 @@ public:
      * Listen for a received byte and notify the handler about every result.
      */
     void onReceivedByte(uint8_t byte, std::chrono::milliseconds currentTime);
+
+    /*
+     * Check whether a partial frame waited longer than the inter byte timeout and drop it.
+     * Without this periodic check a partial frame is only dropped when the next byte arrives.
+     */
+    void checkTimeout(std::chrono::milliseconds currentTime);
 
 public:
     /*
@@ -122,6 +132,7 @@ private:
 
 private:
     FrameDecoderHandler &handler;                             // reference to handler
+    const std::chrono::milliseconds interByteTimeout;         // allowed silence inside a frame
     std::array<uint8_t, Settings::MAXIMUM_FRAME_SIZE> buffer; // bytes of the frame candidate
     size_t bufferStart;                                       // index of the first buffered byte
     size_t bufferEnd;                                         // index after the last buffered byte
