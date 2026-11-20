@@ -50,6 +50,8 @@ constexpr std::chrono::milliseconds ECHO_LOSS_TIMEOUT_MSEC = RESPONSE_TIMEOUT_MS
                                                              * 2; // echo loss timeout in milliseconds
 
 constexpr std::string_view DEFAULT_DEVICE_NAME = "sercom-device-sim"; // default device name
+constexpr std::chrono::milliseconds MAXIMUM_LOG_PERIOD_MSEC
+    = 60 * 60 * 1000ms; // maximum heartbeat log period in milliseconds
 constexpr uint32_t SIMULATED_FREE_HEAP_SIZE = 180000; // simulated free heap size in bytes
 constexpr int16_t SIMULATED_TEMPERATURE = 2500; // simulated mean temperature in 0.01 degree steps
 constexpr int16_t SIMULATED_TEMPERATURE_AMPLITUDE
