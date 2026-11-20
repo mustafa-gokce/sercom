@@ -9,6 +9,9 @@ set(APP_VERSION_BUILD 0)
 # set project name
 set(PROJECT_NAME sercom)
 
+# options for protocol limits
+set(MAXIMUM_PAYLOAD_SIZE 255)
+
 #####################
 # DO NOT EDIT BELOW #
 #####################
@@ -56,6 +59,17 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# privately reusable settings
+add_library(${PROJECT_NAME}_settings INTERFACE)
+target_compile_definitions(${PROJECT_NAME}_settings INTERFACE
+    APP_VERSION_MAJOR=${APP_VERSION_MAJOR}
+    APP_VERSION_MINOR=${APP_VERSION_MINOR}
+    APP_VERSION_BUILD=${APP_VERSION_BUILD}
+    APP_GIT_HASH="${APP_GIT_HASH}"
+    APP_VERSION_STRING="${APP_VERSION_STRING}"
+    MAXIMUM_PAYLOAD_SIZE=${MAXIMUM_PAYLOAD_SIZE}
+)
+
 # create core library
 add_library(${PROJECT_NAME}_core_lib
     core/include/Definitions.h core/src/Definitions.cpp
@@ -66,6 +80,9 @@ add_library(${PROJECT_NAME}_core_lib
     core/include/Clock.h core/src/Clock.cpp
     core/include/Transport.h core/src/Transport.cpp
 )
+target_link_libraries(${PROJECT_NAME}_core_lib PRIVATE
+    ${PROJECT_NAME}_settings
+)
 
 # create host library
 add_library(${PROJECT_NAME}_host_lib
@@ -75,6 +92,7 @@ add_library(${PROJECT_NAME}_host_lib
     host/include/SerialPort.h host/src/SerialPort.cpp
 )
 target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
+    ${PROJECT_NAME}_settings
     ${PROJECT_NAME}_core_lib
 )
 
@@ -85,6 +103,7 @@ if (SERCOM_BUILD_BINARIES)
         examples/01_raw_serial.cpp
     )
     target_link_libraries(${PROJECT_NAME}_example_01_raw_serial PRIVATE
+        ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
     )
@@ -94,6 +113,7 @@ if (SERCOM_BUILD_BINARIES)
         examples/05_write_and_read_fields.cpp
     )
     target_link_libraries(${PROJECT_NAME}_example_05_write_and_read_fields PRIVATE
+        ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
     )
@@ -103,6 +123,7 @@ if (SERCOM_BUILD_BINARIES)
         examples/06_crc32_of_text.cpp
     )
     target_link_libraries(${PROJECT_NAME}_example_06_crc32_of_text PRIVATE
+        ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
     )
