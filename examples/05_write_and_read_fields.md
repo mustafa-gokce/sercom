@@ -132,5 +132,6 @@ like this. Print the exit code with `echo $?` and you see `0`.
   `reserve` and `consume` hold the bounds checks and make the writer and the reader invalid.
 - `core/src/Frame.cpp` writes the header of every frame with a `ByteWriter`.
 - `app/src/Messages.cpp` writes the payload of every message with a `ByteWriter`.
+- `host/src/CliApplication.cpp` reads the sequence number of an echo response with a `ByteReader`.
 - Lectures: L24 "ByteWriter and the sticky error pattern", L25 "ByteReader: parsing untrusted bytes" and L26
   "Signed values, floats and strings".
