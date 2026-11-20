@@ -5,8 +5,11 @@
 #include <csignal>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <system_error>
+
+#include "../include/SerialPort.h"
 
 namespace sercom::HostUtils {
 
@@ -193,6 +196,12 @@ std::string getReportLine(const std::string_view name, const std::string_view va
            + getRightJustifiedText(value, valueWidth);
 }
 
+std::string getSerialPortText(const std::string_view portName, const uint32_t baudRate)
+{
+    // expose the serial port name and the baud rate
+    return std::string(portName) + ", " + std::to_string(baudRate);
+}
+
 bool parseUint32(const std::string_view text, const uint32_t maximum, uint32_t &value)
 {
     // get the digits and their base
@@ -246,6 +255,28 @@ bool parseArgument(const std::string_view argument,
 
     // set the value
     value = argumentAsNumber;
+
+    // argument parsed successfully
+    return true;
+}
+
+bool parseBaudRateArgument(const std::string_view argument, uint32_t &baudRate)
+{
+    // argument must be a baud rate that the serial port supports
+    uint32_t argumentAsNumber = 0;
+    if (!parseUint32(argument, std::numeric_limits<uint32_t>::max(), argumentAsNumber)
+        || !SerialPort::isBaudRateSupported(argumentAsNumber)) {
+        // warn the user
+        const std::string warningMessage = "Invalid baud rate argument " + std::string(argument)
+                                           + ", expected a baud rate that the serial port supports";
+        logWarning(warningMessage);
+
+        // do not proceed further
+        return false;
+    }
+
+    // set the baud rate
+    baudRate = argumentAsNumber;
 
     // argument parsed successfully
     return true;
