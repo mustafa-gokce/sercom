@@ -17,6 +17,10 @@ constexpr size_t FLAGS_SIZE = 1;           // flags field size in bytes
 constexpr size_t MESSAGE_COUNTER_SIZE = 2; // message counter field size in bytes
 constexpr size_t MESSAGE_TYPE_SIZE = 2;    // message type field size in bytes
 constexpr size_t PAYLOAD_LENGTH_SIZE = 1;  // payload length field size in bytes
+constexpr size_t CRC_SIZE = 4;             // CRC32 field size in bytes
+constexpr size_t HEADER_SIZE = SYNC_SIZE + VERSION_SIZE + FLAGS_SIZE + MESSAGE_COUNTER_SIZE
+                               + MESSAGE_TYPE_SIZE + PAYLOAD_LENGTH_SIZE; // header size in bytes
+constexpr size_t FRAME_OVERHEAD = HEADER_SIZE + CRC_SIZE; // frame size without payload in bytes
 
 /*
  * Frame flag type.
@@ -49,5 +53,9 @@ FrameFlagType toFrameFlagType(uint8_t frameFlagType);
 [[nodiscard]] std::string_view getFrameFlagTypeText(FrameFlagType frameFlagType);
 
 } // namespace sercom::Definitions
+
+// check definitions
+static_assert(sercom::Definitions::HEADER_SIZE == 9, "Header size must be 9 bytes");
+static_assert(sercom::Definitions::FRAME_OVERHEAD == 13, "Frame overhead must be 13 bytes");
 
 #endif // SERCOM_DEFINITIONS_H
