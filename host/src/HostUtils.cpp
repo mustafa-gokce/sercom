@@ -1,6 +1,7 @@
 #include "../include/HostUtils.h"
 
 #include <algorithm>
+#include <csignal>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -8,6 +9,20 @@
 namespace sercom::HostUtils {
 
 namespace {
+
+/*
+ * Running flag that the stop handler clears.
+ */
+volatile std::sig_atomic_t running = 1;
+
+/*
+ * Clear the running flag, which is the only work a signal handler may do here.
+ */
+void handleStopSignal([[maybe_unused]] const int signalNumber)
+{
+    // clear the running flag
+    running = 0;
+}
 
 /*
  * Get the steady time of the host.
@@ -105,6 +120,37 @@ void logWarning(const std::string &warningMessage)
 {
     // print the warning message with its timestamp
     std::clog << getTimestampText() << " WARNING " << warningMessage << '\n';
+}
+
+void installStopHandlers()
+{
+    // install the interrupt handler
+    if (std::signal(SIGINT, handleStopSignal) == SIG_ERR) {
+        logWarning("Can not install the interrupt handler");
+    }
+
+    // install the terminate handler
+    if (std::signal(SIGTERM, handleStopSignal) == SIG_ERR) {
+        logWarning("Can not install the terminate handler");
+    }
+}
+
+bool getRunning()
+{
+    // expose whether no stop signal has arrived
+    return running != 0;
+}
+
+SteadyClock::SteadyClock()
+    : startTimestamp(getSteadyTime())
+{}
+
+SteadyClock::~SteadyClock() {}
+
+std::chrono::milliseconds SteadyClock::getTime() const
+{
+    // expose the time since construction
+    return getSteadyTime() - this->startTimestamp;
 }
 
 } // namespace sercom::HostUtils

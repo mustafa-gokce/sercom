@@ -7,6 +7,8 @@
 #include <string>
 #include <string_view>
 
+#include "../../core/include/Clock.h"
+
 namespace sercom::HostUtils {
 
 /*
@@ -49,6 +51,43 @@ void logDebug(const std::string &debugMessage);
  * Print a warning message with a timestamp to standard error.
  */
 void logWarning(const std::string &warningMessage);
+
+/*
+ * Install the interrupt and terminate handlers that clear the running flag.
+ */
+void installStopHandlers();
+
+/*
+ * Get whether no stop signal has arrived yet.
+ */
+[[nodiscard]] bool getRunning();
+
+class SteadyClock final : public Clock::Clock
+{
+public:
+    /*
+     * Steady clock of the host that starts at zero on construction.
+     */
+    SteadyClock();
+    ~SteadyClock() final;
+
+    // delete copy constructor and copy assignment operator
+    SteadyClock(const SteadyClock &) = delete;
+    SteadyClock &operator=(const SteadyClock &) = delete;
+
+    // delete move constructor and move assignment operator
+    SteadyClock(SteadyClock &&) = delete;
+    SteadyClock &operator=(SteadyClock &&) = delete;
+
+public:
+    /*
+     * Get the time since construction in milliseconds.
+     */
+    [[nodiscard]] std::chrono::milliseconds getTime() const final;
+
+private:
+    const std::chrono::milliseconds startTimestamp; // steady time at construction
+};
 
 } // namespace sercom::HostUtils
 
