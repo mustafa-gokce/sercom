@@ -343,6 +343,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_host_lib
     )
 
+    # create duplicate detection example executable
+    add_executable(${PROJECT_NAME}_example_20_duplicate_detection
+        examples/20_duplicate_detection.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_20_duplicate_detection PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+    )
+
     # create custom message example executable
     add_executable(${PROJECT_NAME}_example_23_custom_message
         examples/23_custom_message.cpp
