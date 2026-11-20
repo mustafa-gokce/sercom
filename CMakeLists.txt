@@ -56,12 +56,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# create core library
+add_library(${PROJECT_NAME}_core_lib
+    core/include/Transport.h core/src/Transport.cpp
+)
+
 # create host library
 add_library(${PROJECT_NAME}_host_lib
     host/include/HostSettings.h host/src/HostSettings.cpp
 
     host/include/HostUtils.h host/src/HostUtils.cpp
     host/include/SerialPort.h host/src/SerialPort.cpp
+)
+target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
+    ${PROJECT_NAME}_core_lib
 )
 
 # create example executables
@@ -71,6 +79,7 @@ if (SERCOM_BUILD_BINARIES)
         examples/01_raw_serial.cpp
     )
     target_link_libraries(${PROJECT_NAME}_example_01_raw_serial PRIVATE
+        ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
     )
 endif()
