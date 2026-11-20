@@ -102,6 +102,7 @@ The exit code `0` means every field arrived unchanged.
 - `core/src/ByteCodec.cpp`: `ByteWriter::writeString()` writes the length byte and the
   characters.
 - `app/src/DeviceApplication.cpp`: the device answers a device info request.
+- `host/src/CliApplication.cpp`: the `info` command of `sercom_cli` prints the response.
 - `docs/PROTOCOL.md`: the message table with `DEVICE_INFO_RESPONSE`.
 - Lectures: L60 "Message structs with serialize and deserialize", L61 "Evolving messages without
   breaking peers" and L63 "Validating payloads"; the `info` command is in L76 "The sercom_cli
