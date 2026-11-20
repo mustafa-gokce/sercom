@@ -63,6 +63,17 @@ add_library(${PROJECT_NAME}_host_lib
     host/include/HostUtils.h host/src/HostUtils.cpp
 )
 
+# create example executables
+if (SERCOM_BUILD_BINARIES)
+    # create raw serial example executable
+    add_executable(${PROJECT_NAME}_example_01_raw_serial
+        examples/01_raw_serial.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_01_raw_serial PRIVATE
+        ${PROJECT_NAME}_host_lib
+    )
+endif()
+
 # compiler flag add macro
 macro(add_compiler_flags)
     foreach (flag ${ARGV})
