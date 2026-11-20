@@ -249,6 +249,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
     )
+
+    # create CRC error detection example executable
+    add_executable(${PROJECT_NAME}_example_12_crc_error_detected
+        examples/12_crc_error_detected.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_12_crc_error_detected PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+    )
 endif()
 
 # create fuzz executables (only with the fuzzer flags passed from outside)
