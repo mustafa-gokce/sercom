@@ -75,6 +75,11 @@ if (SERCOM_BUILD_TESTS)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/dep/Catch2)
 endif()
 
+# get payload limit of the small limit test build
+if (DEFINED ENV{SERCOM_TEST_MAXIMUM_PAYLOAD_SIZE})
+    set(MAXIMUM_PAYLOAD_SIZE "$ENV{SERCOM_TEST_MAXIMUM_PAYLOAD_SIZE}")
+endif()
+
 # privately reusable settings
 add_library(${PROJECT_NAME}_settings INTERFACE)
 target_compile_definitions(${PROJECT_NAME}_settings INTERFACE
