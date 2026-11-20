@@ -23,6 +23,8 @@ struct CommandLine
     std::string portName;                                // serial port name
     uint32_t baudRate = HostSettings::DEFAULT_BAUD_RATE; // baud rate in bits per second
     std::string deviceName;                              // device name of the simulated device
+    std::chrono::milliseconds logPeriod
+        = std::chrono::milliseconds::zero(); // heartbeat log period in milliseconds or zero for none
 };
 
 class DeviceSimulator final
@@ -61,7 +63,7 @@ private:
     void processSerialPort();
 
     /*
-     * Maintain the device application and the serial port.
+     * Maintain the device application, the serial port and the heartbeat log.
      */
     void maintain();
 
@@ -69,6 +71,11 @@ private:
      * Attempt to reconnect the serial port when it is closed.
      */
     void attemptReconnect();
+
+    /*
+     * Send a heartbeat log report response.
+     */
+    void sendHeartbeatLogReportResponse();
 
     /*
      * Get the serial port name and the baud rate as text.
@@ -82,6 +89,8 @@ private:
     SimulatedPlatform::SimulatedPlatform simulatedPlatform; // simulated device hardware
     DeviceApplication::DeviceApplication deviceApplication; // device side of the protocol
     std::chrono::milliseconds lastReconnectTimestamp;       // time of the last reconnect attempt
+    std::chrono::milliseconds lastHeartbeatTimestamp;       // time of the last heartbeat log
+    uint64_t outgoingHeartbeatCounter;                      // heartbeat log report responses
     std::array<uint8_t, HostSettings::READ_BUFFER_SIZE> readBuffer; // received serial port data
 };
 
