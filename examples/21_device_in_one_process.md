@@ -125,7 +125,8 @@ The exit code `0` means two responses arrived and the LED is on.
   `DevicePlatform` interface.
 - `app/include/DeviceClient.h` and `app/src/DeviceClient.cpp`: the host side and the round trip
   time.
-- `host/src/SimulatedPlatform.cpp`: the platform of the device simulator.
+- `host/src/SimulatedPlatform.cpp`: the platform of the device simulator, and
+  `firmware/esp32/src/Esp32Platform.cpp`: the platform of the ESP32.
 - `tests/test_DeviceApplication.cpp`: the same pair in memory, with many more cases.
 - Lectures: L62 "Dispatching messages", L75 "DeviceClient: requests and replies" and L78 "A device
   simulator: firmware logic without hardware".
