@@ -283,6 +283,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_host_lib
     )
 
+    # create ping messages example executable
+    add_executable(${PROJECT_NAME}_example_15_ping_messages
+        examples/15_ping_messages.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_15_ping_messages PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+    )
+
     # create message dispatching example executable
     add_executable(${PROJECT_NAME}_example_25_dispatch_messages
         examples/25_dispatch_messages.cpp
