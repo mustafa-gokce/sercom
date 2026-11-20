@@ -72,6 +72,7 @@ target_compile_definitions(${PROJECT_NAME}_settings INTERFACE
 
 # create core library
 add_library(${PROJECT_NAME}_core_lib
+    core/include/Settings.h core/src/Settings.cpp
     core/include/Definitions.h core/src/Definitions.cpp
 
     core/include/ByteCodec.h core/src/ByteCodec.cpp
