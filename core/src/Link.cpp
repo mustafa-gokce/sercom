@@ -17,6 +17,7 @@ Link::Link(Transport::Transport &transport,
     , frameDecoder(*this, configuration.interByteTimeout)
     , nextReceivedMessageIndex(0)
     , nextMessageCounter(0)
+    , acknowledgedSendSequence(0)
     , statistics()
     , pendingMessages()
     , receivedMessages()
@@ -40,12 +41,12 @@ Definitions::SendStatusType Link::sendMessage(const uint16_t messageType,
         return Definitions::SendStatusType::INVALID_ARGUMENT;
     }
 
-    // acknowledged message must get a free pending message
+    // acknowledged message must get a free pending message within the spread
     const std::array<PendingMessage, Settings::MaximumPendingFrames>::iterator &iterator
         = std::find_if(this->pendingMessages.begin(),
                        this->pendingMessages.end(),
                        [](const PendingMessage &pendingMessage) { return !pendingMessage.used; });
-    if (acknowledged && iterator == this->pendingMessages.end()) {
+    if (acknowledged && (iterator == this->pendingMessages.end() || !this->getWithinSpread())) {
         return Definitions::SendStatusType::WINDOW_FULL;
     }
 
@@ -70,7 +71,9 @@ Definitions::SendStatusType Link::sendMessage(const uint16_t messageType,
         iterator->payloadLength = static_cast<uint8_t>(payloadLength);
         iterator->retransmissionCount = 0;
         iterator->lastSentTimestamp = this->clock.getTime();
+        iterator->sendSequence = this->acknowledgedSendSequence;
         std::copy_n(payload, payloadLength, iterator->payload.begin());
+        ++this->acknowledgedSendSequence;
     }
 
     // store the message counter
@@ -149,8 +152,8 @@ void Link::maintain()
 
 bool Link::getSendAcknowledgedAllowed() const
 {
-    // expose whether the window has a free slot
-    return this->getPendingCount() < this->pendingMessages.size();
+    // expose whether the window has a free slot within the spread
+    return this->getPendingCount() < this->pendingMessages.size() && this->getWithinSpread();
 }
 
 size_t Link::getPendingCount() const
@@ -234,6 +237,18 @@ void Link::onReceivedFrame(const Frame::Frame &frame)
 }
 
 void Link::onDecodeError([[maybe_unused]] const Definitions::DecodeErrorType decodeErrorType) {}
+
+bool Link::getWithinSpread() const
+{
+    // expose whether the wrap-safe spread allows a new message
+    return std::none_of(this->pendingMessages.cbegin(),
+                        this->pendingMessages.cend(),
+                        [this](const PendingMessage &pendingMessage) {
+                            return pendingMessage.used
+                                   && this->acknowledgedSendSequence - pendingMessage.sendSequence
+                                          >= Settings::MAXIMUM_ACKNOWLEDGED_SPREAD;
+                        });
+}
 
 bool Link::sendFrame(const Frame::Frame &frame)
 {
