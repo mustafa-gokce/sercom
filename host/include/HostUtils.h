@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "../../core/include/Clock.h"
+#include "../../core/include/Definitions.h"
 
 namespace sercom::HostUtils {
 
@@ -53,6 +54,11 @@ namespace sercom::HostUtils {
 [[nodiscard]] std::string getRightJustifiedText(std::string_view text, size_t width);
 
 /*
+ * Get a report line with the name and the value in aligned columns.
+ */
+[[nodiscard]] std::string getReportLine(std::string_view name, std::string_view value);
+
+/*
  * Parse a decimal or 0x prefixed hexadecimal text to a 32 bit integer up to the maximum.
  * Get false when the text is no such number.
  */
@@ -67,6 +73,11 @@ namespace sercom::HostUtils {
                                  uint32_t minimum,
                                  uint32_t maximum,
                                  uint32_t &value);
+
+/*
+ * Get the names of the set flags of a FLAGS field as text.
+ */
+[[nodiscard]] std::string getFrameFlagsText(uint8_t flags);
 
 /*
  * Print a result line to standard output.

@@ -184,6 +184,15 @@ std::string getRightJustifiedText(const std::string_view text, const size_t widt
     return justifiedText;
 }
 
+std::string getReportLine(const std::string_view name, const std::string_view value)
+{
+    // expose the name and the value in their columns
+    static constexpr size_t nameWidth = 28;
+    static constexpr size_t valueWidth = 10;
+    return "  " + getLeftJustifiedText(name, nameWidth) + " "
+           + getRightJustifiedText(value, valueWidth);
+}
+
 bool parseUint32(const std::string_view text, const uint32_t maximum, uint32_t &value)
 {
     // get the digits and their base
@@ -240,6 +249,38 @@ bool parseArgument(const std::string_view argument,
 
     // argument parsed successfully
     return true;
+}
+
+std::string getFrameFlagsText(const uint8_t flags)
+{
+    // add the name of every set flag
+    std::string flagsAsText;
+    const auto addFlagName = [flags, &flagsAsText](const Definitions::FrameFlagType frameFlagType) {
+        // flag must be set
+        if (!Definitions::isFrameFlagSet(flags, frameFlagType)) {
+            return;
+        }
+
+        // separate the flag names by a bar
+        if (!flagsAsText.empty()) {
+            flagsAsText += "|";
+        }
+
+        // add the flag name
+        flagsAsText += Definitions::getFrameFlagTypeText(frameFlagType);
+    };
+    addFlagName(Definitions::FrameFlagType::ACK_REQUEST);
+    addFlagName(Definitions::FrameFlagType::ACK);
+    addFlagName(Definitions::FrameFlagType::NACK);
+    addFlagName(Definitions::FrameFlagType::RETRANSMISSION);
+
+    // name a FLAGS field without a set flag
+    if (flagsAsText.empty()) {
+        return "NONE";
+    }
+
+    // expose the flag names
+    return flagsAsText;
 }
 
 void printLine(const std::string &line)
