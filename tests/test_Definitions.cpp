@@ -78,6 +78,73 @@ TEST_CASE_METHOD(TestDefinitions,
 }
 
 TEST_CASE_METHOD(TestDefinitions,
+                 "Message status type can be converted to integer",
+                 "[Definitions][fromMessageStatusType]")
+{
+    REQUIRE(Definitions::fromMessageStatusType(Definitions::MessageStatusType::UNKNOWN) == 0);
+    REQUIRE(Definitions::fromMessageStatusType(Definitions::MessageStatusType::ACCEPTED) == 1);
+    REQUIRE(
+        Definitions::fromMessageStatusType(Definitions::MessageStatusType::UNSUPPORTED_MESSAGE_TYPE)
+        == 2);
+    REQUIRE(Definitions::fromMessageStatusType(Definitions::MessageStatusType::MALFORMED_PAYLOAD)
+            == 3);
+    REQUIRE(Definitions::fromMessageStatusType(Definitions::MessageStatusType::BUSY) == 4);
+    REQUIRE(Definitions::fromMessageStatusType(Definitions::MessageStatusType::INVALID_ARGUMENT)
+            == 5);
+}
+
+TEST_CASE_METHOD(TestDefinitions,
+                 "Message status type can be converted from integer",
+                 "[Definitions][toMessageStatusType]")
+{
+    REQUIRE(Definitions::toMessageStatusType(0) == Definitions::MessageStatusType::UNKNOWN);
+    REQUIRE(Definitions::toMessageStatusType(1) == Definitions::MessageStatusType::ACCEPTED);
+    REQUIRE(Definitions::toMessageStatusType(2)
+            == Definitions::MessageStatusType::UNSUPPORTED_MESSAGE_TYPE);
+    REQUIRE(Definitions::toMessageStatusType(3)
+            == Definitions::MessageStatusType::MALFORMED_PAYLOAD);
+    REQUIRE(Definitions::toMessageStatusType(4) == Definitions::MessageStatusType::BUSY);
+    REQUIRE(Definitions::toMessageStatusType(5) == Definitions::MessageStatusType::INVALID_ARGUMENT);
+    REQUIRE(Definitions::toMessageStatusType(6) == Definitions::MessageStatusType::UNKNOWN);
+    REQUIRE(Definitions::toMessageStatusType(200) == Definitions::MessageStatusType::UNKNOWN);
+}
+
+TEST_CASE_METHOD(TestDefinitions,
+                 "Send status type can be converted to string",
+                 "[Definitions][fromSendStatusType]")
+{
+    REQUIRE(Definitions::fromSendStatusType(Definitions::SendStatusType::UNKNOWN) == "UNKNOWN");
+    REQUIRE(Definitions::fromSendStatusType(Definitions::SendStatusType::SENT) == "SENT");
+    REQUIRE(Definitions::fromSendStatusType(Definitions::SendStatusType::WINDOW_FULL)
+            == "WINDOW_FULL");
+    REQUIRE(Definitions::fromSendStatusType(Definitions::SendStatusType::PAYLOAD_TOO_LONG)
+            == "PAYLOAD_TOO_LONG");
+    REQUIRE(Definitions::fromSendStatusType(Definitions::SendStatusType::TRANSPORT_ERROR)
+            == "TRANSPORT_ERROR");
+    REQUIRE(Definitions::fromSendStatusType(Definitions::SendStatusType::INVALID_ARGUMENT)
+            == "INVALID_ARGUMENT");
+}
+
+TEST_CASE_METHOD(TestDefinitions,
+                 "Send status type can be parsed from string",
+                 "[Definitions][toSendStatusType]")
+{
+    REQUIRE(Definitions::toSendStatusType("UNKNOWN") == Definitions::SendStatusType::UNKNOWN);
+    REQUIRE(Definitions::toSendStatusType("SENT") == Definitions::SendStatusType::SENT);
+    REQUIRE(Definitions::toSendStatusType("WINDOW_FULL")
+            == Definitions::SendStatusType::WINDOW_FULL);
+    REQUIRE(Definitions::toSendStatusType("PAYLOAD_TOO_LONG")
+            == Definitions::SendStatusType::PAYLOAD_TOO_LONG);
+    REQUIRE(Definitions::toSendStatusType("TRANSPORT_ERROR")
+            == Definitions::SendStatusType::TRANSPORT_ERROR);
+    REQUIRE(Definitions::toSendStatusType("INVALID_ARGUMENT")
+            == Definitions::SendStatusType::INVALID_ARGUMENT);
+    REQUIRE(Definitions::toSendStatusType("LOREM_IPSUM") == Definitions::SendStatusType::UNKNOWN);
+    REQUIRE(Definitions::toSendStatusType("sent") == Definitions::SendStatusType::UNKNOWN);
+    REQUIRE(Definitions::toSendStatusType("SENT ") == Definitions::SendStatusType::UNKNOWN);
+}
+
+TEST_CASE_METHOD(TestDefinitions,
                  "Frame flags can be checked in the value of a flags field",
                  "[Definitions][testFrameFlagSet]")
 {
