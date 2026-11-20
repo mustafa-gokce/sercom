@@ -145,6 +145,36 @@ TEST_CASE_METHOD(TestDefinitions,
 }
 
 TEST_CASE_METHOD(TestDefinitions,
+                 "Delivery failure type can be converted to string",
+                 "[Definitions][fromDeliveryFailureType]")
+{
+    REQUIRE(Definitions::fromDeliveryFailureType(Definitions::DeliveryFailureType::UNKNOWN)
+            == "UNKNOWN");
+    REQUIRE(Definitions::fromDeliveryFailureType(Definitions::DeliveryFailureType::TIMED_OUT)
+            == "TIMED_OUT");
+    REQUIRE(Definitions::fromDeliveryFailureType(Definitions::DeliveryFailureType::REJECTED)
+            == "REJECTED");
+}
+
+TEST_CASE_METHOD(TestDefinitions,
+                 "Delivery failure type can be parsed from string",
+                 "[Definitions][toDeliveryFailureType]")
+{
+    REQUIRE(Definitions::toDeliveryFailureType("UNKNOWN")
+            == Definitions::DeliveryFailureType::UNKNOWN);
+    REQUIRE(Definitions::toDeliveryFailureType("TIMED_OUT")
+            == Definitions::DeliveryFailureType::TIMED_OUT);
+    REQUIRE(Definitions::toDeliveryFailureType("REJECTED")
+            == Definitions::DeliveryFailureType::REJECTED);
+    REQUIRE(Definitions::toDeliveryFailureType("LOREM_IPSUM")
+            == Definitions::DeliveryFailureType::UNKNOWN);
+    REQUIRE(Definitions::toDeliveryFailureType("timed_out")
+            == Definitions::DeliveryFailureType::UNKNOWN);
+    REQUIRE(Definitions::toDeliveryFailureType("TIMED_OUT ")
+            == Definitions::DeliveryFailureType::UNKNOWN);
+}
+
+TEST_CASE_METHOD(TestDefinitions,
                  "Frame flags can be checked in the value of a flags field",
                  "[Definitions][testFrameFlagSet]")
 {
