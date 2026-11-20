@@ -6,7 +6,7 @@
 #include "../../../app/include/Messages.h"
 
 /*
- * Set up the device and start the receive, protocol and heartbeat tasks.
+ * Set up the device and start the receive, protocol, console and heartbeat tasks.
  */
 void setup();
 
@@ -26,9 +26,16 @@ void queueLog(sercom::Messages::LogLevelType logLevelType, std::string_view text
 [[noreturn]] void uartReceiveTask(void *parameter);
 
 /*
- * Feed the received bytes and the queued log lines to the device application and maintain it.
+ * Feed the received bytes to the device application and to the frame tracer of a printed console.
+ * Print the queued log lines on the console, send them to the host and maintain the protocol.
+ * Start an activity blink of the LED after a valid received frame.
  */
 [[noreturn]] void protocolTask(void *parameter);
+
+/*
+ * Write the lines of the console buffer to the serial port of the console.
+ */
+[[noreturn]] void consoleTask(void *parameter);
 
 /*
  * Report the free heap and the stack headroom of the protocol task periodically.
