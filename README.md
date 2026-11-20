@@ -19,7 +19,7 @@ Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
 1. Open a terminal.
 2. Install PlatformIO: `pip install platformio`
 3. Go to the source directory.
-4. `pio run -d firmware/esp32`
+4. Build both firmware environments: `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console`
 
 ## Run tests
 ### Linux
@@ -58,6 +58,7 @@ Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
 5. Flash the firmware with the protocol on the USB port: `pio run -d firmware/esp32 -e esp32dev -t upload`
 6. Print the device information and every frame on the wire: `build/sercom_cli /dev/ttyUSB0 --trace info`
 7. Measure one ping on the board: `build/sercom_example_24_serial_ping /dev/ttyUSB0`
+8. Follow [docs/HARDWARE.md](docs/HARDWARE.md) for the wiring, the console firmware `esp32dev-console` with the protocol on UART2 and the troubleshooting list.
 
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
