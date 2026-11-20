@@ -76,6 +76,11 @@ public:
         = 0;
 
     /*
+     * Listen for an echo response.
+     */
+    virtual void onReceivedEchoResponse(const Messages::EchoResponse &echoResponse) = 0;
+
+    /*
      * Listen for a request the device acknowledged.
      */
     virtual void onRequestConfirmed(uint16_t messageCounter, Messages::MessageType messageType) = 0;
@@ -134,6 +139,13 @@ public:
      */
     [[nodiscard]] Definitions::SendStatusType sendSetTelemetryPeriodRequest(
         std::chrono::milliseconds telemetryPeriod, uint16_t &messageCounter);
+
+    /*
+     * Send an echo request and store its message counter.
+     */
+    [[nodiscard]] Definitions::SendStatusType sendEchoRequest(const uint8_t *data,
+                                                              size_t size,
+                                                              uint16_t &messageCounter);
 
     /*
      * Listen for received data and hand it to the link.
@@ -213,6 +225,11 @@ private:
      * Handle a log report response.
      */
     [[nodiscard]] Definitions::MessageStatusType handleLogReportResponse(const Frame::Frame &frame);
+
+    /*
+     * Handle an echo response.
+     */
+    [[nodiscard]] Definitions::MessageStatusType handleEchoResponse(const Frame::Frame &frame);
 
     /*
      * Send an acknowledged request and store its message counter.
