@@ -115,5 +115,6 @@ see `0`.
 - `core/include/Definitions.h` holds the parameters of the variant: `CRC32_POLYNOMIAL`, `CRC32_INITIAL_VALUE` and
   `CRC32_FINAL_XOR_VALUE`.
 - `tests/test_CRC32.cpp` checks the same check value and every single bit flip of a buffer.
+- `tools/sercom_frame.py` calculates the same CRC32 in Python.
 - Lectures: L37 "Verifying a CRC implementation" and L38 "What CRC32 guarantees and what it does not". L35 "A
   bitwise CRC-32 implementation" shows how the number is calculated.
