@@ -1,7 +1,14 @@
+#include <chrono>
+#include <cstdint>
+#include <vector>
+
 #include <catch2/catch_all.hpp>
 
 #include "../app/include/Messages.h"
+#include "../core/include/Frame.h"
+#include "../core/include/Settings.h"
 
+using namespace std::chrono_literals;
 using namespace sercom;
 
 class TestMessages
@@ -12,6 +19,26 @@ public:
      */
     TestMessages() = default;
     ~TestMessages() = default;
+
+    /*
+     * Get the payload bytes of a message.
+     */
+    [[nodiscard]] static std::vector<uint8_t> getPayload(
+        const Messages::GenericMessage &genericMessage)
+    {
+        // expose a copy of the payload bytes
+        return std::vector<uint8_t>(genericMessage.getPayload(),
+                                    genericMessage.getPayload() + genericMessage.getPayloadLength());
+    }
+
+    /*
+     * Get a frame that carries a payload.
+     */
+    [[nodiscard]] static Frame::Frame getFrame(const std::vector<uint8_t> &payload)
+    {
+        // expose a frame with the payload
+        return Frame::Frame(0, 0, 0, payload.data(), payload.size());
+    }
 
     // delete copy and move operators
     TestMessages(const TestMessages &other) = delete;
@@ -111,4 +138,50 @@ TEST_CASE_METHOD(TestMessages,
     REQUIRE(Messages::getLogLevelTypeText(Messages::LogLevelType::DEBUG) == "DEBUG");
     REQUIRE(Messages::getLogLevelTypeText(Messages::LogLevelType::WARNING) == "WARNING");
     REQUIRE(Messages::getLogLevelTypeText(Messages::toLogLevelType(3)) == "UNKNOWN");
+}
+
+TEST_CASE_METHOD(TestMessages,
+                 "Ping request keeps the lower 32 bits of its request timestamp",
+                 "[Messages][testPingRequestTimestampWidth]")
+{
+    // create a ping request beyond the 32 bit milliseconds
+    const Messages::PingRequest pingRequest(4294967301ms);
+
+    // check the request timestamp of its field
+    REQUIRE(pingRequest.getPayloadLength() == Messages::PING_REQUEST_SIZE);
+    REQUIRE(pingRequest.getRequestTimestamp() == 5ms);
+}
+
+TEST_CASE_METHOD(TestMessages,
+                 "Device info request has no payload",
+                 "[Messages][testDeviceInfoRequest]")
+{
+    // create a device info request
+    const Messages::DeviceInfoRequest deviceInfoRequest;
+
+    // check the empty payload
+    REQUIRE(deviceInfoRequest.getPayloadLength() == static_cast<size_t>(0));
+}
+
+TEST_CASE_METHOD(TestMessages,
+                 "Echo request keeps its data and rejects data above the payload",
+                 "[Messages][testEchoRequest]")
+{
+    // create an echo request
+    const std::vector<uint8_t> data = {0xA5, 0xC3, 0x00, 0xFF, 0x42};
+    const Messages::EchoRequest echoRequest(data.data(), data.size());
+
+    // check the echo request of a received frame
+    const Messages::EchoRequest receivedEchoRequest(getFrame(getPayload(echoRequest)));
+    REQUIRE(getPayload(receivedEchoRequest) == data);
+
+    // check the echo response with the echo request payload
+    const Messages::EchoResponse echoResponse(receivedEchoRequest.getPayload(),
+                                              receivedEchoRequest.getPayloadLength());
+    REQUIRE(getPayload(echoResponse) == data);
+
+    // check the empty echo request with too much data
+    const std::vector<uint8_t> longData(Settings::MaximumPayloadSize + 1, 0x55);
+    const Messages::EchoRequest longEchoRequest(longData.data(), longData.size());
+    REQUIRE(longEchoRequest.getPayloadLength() == static_cast<size_t>(0));
 }
