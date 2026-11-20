@@ -10,7 +10,8 @@ namespace sercom::Settings {
 
 using namespace std::chrono_literals;
 
-constexpr size_t MaximumPayloadSize = MAXIMUM_PAYLOAD_SIZE; // maximum payload size in bytes
+constexpr size_t MaximumPayloadSize = MAXIMUM_PAYLOAD_SIZE;     // maximum payload size in bytes
+constexpr size_t MaximumPendingFrames = MAXIMUM_PENDING_FRAMES; // maximum unacknowledged frames
 
 constexpr size_t MAXIMUM_FRAME_SIZE = Definitions::FRAME_OVERHEAD
                                       + MaximumPayloadSize; // maximum frame size in bytes
@@ -25,5 +26,7 @@ static_assert(sercom::Settings::MaximumPayloadSize <= 0xFF,
               "Maximum payload size must be at most 255 bytes");
 static_assert(sercom::Settings::MaximumPayloadSize >= 16,
               "Maximum payload size must be at least 16 bytes");
+static_assert(sercom::Settings::MaximumPendingFrames >= 1,
+              "Maximum pending frames must be at least 1");
 
 #endif // SERCOM_SETTINGS_H
