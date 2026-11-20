@@ -59,6 +59,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # create host library
 add_library(${PROJECT_NAME}_host_lib
     host/include/HostSettings.h host/src/HostSettings.cpp
+
+    host/include/HostUtils.h host/src/HostUtils.cpp
 )
 
 # compiler flag add macro
