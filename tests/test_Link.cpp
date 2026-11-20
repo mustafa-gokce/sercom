@@ -23,6 +23,20 @@ namespace {
 
 using DataFilter = std::function<bool(size_t sendCount, const std::vector<uint8_t> &data)>;
 
+/*
+ * Acknowledged message that a mock link handler saw finish.
+ */
+struct DeliveryResult
+{
+    uint16_t messageCounter = 0; // message counter of the message
+    uint16_t messageType = 0;    // message type of the message
+    bool confirmed = false;      // message reached the peer
+    Definitions::DeliveryFailureType deliveryFailureType
+        = Definitions::DeliveryFailureType::UNKNOWN; // reason of a failed delivery
+    Definitions::MessageStatusType remoteMessageStatusType
+        = Definitions::MessageStatusType::UNKNOWN; // message status of a rejection
+};
+
 class MockClock final : public Clock::Clock
 {
 public:
@@ -212,6 +226,37 @@ public:
         return this->messageStatusType;
     }
 
+    /*
+     * Listen for a confirmed delivery and record it.
+     */
+    void onDeliveryConfirmed(const uint16_t messageCounter, const uint16_t messageType) final
+    {
+        // record the confirmed delivery
+        DeliveryResult deliveryResult;
+        deliveryResult.messageCounter = messageCounter;
+        deliveryResult.messageType = messageType;
+        deliveryResult.confirmed = true;
+        this->deliveryResults.push_back(deliveryResult);
+    }
+
+    /*
+     * Listen for a failed delivery and record it.
+     */
+    void onDeliveryFailed(const uint16_t messageCounter,
+                          const uint16_t messageType,
+                          const Definitions::DeliveryFailureType deliveryFailureType,
+                          const Definitions::MessageStatusType remoteMessageStatusType) final
+    {
+        // record the failed delivery
+        DeliveryResult deliveryResult;
+        deliveryResult.messageCounter = messageCounter;
+        deliveryResult.messageType = messageType;
+        deliveryResult.confirmed = false;
+        deliveryResult.deliveryFailureType = deliveryFailureType;
+        deliveryResult.remoteMessageStatusType = remoteMessageStatusType;
+        this->deliveryResults.push_back(deliveryResult);
+    }
+
 public:
     /*
      * Get the received messages in arrival order.
@@ -233,6 +278,7 @@ public:
 
 private:
     std::vector<Frame::Frame> messages;               // received messages
+    std::vector<DeliveryResult> deliveryResults;      // finished deliveries
     Definitions::MessageStatusType messageStatusType; // answer to a received message
 };
 

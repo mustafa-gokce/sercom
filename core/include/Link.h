@@ -29,10 +29,16 @@ struct LinkConfiguration
  */
 struct LinkStatistics
 {
-    uint64_t outgoingFrameCounter = 0;                 // frames written to the transport
-    uint64_t incomingFrameCounter = 0;                 // valid frames from the decoder
-    uint64_t deliveredMessageCounter = 0;              // messages handed to the application
-    uint64_t transportErrorCounter = 0;                // frames the transport could not take
+    uint64_t outgoingFrameCounter = 0;             // frames written to the transport
+    uint64_t incomingFrameCounter = 0;             // valid frames from the decoder
+    uint64_t deliveredMessageCounter = 0;          // messages handed to the application
+    uint64_t outgoingAcknowledgementCounter = 0;   // sent ACK frames
+    uint64_t incomingAcknowledgementCounter = 0;   // ACK frames of a pending message
+    uint64_t outgoingRejectionCounter = 0;         // sent NACK frames
+    uint64_t incomingRejectionCounter = 0;         // NACK frames of a pending message
+    uint64_t failedDeliveryCounter = 0;            // rejected messages
+    uint64_t unexpectedAcknowledgementCounter = 0; // ACK or NACK frames without a pending message
+    uint64_t transportErrorCounter = 0;            // frames the transport could not take
     FrameDecoder::DecoderStatistics decoderStatistics; // decoder statistics
 };
 
@@ -72,13 +78,29 @@ public:
      */
     [[nodiscard]] virtual Definitions::MessageStatusType onReceivedMessage(const Frame::Frame &frame)
         = 0;
+
+    /*
+     * Listen for an acknowledged message that reached the peer.
+     * The slot of the message is free again during the call.
+     */
+    virtual void onDeliveryConfirmed(uint16_t messageCounter, uint16_t messageType) = 0;
+
+    /*
+     * Listen for an acknowledged message that timed out or was rejected by the peer.
+     * The slot of the message is free again during the call.
+     */
+    virtual void onDeliveryFailed(uint16_t messageCounter,
+                                  uint16_t messageType,
+                                  Definitions::DeliveryFailureType deliveryFailureType,
+                                  Definitions::MessageStatusType remoteMessageStatusType)
+        = 0;
 };
 
 class Link final : public FrameDecoder::FrameDecoderHandler
 {
 public:
     /*
-     * Link layer with message counters.
+     * Link layer with message counters and acknowledgements.
      */
     explicit Link(Transport::Transport &transport,
                   LinkHandler &handler,
@@ -151,6 +173,17 @@ private:
      * Send a frame to the transport.
      */
     [[nodiscard]] bool sendFrame(const Frame::Frame &frame);
+
+    /*
+     * Send the ACK or NACK frame that answers an acknowledged message.
+     */
+    void sendAcknowledgement(const Frame::Frame &frame,
+                             Definitions::MessageStatusType messageStatusType);
+
+    /*
+     * Handle the ACK or NACK frame of a pending message.
+     */
+    void handleAcknowledgement(const Frame::Frame &frame);
 
 private:
     Transport::Transport &transport;         // reference for transport
