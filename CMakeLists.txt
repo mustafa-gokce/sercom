@@ -183,6 +183,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
     )
+
+    # create frame reading example executable
+    add_executable(${PROJECT_NAME}_example_08_read_a_frame
+        examples/08_read_a_frame.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_08_read_a_frame PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+    )
 endif()
 
 # create fuzz executables (only with the fuzzer flags passed from outside)
