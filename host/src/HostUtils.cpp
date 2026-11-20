@@ -64,6 +64,56 @@ std::string toHexString(const uint8_t *data, const size_t size)
     return dataAsHexString;
 }
 
+std::string toEscapedString(const uint8_t *data, const size_t size)
+{
+    // open the quotes
+    std::string dataAsEscapedString = "\"";
+
+    // iterate over the bytes
+    std::for_each(data, data + size, [&dataAsEscapedString](const uint8_t byte) {
+        // escape a carriage return by its name
+        if (byte == '\r') {
+            dataAsEscapedString += "\\r";
+            return;
+        }
+
+        // escape a line feed by its name
+        if (byte == '\n') {
+            dataAsEscapedString += "\\n";
+            return;
+        }
+
+        // escape a tab by its name
+        if (byte == '\t') {
+            dataAsEscapedString += "\\t";
+            return;
+        }
+
+        // escape a quote or a backslash by a backslash
+        if (byte == '"' || byte == '\\') {
+            dataAsEscapedString.push_back('\\');
+            dataAsEscapedString.push_back(static_cast<char>(byte));
+            return;
+        }
+
+        // escape a byte outside the printable characters by its hex value
+        static constexpr size_t byteDigitCount = 2;
+        if (byte < ' ' || byte > '~') {
+            dataAsEscapedString += "\\x" + getHexText(byte, byteDigitCount);
+            return;
+        }
+
+        // add a printable character as it is
+        dataAsEscapedString.push_back(static_cast<char>(byte));
+    });
+
+    // close the quotes
+    dataAsEscapedString.push_back('"');
+
+    // expose the escaped string
+    return dataAsEscapedString;
+}
+
 std::string getHexText(const uint32_t value, const size_t digitCount)
 {
     // digit count must fit the value

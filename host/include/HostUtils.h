@@ -17,6 +17,11 @@ namespace sercom::HostUtils {
 [[nodiscard]] std::string toHexString(const uint8_t *data, size_t size);
 
 /*
+ * Convert bytes to printable text in quotes with escapes for the other bytes.
+ */
+[[nodiscard]] std::string toEscapedString(const uint8_t *data, size_t size);
+
+/*
  * Get a value as upper case hex text with the digit count.
  */
 [[nodiscard]] std::string getHexText(uint32_t value, size_t digitCount);
