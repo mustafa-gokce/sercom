@@ -30,6 +30,8 @@ constexpr std::chrono::milliseconds DEVICE_DEACTIVATION_PERIOD_MSEC
     = DEVICE_PERIODIC_REQUEST_PERIOD_MSEC * 10; // device deactivation period in milliseconds
 constexpr std::chrono::milliseconds RESPONSE_TIMEOUT_MSEC
     = 3 * 1000ms; // response timeout in milliseconds
+constexpr std::chrono::milliseconds DEVICE_BOOT_TIMEOUT_MSEC
+    = 3 * 1000ms; // longest wait for the device after the serial port opened in milliseconds
 constexpr std::chrono::milliseconds PING_PERIOD_MSEC
     = 200ms; // ping command request period in milliseconds
 
