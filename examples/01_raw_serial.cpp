@@ -45,7 +45,9 @@ int main(int argc, char *argv[])
 
     // serial port must open
     SerialPort::SerialPort serialPort;
-    if (!serialPort.open(portName, HostSettings::DEFAULT_BAUD_RATE)) {
+    const SerialPort::SerialPortStatusType openStatusType
+        = serialPort.open(portName, HostSettings::DEFAULT_BAUD_RATE);
+    if (openStatusType != SerialPort::SerialPortStatusType::OK) {
         // warn the user
         const std::string warningMessage = "Can not open the serial port " + portName;
         HostUtils::logWarning(warningMessage);
@@ -77,7 +79,12 @@ int main(int argc, char *argv[])
     static constexpr std::chrono::milliseconds readTimeout = 1 * 1000ms;
     size_t size = 0;
     std::vector<uint8_t> readBuffer(HostSettings::READ_BUFFER_SIZE);
-    if (!serialPort.read(readBuffer.data(), readBuffer.size(), size, readTimeout)) {
+    const SerialPort::SerialPortStatusType readStatusType = serialPort.read(readBuffer.data(),
+                                                                            readBuffer.size(),
+                                                                            size,
+                                                                            readTimeout);
+    if (readStatusType != SerialPort::SerialPortStatusType::OK
+        && readStatusType != SerialPort::SerialPortStatusType::TIMED_OUT) {
         // warn the user
         const std::string warningMessage = "Can not read the serial port " + portName;
         HostUtils::logWarning(warningMessage);
