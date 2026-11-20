@@ -148,6 +148,11 @@ public:
      * Get the request timestamp in milliseconds.
      */
     [[nodiscard]] std::chrono::milliseconds getRequestTimestamp() const;
+
+    /*
+     * Get whether the payload holds every field.
+     */
+    [[nodiscard]] bool getLikelyValid() const;
 };
 
 class PingResponse final : public GenericMessage
@@ -179,6 +184,11 @@ public:
      * Get the uptime of the device in milliseconds.
      */
     [[nodiscard]] std::chrono::milliseconds getUptime() const;
+
+    /*
+     * Get whether the payload holds every field.
+     */
+    [[nodiscard]] bool getLikelyValid() const;
 };
 
 class DeviceInfoRequest final : public GenericMessage
@@ -243,6 +253,16 @@ public:
      * Get the free heap size in bytes.
      */
     [[nodiscard]] uint32_t getFreeHeapSize() const;
+
+    /*
+     * Get the device name, valid as long as the response exists.
+     */
+    [[nodiscard]] std::string_view getDeviceName() const;
+
+    /*
+     * Get whether the payload holds every field and the whole device name.
+     */
+    [[nodiscard]] bool getLikelyValid() const;
 };
 
 class LogReportResponse final : public GenericMessage
@@ -270,6 +290,16 @@ public:
      * Get the log level type.
      */
     [[nodiscard]] LogLevelType getLogLevelType() const;
+
+    /*
+     * Get the text, valid as long as the response exists.
+     */
+    [[nodiscard]] std::string_view getText() const;
+
+    /*
+     * Get whether the payload holds every field and the whole text.
+     */
+    [[nodiscard]] bool getLikelyValid() const;
 };
 
 class EchoRequest final : public GenericMessage
@@ -335,6 +365,11 @@ public:
      * Get whether the LED is switched on.
      */
     [[nodiscard]] bool getLedOn() const;
+
+    /*
+     * Get whether the payload holds the LED state as zero or one.
+     */
+    [[nodiscard]] bool getLikelyValid() const;
 };
 
 class SetLedResponse final : public GenericMessage
@@ -360,6 +395,11 @@ public:
      * Get whether the LED is on.
      */
     [[nodiscard]] bool getLedOn() const;
+
+    /*
+     * Get whether the payload holds the LED state as zero or one.
+     */
+    [[nodiscard]] bool getLikelyValid() const;
 };
 
 class SetTelemetryPeriodRequest final : public GenericMessage
@@ -386,6 +426,11 @@ public:
      * Get the telemetry period in milliseconds.
      */
     [[nodiscard]] std::chrono::milliseconds getTelemetryPeriod() const;
+
+    /*
+     * Get whether the payload holds every field.
+     */
+    [[nodiscard]] bool getLikelyValid() const;
 };
 
 class TelemetryReportResponse final : public GenericMessage
@@ -429,6 +474,11 @@ public:
      * Get the temperature in 0.01 degree Celsius steps.
      */
     [[nodiscard]] int16_t getTemperature() const;
+
+    /*
+     * Get whether the payload holds every field.
+     */
+    [[nodiscard]] bool getLikelyValid() const;
 };
 
 } // namespace sercom::Messages

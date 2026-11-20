@@ -201,6 +201,17 @@ std::chrono::milliseconds PingRequest::getRequestTimestamp() const
     return std::chrono::milliseconds(ByteCodec::loadUint32(this->payload.data()));
 }
 
+bool PingRequest::getLikelyValid() const
+{
+    // payload must hold every field
+    if (this->payloadLength < PING_REQUEST_SIZE) {
+        return false;
+    }
+
+    // passed basic checks
+    return true;
+}
+
 PingResponse::PingResponse(const std::chrono::milliseconds requestTimestamp,
                            const std::chrono::milliseconds uptime)
 {
@@ -237,6 +248,17 @@ std::chrono::milliseconds PingResponse::getUptime() const
 
     // expose the uptime
     return std::chrono::milliseconds(ByteCodec::loadUint32(this->payload.data() + 4));
+}
+
+bool PingResponse::getLikelyValid() const
+{
+    // payload must hold every field
+    if (this->payloadLength < PING_RESPONSE_SIZE) {
+        return false;
+    }
+
+    // passed basic checks
+    return true;
 }
 
 DeviceInfoResponse::DeviceInfoResponse(const uint8_t firmwareVersionMajor,
@@ -315,6 +337,34 @@ uint32_t DeviceInfoResponse::getFreeHeapSize() const
     return ByteCodec::loadUint32(this->payload.data() + 6);
 }
 
+std::string_view DeviceInfoResponse::getDeviceName() const
+{
+    // payload must hold the whole device name
+    if (!this->getLikelyValid()) {
+        return {};
+    }
+
+    // expose the characters behind the length of the device name
+    return {reinterpret_cast<const char *>(this->payload.data() + DEVICE_INFO_RESPONSE_SIZE),
+            this->payload[10]};
+}
+
+bool DeviceInfoResponse::getLikelyValid() const
+{
+    // payload must hold every field
+    if (this->payloadLength < DEVICE_INFO_RESPONSE_SIZE) {
+        return false;
+    }
+
+    // payload must hold the whole device name
+    if (this->payloadLength < DEVICE_INFO_RESPONSE_SIZE + this->payload[10]) {
+        return false;
+    }
+
+    // passed basic checks
+    return true;
+}
+
 LogReportResponse::LogReportResponse(const LogLevelType logLevelType, const std::string_view text)
 {
     // text must not exceed the maximum log text length
@@ -349,6 +399,34 @@ LogLevelType LogReportResponse::getLogLevelType() const
 
     // expose the log level type
     return toLogLevelType(this->payload[0]);
+}
+
+std::string_view LogReportResponse::getText() const
+{
+    // payload must hold the whole text
+    if (!this->getLikelyValid()) {
+        return {};
+    }
+
+    // expose the characters behind the length of the text
+    return {reinterpret_cast<const char *>(this->payload.data() + LOG_REPORT_RESPONSE_SIZE),
+            this->payload[1]};
+}
+
+bool LogReportResponse::getLikelyValid() const
+{
+    // payload must hold every field
+    if (this->payloadLength < LOG_REPORT_RESPONSE_SIZE) {
+        return false;
+    }
+
+    // payload must hold the whole text
+    if (this->payloadLength < LOG_REPORT_RESPONSE_SIZE + this->payload[1]) {
+        return false;
+    }
+
+    // passed basic checks
+    return true;
 }
 
 EchoRequest::EchoRequest(const uint8_t *data, const size_t size)
@@ -392,6 +470,22 @@ bool SetLedRequest::getLedOn() const
     return this->payload[0] == 1;
 }
 
+bool SetLedRequest::getLikelyValid() const
+{
+    // payload must hold every field
+    if (this->payloadLength < SET_LED_REQUEST_SIZE) {
+        return false;
+    }
+
+    // LED state must be zero or one
+    if (this->payload[0] > 1) {
+        return false;
+    }
+
+    // passed basic checks
+    return true;
+}
+
 SetLedResponse::SetLedResponse(const bool ledOn)
 {
     // write the LED state as zero or one
@@ -415,6 +509,22 @@ bool SetLedResponse::getLedOn() const
 
     // expose whether the LED is on
     return this->payload[0] == 1;
+}
+
+bool SetLedResponse::getLikelyValid() const
+{
+    // payload must hold every field
+    if (this->payloadLength < SET_LED_RESPONSE_SIZE) {
+        return false;
+    }
+
+    // LED state must be zero or one
+    if (this->payload[0] > 1) {
+        return false;
+    }
+
+    // passed basic checks
+    return true;
 }
 
 SetTelemetryPeriodRequest::SetTelemetryPeriodRequest(const std::chrono::milliseconds telemetryPeriod)
@@ -445,6 +555,17 @@ std::chrono::milliseconds SetTelemetryPeriodRequest::getTelemetryPeriod() const
 
     // expose the telemetry period
     return std::chrono::milliseconds(ByteCodec::loadUint16(this->payload.data()));
+}
+
+bool SetTelemetryPeriodRequest::getLikelyValid() const
+{
+    // payload must hold every field
+    if (this->payloadLength < SET_TELEMETRY_PERIOD_REQUEST_SIZE) {
+        return false;
+    }
+
+    // passed basic checks
+    return true;
 }
 
 TelemetryReportResponse::TelemetryReportResponse(const uint16_t sequence,
@@ -509,6 +630,17 @@ int16_t TelemetryReportResponse::getTemperature() const
 
     // expose the two's complement bit pattern of the temperature
     return static_cast<int16_t>(ByteCodec::loadUint16(this->payload.data() + 10));
+}
+
+bool TelemetryReportResponse::getLikelyValid() const
+{
+    // payload must hold every field
+    if (this->payloadLength < TELEMETRY_REPORT_RESPONSE_SIZE) {
+        return false;
+    }
+
+    // passed basic checks
+    return true;
 }
 
 } // namespace sercom::Messages
