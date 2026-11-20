@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -38,6 +39,7 @@ int main(int argc, char *argv[]);
 int main(int argc, char *argv[])
 {
     using namespace sercom;
+    using namespace std::chrono_literals;
 
     // command line must be valid
     std::string portName;
@@ -74,9 +76,22 @@ int main(int argc, char *argv[])
     // use raw mode with 8 data bits and no parity
     ::cfmakeraw(&tty);
 
-    // baud rate must apply as its termios speed
+    // use one stop bit without flow control
+    tty.c_cflag &= ~static_cast<tcflag_t>(CSTOPB);
+    tty.c_cflag &= ~static_cast<tcflag_t>(CRTSCTS);
+
+    // enable the receiver and ignore the modem lines
+    tty.c_cflag |= CREAD | CLOCAL;
+
+    // NOTE: termios counts the read timeout in tenths of a second
+    static constexpr std::chrono::milliseconds readTimeout = 1 * 1000ms;
+    static constexpr std::chrono::milliseconds readTimeoutUnit = 100ms;
+    tty.c_cc[VMIN] = 0;
+    tty.c_cc[VTIME] = static_cast<cc_t>(readTimeout / readTimeoutUnit);
+
+    // baud rate must apply in both directions
     static constexpr speed_t speed = B115200;
-    if (::cfsetospeed(&tty, speed) != 0) {
+    if (::cfsetispeed(&tty, speed) != 0 || ::cfsetospeed(&tty, speed) != 0) {
         // warn the user
         const std::string warningMessage = "Can not configure the serial port " + portName;
         HostUtils::logWarning(warningMessage);
@@ -100,6 +115,9 @@ int main(int argc, char *argv[])
         // do not proceed further
         return 1;
     }
+
+    // NOTE: toggling DTR or RTS resets many ESP32 boards
+    ::tcflush(fileDescriptor, TCIOFLUSH);
 
     /*
      * Message must be sent as text without frame boundaries and error detection.
