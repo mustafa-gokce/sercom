@@ -26,6 +26,16 @@ Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
 1. Open a terminal.
 2. Go to the build directory.
 3. `./sercom_test --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
+4. Go to the source directory.
+5. Run the tests with a 64 byte payload limit: `tools/run_small_limit_test.sh`
+6. Run the Python reference self test: `python3 tools/sercom_frame.py self-test`
+7. Run the end to end test over a noisy virtual link: `tests/e2e/noisy_link_test.sh build/sercom_cli build/sercom_device_sim`
+8. Compare the version numbers of the build files: `python3 tools/check_versions.py`
+9. Install Clang, clang-format 18 and clang-tidy 18 (the versions of Ubuntu 24.04): `sudo apt install clang clang-format clang-tidy`
+10. Build and install cppcheck 2.22 into `~/.local/cppcheck-2.22.0`: `tools/analysis/install_cppcheck.sh`
+11. Run the layout, comment, idiom, cppcheck and clang-tidy gates: `CPPCHECK=~/.local/cppcheck-2.22.0/bin/cppcheck tools/run_static_analysis.sh build`
+12. Run the tests with AddressSanitizer and UndefinedBehaviorSanitizer in `build-sanitizers`: `tools/run_sanitizer_test.sh`
+13. Fuzz the frame decoder and the link layer for one minute each in `build-fuzz`: `fuzz/run_fuzzers.sh`
 
 ### ESP32
 1. Build the firmware as above, the protocol code is tested on Linux.
