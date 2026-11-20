@@ -330,6 +330,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_host_lib
     )
 
+    # create custom message example executable
+    add_executable(${PROJECT_NAME}_example_23_custom_message
+        examples/23_custom_message.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_23_custom_message PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+    )
+
     # create message dispatching example executable
     add_executable(${PROJECT_NAME}_example_25_dispatch_messages
         examples/25_dispatch_messages.cpp
