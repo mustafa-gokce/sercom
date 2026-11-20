@@ -85,6 +85,15 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
     )
+
+    # create field writing and reading example executable
+    add_executable(${PROJECT_NAME}_example_05_write_and_read_fields
+        examples/05_write_and_read_fields.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_05_write_and_read_fields PRIVATE
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_host_lib
+    )
 endif()
 
 # compiler flag add macro
