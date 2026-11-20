@@ -43,6 +43,9 @@ int main(int argc, char *argv[])
         return HostSettings::INVALID_COMMAND_LINE_EXIT_CODE;
     }
 
+    // install the stop handlers
+    HostUtils::installStopHandlers();
+
     // serial port must open
     SerialPort::SerialPort serialPort;
     const SerialPort::SerialPortStatusType openStatusType
@@ -59,54 +62,70 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /*
-     * Message must be sent as text without frame boundaries and error detection.
-     * The frames of the rest of the repository add both.
-     */
+    // print the listening port and how to stop
+    const std::string listeningLine = "Listening on " + portName + "...";
+    HostUtils::printLine(listeningLine);
+    HostUtils::printLine("Press Ctrl+C to exit.");
+
+    // read and send until a stop signal arrives
+    static constexpr std::chrono::milliseconds readTimeout = 100ms;
+    static constexpr std::chrono::milliseconds messagePeriod = 1 * 1000ms;
     static constexpr std::string_view message = "a=1;b=2;c=3;\n";
-    if (!serialPort.sendData(reinterpret_cast<const uint8_t *>(message.data()), message.size())) {
-        // warn the user
-        const std::string warningMessage = "Can not send the message on " + portName;
-        HostUtils::logWarning(warningMessage);
-
-        // do not proceed further
-        return 1;
-    }
-
-    // notify the user
-    const std::string debugMessage = "Sent " + std::to_string(message.size()) + " bytes on "
-                                     + portName;
-    HostUtils::logDebug(debugMessage);
-
-    // read of the answer must succeed or time out
-    static constexpr std::chrono::milliseconds readTimeout = 1 * 1000ms;
-    size_t size = 0;
+    const HostUtils::SteadyClock clock;
+    std::chrono::milliseconds lastMessageTimestamp = clock.getTime();
     std::vector<uint8_t> readBuffer(HostSettings::READ_BUFFER_SIZE);
-    const SerialPort::SerialPortStatusType readStatusType = serialPort.read(readBuffer.data(),
-                                                                            readBuffer.size(),
-                                                                            size,
-                                                                            readTimeout);
-    if (readStatusType != SerialPort::SerialPortStatusType::OK
-        && readStatusType != SerialPort::SerialPortStatusType::TIMED_OUT) {
-        // warn the user
-        const std::string warningMessage = "Can not read the serial port " + portName + " ("
-                                           + std::string(
-                                               SerialPort::fromSerialPortStatusType(readStatusType))
-                                           + ")";
-        HostUtils::logWarning(warningMessage);
+    while (HostUtils::getRunning()) {
+        // read must succeed or time out
+        size_t size = 0;
+        const SerialPort::SerialPortStatusType readStatusType = serialPort.read(readBuffer.data(),
+                                                                                readBuffer.size(),
+                                                                                size,
+                                                                                readTimeout);
+        if (readStatusType != SerialPort::SerialPortStatusType::OK
+            && readStatusType != SerialPort::SerialPortStatusType::TIMED_OUT) {
+            // warn the user
+            const std::string warningMessage = "Can not read the serial port " + portName + " ("
+                                               + std::string(SerialPort::fromSerialPortStatusType(
+                                                   readStatusType))
+                                               + ")";
+            HostUtils::logWarning(warningMessage);
 
-        // do not proceed further
-        return 1;
+            // do not proceed further
+            return 1;
+        }
+
+        // iterate over the received bytes
+        std::for_each(readBuffer.cbegin(),
+                      std::next(readBuffer.cbegin(), static_cast<ptrdiff_t>(size)),
+                      printReceivedByte);
+
+        // message period must have passed since the last message
+        const std::chrono::milliseconds currentTime = clock.getTime();
+        if (currentTime - lastMessageTimestamp < messagePeriod) {
+            continue;
+        }
+
+        /*
+         * Message must be sent as text without frame boundaries and error detection.
+         * The frames of the rest of the repository add both.
+         */
+        if (!serialPort.sendData(reinterpret_cast<const uint8_t *>(message.data()),
+                                 message.size())) {
+            // warn the user
+            const std::string warningMessage = "Can not send the message on " + portName;
+            HostUtils::logWarning(warningMessage);
+
+            // do not proceed further
+            return 1;
+        }
+
+        // remember the time of the message
+        lastMessageTimestamp = currentTime;
     }
-
-    // iterate over the received bytes
-    std::for_each(readBuffer.cbegin(),
-                  std::next(readBuffer.cbegin(), static_cast<ptrdiff_t>(size)),
-                  printReceivedByte);
 
     // close the serial port
     serialPort.close();
-    HostUtils::printLine("Serial device closed.");
+    HostUtils::printLine("\nSerial device closed.");
 
     // example finished successfully
     return 0;
@@ -118,9 +137,9 @@ void printUsage(const std::string_view programName)
 
     // print the usage text
     const std::string usage = std::string("Usage: ") + std::string(programName)
-                              + " <serial-port>\nSends a text to the serial port at "
+                              + " <serial-port>\nPrints every byte of the serial port at "
                               + std::to_string(HostSettings::DEFAULT_BAUD_RATE)
-                              + " 8N1 and prints the answer.";
+                              + " 8N1 and sends a text once per second.";
     HostUtils::printLine(usage);
 }
 
