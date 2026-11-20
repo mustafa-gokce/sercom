@@ -16,6 +16,7 @@ constexpr size_t VERSION_SIZE = 1;         // version field size in bytes
 constexpr size_t FLAGS_SIZE = 1;           // flags field size in bytes
 constexpr size_t MESSAGE_COUNTER_SIZE = 2; // message counter field size in bytes
 constexpr size_t MESSAGE_TYPE_SIZE = 2;    // message type field size in bytes
+constexpr size_t PAYLOAD_LENGTH_SIZE = 1;  // payload length field size in bytes
 
 /*
  * Frame flag type.
