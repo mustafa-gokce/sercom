@@ -132,6 +132,8 @@ add_library(${PROJECT_NAME}_host_lib
 
     host/include/HostUtils.h host/src/HostUtils.cpp
     host/include/SerialPort.h host/src/SerialPort.cpp
+
+    host/include/SimulatedPlatform.h host/src/SimulatedPlatform.cpp
 )
 target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
     ${PROJECT_NAME}_settings
