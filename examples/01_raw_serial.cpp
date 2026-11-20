@@ -49,7 +49,10 @@ int main(int argc, char *argv[])
         = serialPort.open(portName, HostSettings::DEFAULT_BAUD_RATE);
     if (openStatusType != SerialPort::SerialPortStatusType::OK) {
         // warn the user
-        const std::string warningMessage = "Can not open the serial port " + portName;
+        const std::string warningMessage = "Can not open the serial port " + portName + " ("
+                                           + std::string(
+                                               SerialPort::fromSerialPortStatusType(openStatusType))
+                                           + ")";
         HostUtils::logWarning(warningMessage);
 
         // do not proceed further
@@ -86,7 +89,10 @@ int main(int argc, char *argv[])
     if (readStatusType != SerialPort::SerialPortStatusType::OK
         && readStatusType != SerialPort::SerialPortStatusType::TIMED_OUT) {
         // warn the user
-        const std::string warningMessage = "Can not read the serial port " + portName;
+        const std::string warningMessage = "Can not read the serial port " + portName + " ("
+                                           + std::string(
+                                               SerialPort::fromSerialPortStatusType(readStatusType))
+                                           + ")";
         HostUtils::logWarning(warningMessage);
 
         // do not proceed further
