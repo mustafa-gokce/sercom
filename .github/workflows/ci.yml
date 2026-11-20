@@ -1,0 +1,169 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 20 * * *'
+    - cron: '0 0 * * *'
+    - cron: '0 4 * * *'
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  host:
+    name: host (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cxx: g++
+            cxx-flags: ''
+          - compiler: clang
+            cxx: clang++
+            cxx-flags: '-Wno-unknown-warning-option'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build socat gdb
+      - name: Build Debug
+        run: |
+          cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} "-DCMAKE_CXX_FLAGS=${{ matrix.cxx-flags }}"
+          cmake --build build-debug
+      - name: Show the help of every program
+        run: |
+          build-debug/sercom_cli --help
+          build-debug/sercom_device_sim --help
+          build-debug/sercom_dump --help
+      - name: Unit tests under the debugger
+        run: |
+          gdb --batch -ex 'set pagination off' -ex run -ex bt -ex "quit \$_exitcode" \
+            --args ./build-debug/sercom_test --order decl \
+            --reporter "JUnit::out=$PWD/test_results_junit.xml" \
+            --reporter "xml::out=$PWD/test_results.xml" \
+            --reporter console
+      - name: Run every example
+        run: tools/run_examples.sh build-debug
+      - name: Unit tests with a small payload limit
+        env:
+          CXX: ${{ matrix.cxx }}
+          CXXFLAGS: ${{ matrix.cxx-flags }}
+        run: tools/run_small_limit_test.sh --build-dir build-small-limit
+      - name: Python reference self test
+        run: python3 tools/sercom_frame.py self-test
+      - name: End to end over a noisy virtual link
+        run: tests/e2e/noisy_link_test.sh build-debug/sercom_cli build-debug/sercom_device_sim
+      - name: Build Release
+        run: |
+          cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} "-DCMAKE_CXX_FLAGS=${{ matrix.cxx-flags }}"
+          cmake --build build-release
+      - name: Archive executables and test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sercom-${{ matrix.compiler }}-build-${{ github.run_number }}
+          path: |
+            build-release/sercom_cli
+            build-release/sercom_device_sim
+            build-release/sercom_dump
+            test_results_junit.xml
+            test_results.xml
+          if-no-files-found: ignore
+      - name: Publish test results
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: test_results_junit.xml
+          check_name: unit tests (${{ matrix.compiler }})
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Unit tests with AddressSanitizer and UndefinedBehaviorSanitizer
+        run: tools/run_sanitizer_test.sh --build-dir build-sanitizers
+
+  static-analysis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang-format clang-tidy
+      - name: Restore cppcheck 2.22.0
+        uses: actions/cache@v6
+        with:
+          path: ~/cppcheck-2.22.0
+          key: cppcheck-2.22.0-${{ runner.os }}
+      - name: Install cppcheck 2.22.0
+        run: tools/analysis/install_cppcheck.sh --prefix "$HOME/cppcheck-2.22.0"
+      - name: Configure with a compile database
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSERCOM_BUILD_TESTS=OFF
+      - name: Layout, comments, idioms, cppcheck and clang-tidy
+        run: |
+          # report the findings as annotations, so they show on the run page
+          set +e
+          CPPCHECK="$HOME/cppcheck-2.22.0/bin/cppcheck" tools/run_static_analysis.sh build 2>&1 | tee analysis.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            sed "s#^$GITHUB_WORKSPACE/##" analysis.log | grep -E '^[^ :]+:[0-9]+:' | head -50 \
+              | sed -E 's/^([^:]+):([0-9]+):(.*)$/::error file=\1,line=\2::\3/'
+          fi
+          exit "$status"
+
+  tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare the version numbers
+        run: python3 tools/check_versions.py
+      - name: Show the help of every tool
+        run: |
+          tools/noisy_link.sh --help
+          tools/run_static_analysis.sh --help
+          tools/analysis/check_format.sh --help
+          tools/analysis/install_cppcheck.sh --help
+          tools/run_small_limit_test.sh --help
+          tools/run_sanitizer_test.sh --help
+          tools/run_examples.sh --help
+          tests/e2e/noisy_link_test.sh --help
+          fuzz/run_fuzzers.sh --help
+          python3 tools/noise.py --help
+          python3 tools/sercom_frame.py --help
+          python3 tools/check_versions.py --help
+          python3 tools/analysis/check_style.py --help
+          python3 fuzz/make_corpus.py --help
+
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Fuzz for one minute each
+        run: fuzz/run_fuzzers.sh --build-dir build-fuzz --seconds 60
+
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install PlatformIO
+        run: pip install platformio==6.1.19
+      - name: Build ESP32 firmware
+        run: pio run -d firmware/esp32 -e esp32dev -e esp32dev-console
