@@ -5,6 +5,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -473,6 +474,42 @@ public:
     }
 
     /*
+     * Get the device info responses in arrival order.
+     */
+    [[nodiscard]] std::vector<Messages::DeviceInfoResponse> getDeviceInfoResponses() const
+    {
+        // expose the device info responses
+        return this->deviceInfoResponses;
+    }
+
+    /*
+     * Get the set LED responses in arrival order.
+     */
+    [[nodiscard]] std::vector<Messages::SetLedResponse> getSetLedResponses() const
+    {
+        // expose the set LED responses
+        return this->setLedResponses;
+    }
+
+    /*
+     * Get the telemetry report responses in arrival order.
+     */
+    [[nodiscard]] std::vector<Messages::TelemetryReportResponse> getTelemetryReportResponses() const
+    {
+        // expose the telemetry report responses
+        return this->telemetryReportResponses;
+    }
+
+    /*
+     * Get the log report responses in arrival order.
+     */
+    [[nodiscard]] std::vector<Messages::LogReportResponse> getLogReportResponses() const
+    {
+        // expose the log report responses
+        return this->logReportResponses;
+    }
+
+    /*
      * Get the message types of the confirmed requests.
      */
     [[nodiscard]] std::vector<Messages::MessageType> getConfirmedMessageTypes() const
@@ -736,6 +773,165 @@ TEST_CASE_METHOD(TestDeviceApplication,
 }
 
 TEST_CASE_METHOD(TestDeviceApplication,
+                 "Device info reports the version, the free heap size and the device name",
+                 "[DeviceApplication][testDeviceInfoRequest]")
+{
+    // send a device info request
+    REQUIRE(deviceClient->sendDeviceInfoRequest(messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the device info response on the host
+    const std::vector<Messages::DeviceInfoResponse> deviceInfoResponses
+        = clientHandler.getDeviceInfoResponses();
+    REQUIRE(deviceInfoResponses.size() == static_cast<size_t>(1));
+    REQUIRE(deviceInfoResponses.at(0).getFirmwareVersionMajor() == AppSettings::AppVersionMajor);
+    REQUIRE(deviceInfoResponses.at(0).getFirmwareVersionMinor() == AppSettings::AppVersionMinor);
+    REQUIRE(deviceInfoResponses.at(0).getFreeHeapSize() == devicePlatform.getFreeHeapSize());
+    REQUIRE(deviceInfoResponses.at(0).getDeviceName() == devicePlatform.getDeviceName());
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "The LED follows the set LED request and the response shows the real state",
+                 "[DeviceApplication][testSetLedRequest]")
+{
+    // switch the LED on
+    REQUIRE(deviceClient->sendSetLedRequest(true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE(devicePlatform.getLedOn());
+    REQUIRE(clientHandler.getSetLedResponses().size() == static_cast<size_t>(1));
+    REQUIRE(clientHandler.getSetLedResponses().back().getLedOn());
+
+    // switch the LED off
+    REQUIRE(deviceClient->sendSetLedRequest(false, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE_FALSE(devicePlatform.getLedOn());
+    REQUIRE(clientHandler.getSetLedResponses().size() == static_cast<size_t>(2));
+    REQUIRE_FALSE(clientHandler.getSetLedResponses().back().getLedOn());
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "Telemetry starts, follows the telemetry period and stops",
+                 "[DeviceApplication][testTelemetry]")
+{
+    // check that the telemetry is off by default
+    static constexpr std::chrono::milliseconds telemetryPeriod = 100ms;
+    advance(10 * telemetryPeriod);
+    REQUIRE(clientHandler.getTelemetryReportResponses().empty());
+
+    // start the telemetry
+    REQUIRE(deviceClient->sendSetTelemetryPeriodRequest(telemetryPeriod, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE(deviceApplication->getTelemetryPeriod() == telemetryPeriod);
+
+    // let five telemetry periods pass in half periods
+    static constexpr int halfPeriodCount = 10;
+    for (int halfPeriod = 0; halfPeriod < halfPeriodCount; ++halfPeriod) {
+        advance(telemetryPeriod / 2);
+    }
+
+    // check the telemetry report responses on the host
+    const std::vector<Messages::TelemetryReportResponse> telemetryReportResponses
+        = clientHandler.getTelemetryReportResponses();
+    REQUIRE(telemetryReportResponses.size() == static_cast<size_t>(halfPeriodCount / 2));
+    REQUIRE(telemetryReportResponses.at(0).getSequence() == 0);
+    REQUIRE(telemetryReportResponses.at(4).getSequence() == 4);
+    REQUIRE(telemetryReportResponses.at(0).getTemperature() == devicePlatform.getTemperature());
+
+    // stop the telemetry
+    REQUIRE(deviceClient->sendSetTelemetryPeriodRequest(0ms, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+    advance(10 * telemetryPeriod);
+    REQUIRE(clientHandler.getTelemetryReportResponses().size()
+            == static_cast<size_t>(halfPeriodCount / 2));
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "A too short telemetry period is rejected and keeps the telemetry period",
+                 "[DeviceApplication][testTooShortTelemetryPeriod]")
+{
+    // set a telemetry period
+    static constexpr std::chrono::milliseconds telemetryPeriod = 100ms;
+    REQUIRE(deviceClient->sendSetTelemetryPeriodRequest(telemetryPeriod, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE(deviceApplication->getTelemetryPeriod() == telemetryPeriod);
+
+    // send a telemetry period below the minimum telemetry period
+    REQUIRE(deviceClient->sendSetTelemetryPeriodRequest(AppSettings::MINIMUM_TELEMETRY_PERIOD_MSEC
+                                                            - 1ms,
+                                                        messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the rejection on both ends
+    const std::vector<FailedRequest> failedRequests = clientHandler.getFailedRequests();
+    REQUIRE(deviceApplication->getTelemetryPeriod() == telemetryPeriod);
+    REQUIRE(failedRequests.size() == static_cast<size_t>(1));
+    REQUIRE(failedRequests.back().messageCounter == messageCounter);
+    REQUIRE(failedRequests.back().remoteMessageStatusType
+            == Definitions::MessageStatusType::INVALID_ARGUMENT);
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "A telemetry period outside its field is not sent",
+                 "[DeviceApplication][testTelemetryPeriodOutOfRange]")
+{
+    // send a telemetry period above the field
+    REQUIRE(
+        deviceClient->sendSetTelemetryPeriodRequest(Messages::MAXIMUM_TELEMETRY_PERIOD_MSEC + 1ms,
+                                                    messageCounter)
+        == Definitions::SendStatusType::INVALID_ARGUMENT);
+
+    // check that nothing left the device client
+    REQUIRE(hostTransport.getEmpty());
+    REQUIRE(deviceClient->getPendingCount() == static_cast<size_t>(0));
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "A log text above the maximum log text length is not sent",
+                 "[DeviceApplication][testLongLogText]")
+{
+    // maximum log text must fit into a payload
+    if (Messages::LOG_REPORT_RESPONSE_SIZE + Messages::MAXIMUM_LOG_TEXT_LENGTH
+        > Settings::MaximumPayloadSize) {
+        SKIP("The maximum log text does not fit into a payload of this build");
+    }
+
+    // send a log text above the maximum log text length
+    static constexpr size_t extraLength = 10;
+    const std::string text(Messages::MAXIMUM_LOG_TEXT_LENGTH + extraLength, 'x');
+    REQUIRE_FALSE(deviceApplication->sendLogReportResponse(Messages::LogLevelType::WARNING, text));
+
+    // check that nothing left the device application
+    REQUIRE(deviceTransport.getEmpty());
+    pump();
+
+    // check that no log report response reached the host
+    REQUIRE(clientHandler.getLogReportResponses().empty());
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "Device log report responses reach the host",
+                 "[DeviceApplication][testLogReportResponse]")
+{
+    // send a log report response
+    REQUIRE(deviceApplication->sendLogReportResponse(Messages::LogLevelType::DEBUG, "booted"));
+    pump();
+
+    // check the log report response on the host
+    const std::vector<Messages::LogReportResponse> logReportResponses
+        = clientHandler.getLogReportResponses();
+    REQUIRE(logReportResponses.size() == static_cast<size_t>(1));
+    REQUIRE(logReportResponses.at(0).getLogLevelType() == Messages::LogLevelType::DEBUG);
+    REQUIRE(logReportResponses.at(0).getText() == "booted");
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
                  "A malformed set LED request is rejected and nothing switches",
                  "[DeviceApplication][testMalformedSetLedRequest]")
 {
@@ -771,4 +967,38 @@ TEST_CASE_METHOD(TestDeviceApplication,
     REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
     REQUIRE(deliveryResults.at(0).remoteMessageStatusType
             == Definitions::MessageStatusType::UNSUPPORTED_MESSAGE_TYPE);
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "A device with a full response window answers busy instead of acting",
+                 "[DeviceApplication][testFullResponseWindow]")
+{
+    // lose every response of the device but keep its acknowledgements
+    deviceTransport.setFilter(
+        []([[maybe_unused]] const size_t sendCount, const std::vector<uint8_t> &data) noexcept {
+            const Frame::Frame frame(data.data(), data.size());
+            return frame.getFlag(Definitions::FrameFlagType::ACK)
+                   || frame.getFlag(Definitions::FrameFlagType::NACK);
+        });
+
+    // fill the response window of the device
+    for (size_t requestIndex = 0; requestIndex < Settings::MaximumPendingFrames; ++requestIndex) {
+        CAPTURE(requestIndex);
+        REQUIRE(deviceClient->sendSetLedRequest(true, messageCounter)
+                == Definitions::SendStatusType::SENT);
+        pump();
+    }
+    REQUIRE(devicePlatform.getLedSwitchCount() == Settings::MaximumPendingFrames);
+
+    // send the next request while the responses flow again
+    deviceTransport.setFilter(DataFilter());
+    REQUIRE(deviceClient->sendSetLedRequest(false, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check that the device answers busy without switching
+    const std::vector<FailedRequest> failedRequests = clientHandler.getFailedRequests();
+    REQUIRE(devicePlatform.getLedSwitchCount() == Settings::MaximumPendingFrames);
+    REQUIRE_FALSE(failedRequests.empty());
+    REQUIRE(failedRequests.back().remoteMessageStatusType == Definitions::MessageStatusType::BUSY);
 }
