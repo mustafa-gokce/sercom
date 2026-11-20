@@ -305,6 +305,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_host_lib
     )
 
+    # create telemetry message example executable
+    add_executable(${PROJECT_NAME}_example_17_telemetry_message
+        examples/17_telemetry_message.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_17_telemetry_message PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+    )
+
     # create message dispatching example executable
     add_executable(${PROJECT_NAME}_example_25_dispatch_messages
         examples/25_dispatch_messages.cpp
