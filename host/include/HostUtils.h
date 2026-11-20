@@ -12,6 +12,11 @@
 namespace sercom::HostUtils {
 
 /*
+ * Convert bytes to space separated upper case hex text.
+ */
+[[nodiscard]] std::string toHexString(const uint8_t *data, size_t size);
+
+/*
  * Get a value as upper case hex text with the digit count.
  */
 [[nodiscard]] std::string getHexText(uint32_t value, size_t digitCount);
@@ -31,6 +36,11 @@ namespace sercom::HostUtils {
  * Get a time as seconds with millisecond decimals in brackets.
  */
 [[nodiscard]] std::string getTimeText(std::chrono::milliseconds time);
+
+/*
+ * Get the text padded with spaces on the right up to the width.
+ */
+[[nodiscard]] std::string getLeftJustifiedText(std::string_view text, size_t width);
 
 /*
  * Get the text padded with spaces on the left up to the width.

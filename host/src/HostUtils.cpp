@@ -46,6 +46,24 @@ void handleStopSignal([[maybe_unused]] const int signalNumber)
 
 } // namespace
 
+std::string toHexString(const uint8_t *data, const size_t size)
+{
+    // iterate over the bytes
+    std::string dataAsHexString;
+    std::for_each(data, data + size, [&dataAsHexString](const uint8_t byte) {
+        // separate the bytes by a space
+        if (!dataAsHexString.empty()) {
+            dataAsHexString.push_back(' ');
+        }
+
+        // add the two hex digits of the byte
+        dataAsHexString += getHexText(byte, 2);
+    });
+
+    // expose the hex string
+    return dataAsHexString;
+}
+
 std::string getHexText(const uint32_t value, const size_t digitCount)
 {
     // digit count must fit the value
@@ -92,6 +110,16 @@ std::string getTimeText(const std::chrono::milliseconds time)
     static constexpr int decimalCount = 3;
     static constexpr size_t timeWidth = 10;
     return "[" + getRightJustifiedText(getDecimalText(seconds, decimalCount), timeWidth) + "]";
+}
+
+std::string getLeftJustifiedText(const std::string_view text, const size_t width)
+{
+    // pad the text on the right
+    std::string justifiedText(text);
+    justifiedText.append(width - std::min(width, justifiedText.size()), ' ');
+
+    // expose the justified text
+    return justifiedText;
 }
 
 std::string getRightJustifiedText(const std::string_view text, const size_t width)
