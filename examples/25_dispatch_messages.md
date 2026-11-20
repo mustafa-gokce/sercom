@@ -44,6 +44,11 @@ named values. Each `case` does one thing: it calls the function of its message t
 The last group names every other message type, so a reader sees that each one was thought
 about. The compiler does not check that list: with a `default:` it accepts a missing name too.
 
+`DeviceApplication`, the program of the real device, does the same dispatch in its
+`onReceivedMessage()` (lecture L74). Its functions also send a response. For a message type
+without a function it returns the status `UNSUPPORTED_MESSAGE_TYPE`, and the link layer of
+section S11 sends that status back to the host when the host asked for an acknowledgement.
+
 ## Step 2: Read the functions
 
 Below the first `private:` are the four functions. Each reads what its message holds, prints one line
@@ -112,7 +117,7 @@ The exit code `0` means three messages went to their own function and one went t
 2. Send a known type without a function. Set `unknownMessageType` to `0x0006`, the value of
    `ECHO_REQUEST`. The last frame line shows `message type 0x0006`, and the message still ends in
    `handleUnsupportedMessage()`, because this `switch` lists `ECHO_REQUEST` in the last group. The
-   exit code stays `0`.
+   exit code stays `0`. `DeviceApplication` has a function for it, `handleEchoRequest()`.
 3. Forget a case (this breaks the program on purpose). Delete the case of the device info
    request, the five lines from `// handle a device info request` to the `}` below its `break;`.
    The program builds without a warning, because `default:` now catches the device info request.
@@ -122,6 +127,10 @@ The exit code `0` means three messages went to their own function and one went t
 
 ## Where this is used
 
+- `app/src/DeviceApplication.cpp`: `onReceivedMessage()`, the dispatch of the device, and its
+  functions `handlePingRequest()`, `handleDeviceInfoRequest()`, `handleSetLedRequest()` and more.
+- `app/src/DeviceClient.cpp`: `onReceivedMessage()`, the same dispatch on the host for the
+  responses of the device.
 - `app/include/Messages.h` and `app/src/Messages.cpp`: `MessageType` and `toMessageType()`.
 - `core/include/FrameDecoder.h`: the handler interface `FrameDecoderHandler`.
 - Lectures: L62 "Dispatching messages", L59 "Message types and enum converters" and L50 "Handler
