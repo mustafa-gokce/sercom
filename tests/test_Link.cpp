@@ -268,6 +268,15 @@ public:
     }
 
     /*
+     * Get the delivery results in arrival order.
+     */
+    [[nodiscard]] std::vector<DeliveryResult> getDeliveryResults() const
+    {
+        // expose the delivery results
+        return this->deliveryResults;
+    }
+
+    /*
      * Set the message status that answers a received message.
      */
     void setMessageStatusType(const Definitions::MessageStatusType messageStatusType)
@@ -395,6 +404,64 @@ protected:
 };
 
 TEST_CASE_METHOD(TestLink,
+                 "An unacknowledged message is delivered and not answered",
+                 "[Link][testUnacknowledgedMessage]")
+{
+    // send an unacknowledged message
+    const std::vector<uint8_t> payload = {1, 2, 3};
+    REQUIRE(testLink->sendMessage(0x0103, payload.data(), payload.size(), false, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the message on both links
+    const std::vector<Frame::Frame> messages = anotherLinkHandler.getMessages();
+    REQUIRE(messages.size() == static_cast<size_t>(1));
+    REQUIRE(getPayload(messages.at(0)) == payload);
+    REQUIRE_FALSE(Definitions::isFrameFlagSet(messages.at(0).getFlags(),
+                                              Definitions::FrameFlagType::ACK_REQUEST));
+    REQUIRE(anotherLink->getStatistics().outgoingAcknowledgementCounter == static_cast<uint64_t>(0));
+    REQUIRE(testLink->getPendingCount() == static_cast<size_t>(0));
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "An acknowledged message is confirmed by the peer",
+                 "[Link][testAcknowledgedMessage]")
+{
+    // send an acknowledged message over a stale message counter
+    messageCounter = std::numeric_limits<uint16_t>::max();
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({0x01}))
+            == Definitions::SendStatusType::SENT);
+    REQUIRE(messageCounter == 0);
+    REQUIRE(testLink->getPendingCount() == static_cast<size_t>(1));
+    pump();
+
+    // check the confirmation on both links
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(anotherLinkHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.at(0).confirmed);
+    REQUIRE(deliveryResults.at(0).messageCounter == 0);
+    REQUIRE(deliveryResults.at(0).messageType == 0x0100);
+    REQUIRE(testLink->getPendingCount() == static_cast<size_t>(0));
+    REQUIRE(anotherLink->getStatistics().outgoingAcknowledgementCounter == static_cast<uint64_t>(1));
+    REQUIRE(testLink->getStatistics().incomingAcknowledgementCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "Acknowledgements are never delivered to the application",
+                 "[Link][testAcknowledgementNotDelivered]")
+{
+    // send an acknowledged message
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>())
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check that the acknowledgement stays in the link
+    REQUIRE(testLinkHandler.getMessages().empty());
+    REQUIRE(testLink->getStatistics().incomingFrameCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(TestLink,
                  "Message counters increase by one and wrap from 65535 to 0",
                  "[Link][testMessageCounterWrap]")
 {
@@ -415,6 +482,30 @@ TEST_CASE_METHOD(TestLink,
             == Definitions::SendStatusType::SENT);
     REQUIRE(messageCounter == std::numeric_limits<uint16_t>::max());
     REQUIRE(testLink->getNextMessageCounter() == 0);
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "The window limits acknowledged messages but not fire and forget ones",
+                 "[Link][testWindowLimit]")
+{
+    // fill the window with acknowledged messages
+    for (size_t messageIndex = 0; messageIndex < Settings::MaximumPendingFrames; ++messageIndex) {
+        CAPTURE(messageIndex);
+        REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>())
+                == Definitions::SendStatusType::SENT);
+    }
+
+    // check that only unacknowledged messages can be sent
+    REQUIRE_FALSE(testLink->getSendAcknowledgedAllowed());
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>())
+            == Definitions::SendStatusType::WINDOW_FULL);
+    REQUIRE(testLink->sendMessage(0x0103, nullptr, 0, false, messageCounter)
+            == Definitions::SendStatusType::SENT);
+
+    // check that the answers free the window again
+    pump();
+    REQUIRE(testLink->getSendAcknowledgedAllowed());
+    REQUIRE(testLinkHandler.getDeliveryResults().size() == Settings::MaximumPendingFrames);
 }
 
 TEST_CASE_METHOD(TestLink,
