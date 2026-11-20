@@ -110,8 +110,9 @@ int CliApplication::run()
                                             + this->getSerialPortText();
     HostUtils::logDebug(startedDebugMessage);
 
-    // start the command
+    // start the command and wait for the device
     this->startCommand();
+    this->waitForDevice();
 
     // run the command until it finishes or is stopped
     this->startTimestamp = this->clock.getTime();
@@ -538,6 +539,61 @@ void CliApplication::attemptReconnect()
     // notify the user
     const std::string debugMessage = "CliApplication connected to serial port from "
                                      + this->getSerialPortText();
+    HostUtils::logDebug(debugMessage);
+}
+
+void CliApplication::waitForDevice()
+{
+    // serial port must be open for an unfinished command
+    if (!this->serialPort.getOpened() || this->finished) {
+        return;
+    }
+
+    // notify the user
+    const std::string waitingDebugMessage = "Waiting for the device on " + this->getSerialPortText()
+                                            + " for at most "
+                                            + std::to_string(
+                                                HostSettings::DEVICE_BOOT_TIMEOUT_MSEC.count())
+                                            + " ms";
+    HostUtils::logDebug(waitingDebugMessage);
+
+    // ask a running device for an answer
+    uint16_t messageCounter = 0;
+    [[maybe_unused]] const Definitions::SendStatusType sendStatusType
+        = this->deviceClient.sendPingRequest(messageCounter);
+
+    // wait for the first frame of the device and the end of the ping request within the boot time
+    const std::chrono::milliseconds waitTimestamp = this->clock.getTime();
+    const uint64_t currentIncomingFrameCounter = this->deviceClient.getLinkStatistics()
+                                                     .incomingFrameCounter;
+    while (
+        (this->deviceClient.getLinkStatistics().incomingFrameCounter == currentIncomingFrameCounter
+         || this->deviceClient.getPendingCount() > 0)
+        && this->clock.getTime() - waitTimestamp < HostSettings::DEVICE_BOOT_TIMEOUT_MSEC
+        && HostUtils::getRunning()) {
+        // process the received data of the serial port
+        this->processSerialPort();
+
+        // maintain the device client and the serial port
+        this->maintain();
+    }
+
+    // device must have answered within the boot time
+    const std::chrono::milliseconds waitTime = this->clock.getTime() - waitTimestamp;
+    if (this->deviceClient.getLinkStatistics().incomingFrameCounter == currentIncomingFrameCounter) {
+        // warn the user
+        const std::string warningMessage = "Device did not answer within "
+                                           + std::to_string(waitTime.count())
+                                           + " ms, the command starts anyway";
+        HostUtils::logWarning(warningMessage);
+
+        // do not proceed further
+        return;
+    }
+
+    // notify the user
+    const std::string debugMessage = "Device answered after " + std::to_string(waitTime.count())
+                                     + " ms";
     HostUtils::logDebug(debugMessage);
 }
 

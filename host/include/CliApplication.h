@@ -184,6 +184,13 @@ private:
     void attemptReconnect();
 
     /*
+     * Wait up to the boot time for the first frame of the device after the serial port opened.
+     * A ping request asks a device that is already running for an answer.
+     * The wait also lasts until that ping request is acknowledged or has failed.
+     */
+    void waitForDevice();
+
+    /*
      * Send a ping request as periodic request while the link is idle.
      */
     void sendPeriodicRequest();
