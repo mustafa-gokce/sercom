@@ -434,6 +434,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_host_lib
     )
 
+    # create serial ping example executable
+    add_executable(${PROJECT_NAME}_example_24_serial_ping
+        examples/24_serial_ping.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_24_serial_ping PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+    )
+
     # create message dispatching example executable
     add_executable(${PROJECT_NAME}_example_25_dispatch_messages
         examples/25_dispatch_messages.cpp
