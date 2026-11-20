@@ -13,7 +13,7 @@ of a frame tells it how to read the payload and what to do.
 
 ## Before you start
 
-1. Watch lecture L62 "Dispatching messages" (section S10), and run example 10 first.
+1. Watch lecture L62 "Dispatching messages" (section S10), and run examples 10 and 15 first.
 2. Install the build tools once: `sudo apt install build-essential cmake ninja-build git` (README.md, section "Building the project").
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -50,7 +50,7 @@ Below the first `private:` are the four functions. Each reads what its message h
 that starts with its own name and counts the message.
 
 - `handlePingRequest()` builds a `Messages::PingRequest` from the frame and reads its request
-  timestamp.
+  timestamp, as in example 15.
 - `handleDeviceInfoRequest()` reads nothing, because a device info request has no fields.
 - `handleSetLedRequest()` builds a `Messages::SetLedRequest` from the frame and reads the LED state.
 - `handleUnsupportedMessage()` does not read the payload. Without a known message type it can not
