@@ -37,6 +37,8 @@ because its messages travel over the link layer of example 18.
 | S10 | L62 (also L50, L59, L74) | 25 | Dispatch Messages | Switches on the message type of four decoded frames and calls one function per type, an unknown type included | [guide](25_dispatch_messages.md), [source](25_dispatch_messages.cpp) |
 | S10 | L60, L63 (also L61, L76) | 16 | Device Info Message | Prints a device info response field by field, the length-prefixed name included, and reads it back | [guide](16_device_info_message.md), [source](16_device_info_message.cpp) |
 | S10 | L60, L63 (also L22, L82) | 17 | Telemetry Message | Prints a telemetry report field by field and scales the received values to seconds, KiB and degrees Celsius | [guide](17_telemetry_message.md), [source](17_telemetry_message.cpp) |
+| S11 | L67 (also L65, L72) | 18 | Link Loopback | Two links in memory: a request with ACK_REQUEST, the ACK that echoes counter and type, the confirmed delivery | [guide](18_link_loopback.md), [source](18_link_loopback.cpp) |
+| S11 | L59, L62 (also L61, L63) | 23 | Custom Message | Adds an own message type pair, answers it on the device and rejects wrong requests with a status | [guide](23_custom_message.md), [source](23_custom_message.cpp) |
 
 ## Building the examples
 1. Open a terminal.
