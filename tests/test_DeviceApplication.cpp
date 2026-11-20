@@ -376,6 +376,43 @@ public:
     }
 
     /*
+     * Listen for a device info response and record it.
+     */
+    void onReceivedDeviceInfoResponse(const Messages::DeviceInfoResponse &deviceInfoResponse) final
+    {
+        // record the device info response
+        this->deviceInfoResponses.push_back(deviceInfoResponse);
+    }
+
+    /*
+     * Listen for a set LED response and record it.
+     */
+    void onReceivedSetLedResponse(const Messages::SetLedResponse &setLedResponse) final
+    {
+        // record the set LED response
+        this->setLedResponses.push_back(setLedResponse);
+    }
+
+    /*
+     * Listen for a telemetry report response and record it.
+     */
+    void onReceivedTelemetryReportResponse(
+        const Messages::TelemetryReportResponse &telemetryReportResponse) final
+    {
+        // record the telemetry report response
+        this->telemetryReportResponses.push_back(telemetryReportResponse);
+    }
+
+    /*
+     * Listen for a log report response and record it.
+     */
+    void onReceivedLogReportResponse(const Messages::LogReportResponse &logReportResponse) final
+    {
+        // record the log report response
+        this->logReportResponses.push_back(logReportResponse);
+    }
+
+    /*
      * Listen for a confirmed request and record its message type.
      */
     void onRequestConfirmed([[maybe_unused]] const uint16_t messageCounter,
@@ -408,6 +445,10 @@ public:
         // drop every record
         this->pingResponses.clear();
         this->roundTripTimes.clear();
+        this->deviceInfoResponses.clear();
+        this->setLedResponses.clear();
+        this->telemetryReportResponses.clear();
+        this->logReportResponses.clear();
         this->confirmedMessageTypes.clear();
         this->failedRequests.clear();
     }
@@ -450,10 +491,14 @@ public:
     }
 
 private:
-    std::vector<Messages::PingResponse> pingResponses;        // received ping responses
-    std::vector<std::chrono::milliseconds> roundTripTimes;    // measured round trip times
-    std::vector<Messages::MessageType> confirmedMessageTypes; // confirmed requests
-    std::vector<FailedRequest> failedRequests;                // failed requests
+    std::vector<Messages::PingResponse> pingResponses;             // received ping responses
+    std::vector<std::chrono::milliseconds> roundTripTimes;         // measured round trip times
+    std::vector<Messages::DeviceInfoResponse> deviceInfoResponses; // received device info
+    std::vector<Messages::SetLedResponse> setLedResponses;         // received LED states
+    std::vector<Messages::TelemetryReportResponse> telemetryReportResponses; // received telemetry
+    std::vector<Messages::LogReportResponse> logReportResponses;             // received log texts
+    std::vector<Messages::MessageType> confirmedMessageTypes;                // confirmed requests
+    std::vector<FailedRequest> failedRequests;                               // failed requests
 };
 
 } // namespace

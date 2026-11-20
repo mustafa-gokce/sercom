@@ -43,6 +43,47 @@ Definitions::SendStatusType DeviceClient::sendPingRequest(uint16_t &messageCount
     return Definitions::SendStatusType::SENT;
 }
 
+Definitions::SendStatusType DeviceClient::sendDeviceInfoRequest(uint16_t &messageCounter)
+{
+    // create device info request
+    const Messages::DeviceInfoRequest deviceInfoRequest;
+
+    // send the device info request
+    return this->sendRequest(Messages::MessageType::DEVICE_INFO_REQUEST,
+                             deviceInfoRequest.getPayload(),
+                             deviceInfoRequest.getPayloadLength(),
+                             messageCounter);
+}
+
+Definitions::SendStatusType DeviceClient::sendSetLedRequest(const bool ledOn,
+                                                            uint16_t &messageCounter)
+{
+    // create set LED request
+    const Messages::SetLedRequest setLedRequest(ledOn);
+
+    // send the set LED request
+    return this->sendRequest(Messages::MessageType::SET_LED_REQUEST,
+                             setLedRequest.getPayload(),
+                             setLedRequest.getPayloadLength(),
+                             messageCounter);
+}
+
+Definitions::SendStatusType DeviceClient::sendSetTelemetryPeriodRequest(
+    const std::chrono::milliseconds telemetryPeriod, uint16_t &messageCounter)
+{
+    // telemetry period must fit into the set telemetry period request
+    const Messages::SetTelemetryPeriodRequest setTelemetryPeriodRequest(telemetryPeriod);
+    if (!setTelemetryPeriodRequest.getLikelyValid()) {
+        return Definitions::SendStatusType::INVALID_ARGUMENT;
+    }
+
+    // send the set telemetry period request
+    return this->sendRequest(Messages::MessageType::SET_TELEMETRY_PERIOD_REQUEST,
+                             setTelemetryPeriodRequest.getPayload(),
+                             setTelemetryPeriodRequest.getPayloadLength(),
+                             messageCounter);
+}
+
 void DeviceClient::onReceivedData(const uint8_t *data, const size_t size)
 {
     // hand the data to the link
@@ -86,6 +127,26 @@ Definitions::MessageStatusType DeviceClient::onReceivedMessage(const Frame::Fram
     // handle a ping response
     case Messages::MessageType::PING_RESPONSE: {
         return this->handlePingResponse(frame);
+    }
+
+    // handle a device info response
+    case Messages::MessageType::DEVICE_INFO_RESPONSE: {
+        return this->handleDeviceInfoResponse(frame);
+    }
+
+    // handle a set LED response
+    case Messages::MessageType::SET_LED_RESPONSE: {
+        return this->handleSetLedResponse(frame);
+    }
+
+    // handle a telemetry report response
+    case Messages::MessageType::TELEMETRY_REPORT_RESPONSE: {
+        return this->handleTelemetryReportResponse(frame);
+    }
+
+    // handle a log report response
+    case Messages::MessageType::LOG_REPORT_RESPONSE: {
+        return this->handleLogReportResponse(frame);
     }
 
     // do not handle requests and unknown messages
@@ -153,6 +214,66 @@ Definitions::MessageStatusType DeviceClient::handlePingResponse(const Frame::Fra
                                          this->clock.getTime() - iterator->requestTimestamp);
 
     // ping response handled successfully
+    return Definitions::MessageStatusType::ACCEPTED;
+}
+
+Definitions::MessageStatusType DeviceClient::handleDeviceInfoResponse(const Frame::Frame &frame)
+{
+    // get device info response arguments
+    const Messages::DeviceInfoResponse deviceInfoResponse(frame);
+    if (!deviceInfoResponse.getLikelyValid()) {
+        return Definitions::MessageStatusType::MALFORMED_PAYLOAD;
+    }
+
+    // notify listeners about the device info response
+    this->handler.onReceivedDeviceInfoResponse(deviceInfoResponse);
+
+    // device info response handled successfully
+    return Definitions::MessageStatusType::ACCEPTED;
+}
+
+Definitions::MessageStatusType DeviceClient::handleSetLedResponse(const Frame::Frame &frame)
+{
+    // get set LED response arguments
+    const Messages::SetLedResponse setLedResponse(frame);
+    if (!setLedResponse.getLikelyValid()) {
+        return Definitions::MessageStatusType::MALFORMED_PAYLOAD;
+    }
+
+    // notify listeners about the set LED response
+    this->handler.onReceivedSetLedResponse(setLedResponse);
+
+    // set LED response handled successfully
+    return Definitions::MessageStatusType::ACCEPTED;
+}
+
+Definitions::MessageStatusType DeviceClient::handleTelemetryReportResponse(const Frame::Frame &frame)
+{
+    // get telemetry report response arguments
+    const Messages::TelemetryReportResponse telemetryReportResponse(frame);
+    if (!telemetryReportResponse.getLikelyValid()) {
+        return Definitions::MessageStatusType::MALFORMED_PAYLOAD;
+    }
+
+    // notify listeners about the telemetry report response
+    this->handler.onReceivedTelemetryReportResponse(telemetryReportResponse);
+
+    // telemetry report response handled successfully
+    return Definitions::MessageStatusType::ACCEPTED;
+}
+
+Definitions::MessageStatusType DeviceClient::handleLogReportResponse(const Frame::Frame &frame)
+{
+    // get log report response arguments
+    const Messages::LogReportResponse logReportResponse(frame);
+    if (!logReportResponse.getLikelyValid()) {
+        return Definitions::MessageStatusType::MALFORMED_PAYLOAD;
+    }
+
+    // notify listeners about the log report response
+    this->handler.onReceivedLogReportResponse(logReportResponse);
+
+    // log report response handled successfully
     return Definitions::MessageStatusType::ACCEPTED;
 }
 

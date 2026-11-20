@@ -52,6 +52,30 @@ public:
         = 0;
 
     /*
+     * Listen for a device info response.
+     */
+    virtual void onReceivedDeviceInfoResponse(const Messages::DeviceInfoResponse &deviceInfoResponse)
+        = 0;
+
+    /*
+     * Listen for a set LED response.
+     */
+    virtual void onReceivedSetLedResponse(const Messages::SetLedResponse &setLedResponse) = 0;
+
+    /*
+     * Listen for a telemetry report response.
+     */
+    virtual void onReceivedTelemetryReportResponse(
+        const Messages::TelemetryReportResponse &telemetryReportResponse)
+        = 0;
+
+    /*
+     * Listen for a log report response.
+     */
+    virtual void onReceivedLogReportResponse(const Messages::LogReportResponse &logReportResponse)
+        = 0;
+
+    /*
      * Listen for a request the device acknowledged.
      */
     virtual void onRequestConfirmed(uint16_t messageCounter, Messages::MessageType messageType) = 0;
@@ -92,6 +116,24 @@ public:
      * Send a ping request with the current time and store its message counter.
      */
     [[nodiscard]] Definitions::SendStatusType sendPingRequest(uint16_t &messageCounter);
+
+    /*
+     * Send a device info request and store its message counter.
+     */
+    [[nodiscard]] Definitions::SendStatusType sendDeviceInfoRequest(uint16_t &messageCounter);
+
+    /*
+     * Send a set LED request and store its message counter.
+     */
+    [[nodiscard]] Definitions::SendStatusType sendSetLedRequest(bool ledOn,
+                                                                uint16_t &messageCounter);
+
+    /*
+     * Send a set telemetry period request and store its message counter.
+     * A zero telemetry period stops the telemetry report responses.
+     */
+    [[nodiscard]] Definitions::SendStatusType sendSetTelemetryPeriodRequest(
+        std::chrono::milliseconds telemetryPeriod, uint16_t &messageCounter);
 
     /*
      * Listen for received data and hand it to the link.
@@ -150,6 +192,27 @@ private:
      * NOTE: The request timestamp travels in 32 bits, so only its lower 32 bits are compared.
      */
     [[nodiscard]] Definitions::MessageStatusType handlePingResponse(const Frame::Frame &frame);
+
+    /*
+     * Handle a device info response.
+     */
+    [[nodiscard]] Definitions::MessageStatusType handleDeviceInfoResponse(const Frame::Frame &frame);
+
+    /*
+     * Handle a set LED response.
+     */
+    [[nodiscard]] Definitions::MessageStatusType handleSetLedResponse(const Frame::Frame &frame);
+
+    /*
+     * Handle a telemetry report response.
+     */
+    [[nodiscard]] Definitions::MessageStatusType handleTelemetryReportResponse(
+        const Frame::Frame &frame);
+
+    /*
+     * Handle a log report response.
+     */
+    [[nodiscard]] Definitions::MessageStatusType handleLogReportResponse(const Frame::Frame &frame);
 
     /*
      * Send an acknowledged request and store its message counter.
