@@ -27,7 +27,7 @@ To build only this example, run `cmake --build build --target sercom_example_13_
 Open `examples/13_inter_byte_timeout.cpp` and read the class `MockClock` at the top. A real
 clock moves by itself, so a program that reads it gives other numbers on every run. The mock
 clock implements the same interface, `Clock::Clock`, but its time only moves when the program
-calls `advanceTime()`.
+calls `advanceTime()`. The tests of the link layer use the same trick.
 
 The class `MockDecoderHandler` below it prints a `handler:` line for every frame and every
 decode error.
@@ -100,6 +100,7 @@ frame`).
 
 - `core/src/FrameDecoder.cpp`: `checkTimeout()` and `onReceivedByte()`.
 - `core/include/Settings.h`: `DEFAULT_INTER_BYTE_TIMEOUT_MSEC`.
+- `core/src/Link.cpp`: `maintain()` calls `checkTimeout()` with the time of its clock.
 - `core/include/Clock.h`: the clock interface that the mock clock implements.
 - Lectures: L48 "Inter-byte timeouts and wrap-safe time"; the injected clock is L71 "Injecting
   the clock".
