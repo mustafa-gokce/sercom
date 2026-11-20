@@ -18,6 +18,7 @@ FrameDecoder::FrameDecoder(FrameDecoderHandler &handler,
     , bufferEnd(0)
     , lastByteTimestamp(0)
     , statistics()
+    , processing(false)
 {}
 
 FrameDecoder::~FrameDecoder() {}
@@ -94,7 +95,13 @@ size_t FrameDecoder::getBufferedSize() const
 
 void FrameDecoder::processBuffer()
 {
+    // processing must not be running already
+    if (this->processing) {
+        return;
+    }
+
     // walk the buffered bytes one frame candidate at a time
+    this->processing = true;
     while (this->getBufferedSize() > 0) {
         // frame candidate must start with the first sync byte
         if (this->getBufferedByte(0) != Definitions::SYNC_BYTE_1) {
@@ -167,6 +174,7 @@ void FrameDecoder::processBuffer()
         // notify listeners about the received frame
         this->handler.onReceivedFrame(frame);
     }
+    this->processing = false;
 }
 
 void FrameDecoder::rejectCandidate(const Definitions::DecodeErrorType decodeErrorType)
