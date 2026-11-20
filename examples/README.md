@@ -43,6 +43,7 @@ because its messages travel over the link layer of example 18.
 | S11 | L59, L62 (also L61, L63) | 23 | Custom Message | Adds an own message type pair, answers it on the device and rejects wrong requests with a status | [guide](23_custom_message.md), [source](23_custom_message.cpp) |
 | S12 | L78 (also L62, L75) | 21 | Device in One Process | The device application and the host client in one program: a ping and the LED on | [guide](21_device_in_one_process.md), [source](21_device_in_one_process.cpp) |
 | S12 | L76 (also L79, L88) | 22 | Trace a Conversation | The frame tracer of `sercom_cli --trace` prints every frame of a ping and a device info request in both directions | [guide](22_trace_a_conversation.md), [source](22_trace_a_conversation.cpp) |
+| S12 | L74, L75 (also L17, L76, L86) | 24 | Serial Ping | Opens a serial port, waits for the device to boot, measures one ping and prints the round trip time | [guide](24_serial_ping.md), [source](24_serial_ping.cpp) |
 
 ## Building the examples
 1. Open a terminal.
