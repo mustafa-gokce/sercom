@@ -119,6 +119,7 @@ add_library(${PROJECT_NAME}_app_lib
 
     app/include/Messages.h app/src/Messages.cpp
     app/include/DeviceApplication.h app/src/DeviceApplication.cpp
+    app/include/DeviceClient.h app/src/DeviceClient.cpp
 )
 target_link_libraries(${PROJECT_NAME}_app_lib PRIVATE
     ${PROJECT_NAME}_settings
