@@ -251,6 +251,61 @@ bool parseArgument(const std::string_view argument,
     return true;
 }
 
+std::vector<std::string> getLinkStatisticsLines(const Link::LinkStatistics &linkStatistics)
+{
+    // get a report line of a counter
+    const auto getCounterLine = [](const std::string_view name, const uint64_t value) {
+        return getReportLine(name, std::to_string(value));
+    };
+
+    // add the link counters
+    std::vector<std::string> linkStatisticsLines;
+    linkStatisticsLines.push_back(
+        getCounterLine("frames sent", linkStatistics.outgoingFrameCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("frames received", linkStatistics.incomingFrameCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("messages delivered", linkStatistics.deliveredMessageCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("acknowledgements sent", linkStatistics.outgoingAcknowledgementCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("acknowledgements received", linkStatistics.incomingAcknowledgementCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("rejections sent", linkStatistics.outgoingRejectionCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("rejections received", linkStatistics.incomingRejectionCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("retransmissions", linkStatistics.retransmissionCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("deliveries failed", linkStatistics.failedDeliveryCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("duplicates dropped", linkStatistics.duplicateFrameCounter));
+    linkStatisticsLines.push_back(getCounterLine("unexpected acknowledgements",
+                                                 linkStatistics.unexpectedAcknowledgementCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("transport errors", linkStatistics.transportErrorCounter));
+
+    // add the decoder counters
+    const FrameDecoder::DecoderStatistics &decoderStatistics = linkStatistics.decoderStatistics;
+    linkStatisticsLines.push_back(
+        getCounterLine("decoder bytes received", decoderStatistics.incomingByteCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("decoder bytes discarded", decoderStatistics.discardedByteCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("decoder frames decoded", decoderStatistics.incomingFrameCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("decoder invalid versions", decoderStatistics.invalidVersionCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("decoder payloads too long", decoderStatistics.payloadTooLongCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("decoder CRC mismatches", decoderStatistics.crcMismatchCounter));
+    linkStatisticsLines.push_back(
+        getCounterLine("decoder inter byte timeouts", decoderStatistics.interByteTimeoutCounter));
+
+    // expose the link statistics lines
+    return linkStatisticsLines;
+}
+
 std::string_view getMessageStatusTypeText(const Definitions::MessageStatusType messageStatusType)
 {
     switch (messageStatusType) {
