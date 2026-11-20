@@ -4,6 +4,8 @@
 #include <string_view>
 #include <vector>
 
+#include "../../app/include/Messages.h"
+
 #include "../include/DeviceSimulator.h"
 #include "../include/HostSettings.h"
 #include "../include/HostUtils.h"
@@ -12,9 +14,11 @@
  * Option type.
  */
 enum class OptionType : uint8_t {
-    UNKNOWN = 0, // unknown option
-    BAUD = 1,    // baud rate of the serial port
-    HELP = 4,    // request of the usage text
+    UNKNOWN = 0,    // unknown option
+    BAUD = 1,       // baud rate of the serial port
+    NAME = 2,       // device name of the simulated device
+    LOG_PERIOD = 3, // heartbeat log period
+    HELP = 4,       // request of the usage text
 };
 
 /*
@@ -45,6 +49,12 @@ void printUsage(std::string_view programName);
 [[nodiscard]] bool parseOption(const std::string &option,
                                const std::string &value,
                                sercom::DeviceSimulator::CommandLine &commandLine);
+
+/*
+ * Parse the device name argument, warn the user and get false when it is too long.
+ */
+[[nodiscard]] bool parseDeviceName(const std::string &deviceName,
+                                   sercom::DeviceSimulator::CommandLine &commandLine);
 
 /*
  * Main entry point of the executable.
@@ -82,6 +92,12 @@ std::string_view fromOptionType(const OptionType optionType)
     case OptionType::BAUD: {
         return {"--baud"};
     }
+    case OptionType::NAME: {
+        return {"--name"};
+    }
+    case OptionType::LOG_PERIOD: {
+        return {"--log-period"};
+    }
     case OptionType::HELP: {
         return {"--help"};
     }
@@ -97,6 +113,12 @@ OptionType toOptionType(const std::string_view optionType)
     if (optionType == std::string_view("--baud")) {
         return OptionType::BAUD;
     }
+    if (optionType == std::string_view("--name")) {
+        return OptionType::NAME;
+    }
+    if (optionType == std::string_view("--log-period")) {
+        return OptionType::LOG_PERIOD;
+    }
     if (optionType == std::string_view("--help")) {
         return OptionType::HELP;
     }
@@ -110,10 +132,12 @@ void printUsage(const std::string_view programName)
     // print the usage text
     const std::string usage
         = std::string("Usage: ") + std::string(programName)
-          + " <port> [--baud N]\n"
+          + " <port> [--baud N] [--name NAME] [--log-period MILLISECONDS]\n"
             "Simulates the demo device on a serial port or pseudo terminal.\n"
             "Options:\n"
-            "  --baud N                             baud rate of the serial port";
+            "  --baud N                             baud rate of the serial port\n"
+            "  --name NAME                          device name of the simulated device\n"
+            "  --log-period MILLISECONDS            heartbeat log period, none by default";
     HostUtils::printLine(usage);
 }
 
@@ -174,6 +198,20 @@ bool parseOption(const std::string &option,
         return HostUtils::parseBaudRateArgument(value, commandLine.baudRate);
     }
 
+    // parse the device name option
+    case OptionType::NAME: {
+        return parseDeviceName(value, commandLine);
+    }
+
+    // parse the log period option
+    case OptionType::LOG_PERIOD: {
+        return HostUtils::parseDurationArgument(value,
+                                                "log period",
+                                                HostSettings::PERIOD_ARGUMENT_UNIT_MSEC,
+                                                HostSettings::MAXIMUM_LOG_PERIOD_MSEC,
+                                                commandLine.logPeriod);
+    }
+
     // reject an unknown option
     case OptionType::UNKNOWN:
     default: {
@@ -185,4 +223,29 @@ bool parseOption(const std::string &option,
         return false;
     }
     }
+}
+
+bool parseDeviceName(const std::string &deviceName,
+                     sercom::DeviceSimulator::CommandLine &commandLine)
+{
+    using namespace sercom;
+
+    // device name must fit the device info response
+    if (deviceName.size() > Messages::MAXIMUM_DEVICE_NAME_LENGTH) {
+        // warn the user
+        const std::string warningMessage = "Invalid device name argument " + deviceName
+                                           + ", expected at most "
+                                           + std::to_string(Messages::MAXIMUM_DEVICE_NAME_LENGTH)
+                                           + " characters";
+        HostUtils::logWarning(warningMessage);
+
+        // do not proceed further
+        return false;
+    }
+
+    // set the device name
+    commandLine.deviceName = deviceName;
+
+    // device name parsed successfully
+    return true;
 }
