@@ -1,0 +1,443 @@
+#include "../include/CliApplication.h"
+
+#include <thread>
+
+namespace sercom::CliApplication {
+
+using namespace std::chrono_literals;
+
+std::string_view fromCommandType(const CommandType commandType)
+{
+    switch (commandType) {
+    case CommandType::PING: {
+        return {"ping"};
+    }
+    case CommandType::UNKNOWN:
+    default: {
+        return {};
+    }
+    }
+}
+
+CommandType toCommandType(const std::string_view commandType)
+{
+    if (commandType == std::string_view("ping")) {
+        return CommandType::PING;
+    }
+    return CommandType::UNKNOWN;
+}
+
+CliApplication::CliApplication(const CommandLine &commandLine)
+    : commandLine(commandLine)
+    , deviceClient(this->serialPort, this->clock, *this)
+    , finished(false)
+    , exitCode(0)
+    , waitingForResponse(false)
+    , startTimestamp(0)
+    , lastRequestTimestamp(0)
+    , lastReconnectTimestamp(0)
+    , lastPeriodicRequestTimestamp(0)
+    , lastDeviceMessageTimestamp(0)
+    , outgoingPingRequestCounter(0)
+    , incomingPingResponseCounter(0)
+    , failedPingRequestCounter(0)
+    , readBuffer()
+{}
+
+CliApplication::~CliApplication()
+{
+    // invoke clean up procedure
+    this->cleanUp();
+}
+
+int CliApplication::run()
+{
+    // notify the user
+    const std::string startingDebugMessage = "Starting the CliApplication on "
+                                             + this->getSerialPortText();
+    HostUtils::logDebug(startingDebugMessage);
+
+    // connect to the serial port
+    this->attemptReconnect();
+
+    // notify the user
+    const std::string startedDebugMessage = "Started the CliApplication on "
+                                            + this->getSerialPortText();
+    HostUtils::logDebug(startedDebugMessage);
+
+    // start the command
+    this->startCommand();
+
+    // run the command until it finishes or is stopped
+    this->startTimestamp = this->clock.getTime();
+    while (!this->finished && HostUtils::getRunning()) {
+        // process the received data of the serial port
+        this->processSerialPort();
+
+        // maintain the device client and the serial port
+        this->maintain();
+
+        // advance the command
+        this->progressCommand();
+    }
+
+    // get the exit code of an interrupted command
+    if (!this->finished) {
+        this->exitCode = HostSettings::INTERRUPTED_EXIT_CODE;
+    }
+
+    // expose the exit code
+    return this->exitCode;
+}
+
+void CliApplication::onReceivedPingResponse(const Messages::PingResponse &pingResponse,
+                                            const std::chrono::milliseconds roundTripTime)
+{
+    // keep track of messages
+    this->lastDeviceMessageTimestamp = this->clock.getTime();
+
+    // ping response must answer a ping request of the ping command
+    if (this->commandLine.commandType != CommandType::PING || !this->waitingForResponse) {
+        return;
+    }
+
+    // ping response must answer the latest ping request
+    if (static_cast<uint32_t>(pingResponse.getRequestTimestamp().count())
+        < static_cast<uint32_t>(this->lastRequestTimestamp.count())) {
+        return;
+    }
+
+    // print the round trip time and the device uptime
+    const std::string line = "ping response: round trip " + std::to_string(roundTripTime.count())
+                             + " ms, device uptime "
+                             + std::to_string(pingResponse.getUptime().count()) + " ms";
+    HostUtils::printLine(line);
+
+    // keep track of ping responses
+    ++this->incomingPingResponseCounter;
+    this->waitingForResponse = false;
+}
+
+void CliApplication::onRequestConfirmed([[maybe_unused]] const uint16_t messageCounter,
+                                        [[maybe_unused]] const Messages::MessageType messageType)
+{
+    // keep track of messages
+    this->lastDeviceMessageTimestamp = this->clock.getTime();
+}
+
+void CliApplication::onRequestFailed([[maybe_unused]] const uint16_t messageCounter,
+                                     const Messages::MessageType messageType,
+                                     const Definitions::DeliveryFailureType deliveryFailureType,
+                                     const Definitions::MessageStatusType remoteMessageStatusType)
+{
+    // failed ping request must belong to the ping command
+    if (messageType == Messages::MessageType::PING_REQUEST
+        && (this->commandLine.commandType != CommandType::PING || !this->waitingForResponse)) {
+        return;
+    }
+
+    // warn the user
+    const std::string warningMessage
+        = "Request " + std::string(Messages::getMessageTypeText(messageType))
+          + " failed: " + std::string(Definitions::fromDeliveryFailureType(deliveryFailureType))
+          + " / " + std::string(HostUtils::getMessageStatusTypeText(remoteMessageStatusType));
+    HostUtils::logWarning(warningMessage);
+
+    // keep track of failed ping requests of the ping command
+    if (this->commandLine.commandType == CommandType::PING) {
+        ++this->failedPingRequestCounter;
+        this->waitingForResponse = false;
+    }
+}
+
+void CliApplication::cleanUp()
+{
+    // notify the user
+    const std::string closingDebugMessage = "Closing the CliApplication on "
+                                            + this->getSerialPortText();
+    HostUtils::logDebug(closingDebugMessage);
+
+    // close the serial port
+    this->serialPort.close();
+
+    // notify the user
+    const std::string closedDebugMessage = "Closed the CliApplication on "
+                                           + this->getSerialPortText();
+    HostUtils::logDebug(closedDebugMessage);
+}
+
+void CliApplication::processSerialPort()
+{
+    // serial port must be open
+    if (!this->serialPort.getOpened()) {
+        std::this_thread::sleep_for(HostSettings::READ_TIMEOUT_MSEC);
+        return;
+    }
+
+    // data must arrive within the read timeout
+    size_t size = 0;
+    const SerialPort::SerialPortStatusType serialPortStatusType
+        = this->serialPort.read(this->readBuffer.data(),
+                                this->readBuffer.size(),
+                                size,
+                                HostSettings::READ_TIMEOUT_MSEC);
+    if (serialPortStatusType == SerialPort::SerialPortStatusType::TIMED_OUT) {
+        return;
+    }
+
+    // serial port must not be disconnected
+    if (serialPortStatusType != SerialPort::SerialPortStatusType::OK) {
+        // warn the user
+        const std::string warningMessage = "CliApplication disconnected from serial port on "
+                                           + this->getSerialPortText() + " ("
+                                           + std::string(SerialPort::fromSerialPortStatusType(
+                                               serialPortStatusType))
+                                           + ")";
+        HostUtils::logWarning(warningMessage);
+
+        // close the serial port until the next reconnect attempt
+        this->serialPort.close();
+
+        // clear the last device message timestamp
+        this->lastDeviceMessageTimestamp = 0ms;
+
+        // do not proceed further
+        return;
+    }
+
+    // hand the received data to the device client
+    this->deviceClient.onReceivedData(this->readBuffer.data(), size);
+}
+
+void CliApplication::maintain()
+{
+    // maintain the device client
+    this->deviceClient.maintain();
+
+    // attempt to reconnect the serial port periodically
+    const std::chrono::milliseconds currentTime = this->clock.getTime();
+    if (currentTime - this->lastReconnectTimestamp
+        >= HostSettings::SERIAL_PORT_RECONNECT_PERIOD_MSEC) {
+        this->lastReconnectTimestamp = currentTime;
+        this->attemptReconnect();
+    }
+
+    // send the periodic request when it is due
+    if (currentTime - this->lastPeriodicRequestTimestamp
+        >= HostSettings::DEVICE_PERIODIC_REQUEST_PERIOD_MSEC) {
+        this->lastPeriodicRequestTimestamp = currentTime;
+        this->sendPeriodicRequest();
+    }
+}
+
+void CliApplication::attemptReconnect()
+{
+    // serial port must be closed or the device silent
+    const bool deviceSilent = this->lastDeviceMessageTimestamp != 0ms
+                              && this->clock.getTime() - this->lastDeviceMessageTimestamp
+                                     >= HostSettings::DEVICE_DEACTIVATION_PERIOD_MSEC;
+    if (this->serialPort.getOpened() && !deviceSilent) {
+        return;
+    }
+
+    // report a silent device
+    if (deviceSilent) {
+        // warn the user
+        const std::string warningMessage = "CliApplication lost the device on "
+                                           + this->getSerialPortText();
+        HostUtils::logWarning(warningMessage);
+    }
+
+    // close the serial port
+    this->serialPort.close();
+
+    // clear the last device message timestamp
+    this->lastDeviceMessageTimestamp = 0ms;
+
+    // notify the user
+    HostUtils::logDebug("CliApplication trying to connect to the serial port");
+
+    // serial port must open
+    const SerialPort::SerialPortStatusType serialPortStatusType
+        = this->serialPort.open(this->commandLine.portName, this->commandLine.baudRate);
+    if (serialPortStatusType != SerialPort::SerialPortStatusType::OK) {
+        // warn the user
+        const std::string warningMessage = "CliApplication can not connect to serial port on "
+                                           + this->getSerialPortText() + " ("
+                                           + std::string(SerialPort::fromSerialPortStatusType(
+                                               serialPortStatusType))
+                                           + ")";
+        HostUtils::logWarning(warningMessage);
+
+        // do not proceed further
+        return;
+    }
+
+    // notify the user
+    const std::string debugMessage = "CliApplication connected to serial port from "
+                                     + this->getSerialPortText();
+    HostUtils::logDebug(debugMessage);
+}
+
+void CliApplication::sendPeriodicRequest()
+{
+    // command must not send ping requests of its own
+    if (this->commandLine.commandType == CommandType::PING) {
+        return;
+    }
+
+    // link must be idle
+    if (this->deviceClient.getPendingCount() > 0) {
+        return;
+    }
+
+    // send the ping request
+    uint16_t messageCounter = 0;
+    [[maybe_unused]] const Definitions::SendStatusType sendStatusType
+        = this->deviceClient.sendPingRequest(messageCounter);
+}
+
+void CliApplication::startCommand()
+{
+    // start the command
+    switch (this->commandLine.commandType) {
+    // leave the requests of the ping command to the loop
+    case CommandType::PING: {
+        return;
+    }
+
+    // finish an unknown command
+    case CommandType::UNKNOWN:
+    default: {
+        this->finish(1);
+        break;
+    }
+    }
+}
+
+void CliApplication::progressCommand()
+{
+    // first frame must be sent within the response timeout
+    if (this->deviceClient.getLinkStatistics().outgoingFrameCounter == 0
+        && this->clock.getTime() - this->startTimestamp > HostSettings::RESPONSE_TIMEOUT_MSEC) {
+        // warn the user
+        const std::string warningMessage = "CliApplication can not send to the device on "
+                                           + this->getSerialPortText();
+        HostUtils::logWarning(warningMessage);
+
+        // finish the command with its failure
+        this->finish(1);
+
+        // do not proceed further
+        return;
+    }
+
+    // advance the command
+    switch (this->commandLine.commandType) {
+    // advance the ping command
+    case CommandType::PING: {
+        this->progressPingCommand();
+        break;
+    }
+
+    // do not proceed further with an unknown command
+    case CommandType::UNKNOWN:
+    default: {
+        return;
+    }
+    }
+}
+
+void CliApplication::progressPingCommand()
+{
+    // ping requests must remain
+    if (this->incomingPingResponseCounter + this->failedPingRequestCounter
+        >= this->commandLine.requestCount) {
+        this->finish(this->failedPingRequestCounter == 0 ? 0 : 1);
+        return;
+    }
+
+    // ping response must arrive within the response timeout
+    const std::chrono::milliseconds currentTime = this->clock.getTime();
+    if (this->waitingForResponse
+        && currentTime - this->lastRequestTimestamp > HostSettings::RESPONSE_TIMEOUT_MSEC) {
+        // warn the user
+        HostUtils::logWarning("Ping request timed out");
+
+        // keep track of failed ping requests
+        ++this->failedPingRequestCounter;
+        this->waitingForResponse = false;
+
+        // do not proceed further
+        return;
+    }
+
+    // ping response must not be awaited
+    if (this->waitingForResponse) {
+        return;
+    }
+
+    // ping period must have passed since the last ping request
+    if (this->outgoingPingRequestCounter > 0
+        && currentTime - this->lastRequestTimestamp < HostSettings::PING_PERIOD_MSEC) {
+        return;
+    }
+
+    // ping request must be sent
+    uint16_t messageCounter = 0;
+    const Definitions::SendStatusType sendStatusType = this->deviceClient.sendPingRequest(
+        messageCounter);
+    if (!this->checkSendStatus(Messages::MessageType::PING_REQUEST, sendStatusType)) {
+        return;
+    }
+
+    // keep track of ping requests
+    ++this->outgoingPingRequestCounter;
+    this->waitingForResponse = true;
+    this->lastRequestTimestamp = currentTime;
+}
+
+bool CliApplication::checkSendStatus(const Messages::MessageType messageType,
+                                     const Definitions::SendStatusType sendStatusType)
+{
+    // link must be able to take the request now
+    if (sendStatusType == Definitions::SendStatusType::WINDOW_FULL
+        || sendStatusType == Definitions::SendStatusType::TRANSPORT_ERROR) {
+        return false;
+    }
+
+    // request must be sent
+    if (sendStatusType != Definitions::SendStatusType::SENT) {
+        // warn the user
+        const std::string warningMessage = "Request "
+                                           + std::string(Messages::getMessageTypeText(messageType))
+                                           + " not sent: "
+                                           + std::string(
+                                               Definitions::fromSendStatusType(sendStatusType));
+        HostUtils::logWarning(warningMessage);
+
+        // finish the command with its failure
+        this->finish(1);
+
+        // do not proceed further
+        return false;
+    }
+
+    // request sent successfully
+    return true;
+}
+
+void CliApplication::finish(const int exitCode)
+{
+    // finish with the exit code
+    this->finished = true;
+    this->exitCode = exitCode;
+}
+
+std::string CliApplication::getSerialPortText() const
+{
+    // expose the serial port name and the baud rate
+    return HostUtils::getSerialPortText(this->commandLine.portName, this->commandLine.baudRate);
+}
+
+} // namespace sercom::CliApplication

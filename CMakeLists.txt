@@ -133,6 +133,7 @@ add_library(${PROJECT_NAME}_host_lib
     host/include/HostUtils.h host/src/HostUtils.cpp
     host/include/SerialPort.h host/src/SerialPort.cpp
 
+    host/include/CliApplication.h host/src/CliApplication.cpp
     host/include/SimulatedPlatform.h host/src/SimulatedPlatform.cpp
     host/include/DeviceSimulator.h host/src/DeviceSimulator.cpp
 )
