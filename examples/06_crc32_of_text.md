@@ -114,5 +114,6 @@ see `0`.
 - `core/include/CRC32.h` and `core/src/CRC32.cpp` define `calculateCRC32`.
 - `core/include/Definitions.h` holds the parameters of the variant: `CRC32_POLYNOMIAL`, `CRC32_INITIAL_VALUE` and
   `CRC32_FINAL_XOR_VALUE`.
+- `tests/test_CRC32.cpp` checks the same check value and every single bit flip of a buffer.
 - Lectures: L37 "Verifying a CRC implementation" and L38 "What CRC32 guarantees and what it does not". L35 "A
   bitwise CRC-32 implementation" shows how the number is calculated.
