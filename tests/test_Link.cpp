@@ -75,6 +75,15 @@ public:
         this->currentTime = time;
     }
 
+    /*
+     * Move the current time forward.
+     */
+    void advanceTime(const std::chrono::milliseconds duration)
+    {
+        // move the current time forward
+        this->currentTime += duration;
+    }
+
 private:
     std::chrono::milliseconds currentTime; // current time in milliseconds
 };
@@ -328,8 +337,12 @@ public:
      */
     [[nodiscard]] static Link::LinkConfiguration getLinkConfiguration()
     {
-        // keep the inter byte timeout of the default link configuration
+        // shorten the retransmissions of the default link configuration
+        static constexpr std::chrono::milliseconds retransmitTimeout = 100ms;
+        static constexpr uint8_t maximumRetransmissions = 3;
         Link::LinkConfiguration linkConfiguration;
+        linkConfiguration.retransmitTimeout = retransmitTimeout;
+        linkConfiguration.maximumRetransmissions = maximumRetransmissions;
         linkConfiguration.interByteTimeout = Settings::DEFAULT_INTER_BYTE_TIMEOUT_MSEC;
 
         // expose the link configuration
@@ -370,6 +383,22 @@ public:
                 this->testLink->onReceivedData(data.data(), data.size());
             }
         }
+    }
+
+    /*
+     * Let time pass, maintain both links and deliver what they sent.
+     */
+    void advance(const std::chrono::milliseconds duration)
+    {
+        // let time pass
+        this->clock.advanceTime(duration);
+
+        // maintain both links
+        this->testLink->maintain();
+        this->anotherLink->maintain();
+
+        // deliver the sent data
+        this->pump();
     }
 
     /*
@@ -482,6 +511,98 @@ TEST_CASE_METHOD(TestLink,
             == Definitions::SendStatusType::SENT);
     REQUIRE(messageCounter == std::numeric_limits<uint16_t>::max());
     REQUIRE(testLink->getNextMessageCounter() == 0);
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A lost data frame is retransmitted with the retransmission flag",
+                 "[Link][testRetransmission]")
+{
+    // send an acknowledged message whose first transmission is lost
+    testTransport.setFilter(
+        [](const size_t sendCount, [[maybe_unused]] const std::vector<uint8_t> &data) noexcept {
+            return sendCount != 1;
+        });
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({0xAA}))
+            == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE(anotherLinkHandler.getMessages().empty());
+
+    // let the retransmit timeout pass but its last millisecond
+    static constexpr std::chrono::milliseconds lastMillisecond = 1ms;
+    advance(getLinkConfiguration().retransmitTimeout - lastMillisecond);
+    REQUIRE(anotherLinkHandler.getMessages().empty());
+
+    // let the last millisecond pass
+    advance(lastMillisecond);
+
+    // check the retransmission on both links
+    const std::vector<Frame::Frame> messages = anotherLinkHandler.getMessages();
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(messages.size() == static_cast<size_t>(1));
+    REQUIRE(Definitions::isFrameFlagSet(messages.at(0).getFlags(),
+                                        Definitions::FrameFlagType::RETRANSMISSION));
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.at(0).confirmed);
+    REQUIRE(testLink->getStatistics().retransmissionCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "Delivery fails after the configured number of retransmissions",
+                 "[Link][testDeliveryTimeout]")
+{
+    // send an acknowledged message into a transport that drops everything
+    testTransport.setFilter(
+        []([[maybe_unused]] const size_t sendCount,
+           [[maybe_unused]] const std::vector<uint8_t> &data) noexcept { return false; });
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({0x01}))
+            == Definitions::SendStatusType::SENT);
+
+    // let every retransmission time out
+    const Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    for (uint8_t retransmission = 0; retransmission < linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        advance(linkConfiguration.retransmitTimeout);
+        REQUIRE(testLinkHandler.getDeliveryResults().empty());
+    }
+
+    // let the last retransmission time out
+    advance(linkConfiguration.retransmitTimeout);
+
+    // check the failed delivery
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
+    REQUIRE_FALSE(deliveryResults.at(0).confirmed);
+    REQUIRE(deliveryResults.at(0).deliveryFailureType
+            == Definitions::DeliveryFailureType::TIMED_OUT);
+    REQUIRE(testLink->getStatistics().outgoingFrameCounter
+            == static_cast<uint64_t>(linkConfiguration.maximumRetransmissions) + 1);
+    REQUIRE(testLink->getStatistics().failedDeliveryCounter == static_cast<uint64_t>(1));
+    REQUIRE(testLink->getPendingCount() == static_cast<size_t>(0));
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A rejected message reports the remote status and is not retransmitted",
+                 "[Link][testRejectedMessage]")
+{
+    // send an acknowledged message that another link rejects
+    anotherLinkHandler.setMessageStatusType(
+        Definitions::MessageStatusType::UNSUPPORTED_MESSAGE_TYPE);
+    REQUIRE(sendAcknowledgedMessage(0x7777, std::vector<uint8_t>())
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the rejection
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
+    REQUIRE_FALSE(deliveryResults.at(0).confirmed);
+    REQUIRE(deliveryResults.at(0).deliveryFailureType == Definitions::DeliveryFailureType::REJECTED);
+    REQUIRE(deliveryResults.at(0).remoteMessageStatusType
+            == Definitions::MessageStatusType::UNSUPPORTED_MESSAGE_TYPE);
+
+    // check that no retransmission follows
+    advance(10 * getLinkConfiguration().retransmitTimeout);
+    REQUIRE(testLink->getStatistics().retransmissionCounter == static_cast<uint64_t>(0));
 }
 
 TEST_CASE_METHOD(TestLink,
