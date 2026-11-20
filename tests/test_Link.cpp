@@ -771,6 +771,37 @@ TEST_CASE_METHOD(TestLink,
 }
 
 TEST_CASE_METHOD(TestLink,
+                 "Retransmission timing keeps working beyond 32 bit milliseconds",
+                 "[Link][testRetransmissionBeyond32Bit]")
+{
+    // send a lost acknowledged message 64 milliseconds before 2^32 milliseconds
+    static constexpr std::chrono::milliseconds wrapTimestamp
+        = std::chrono::milliseconds(std::numeric_limits<uint32_t>::max()) + 1ms;
+    clock.setTime(wrapTimestamp - 64ms);
+    testTransport.setFilter(
+        [](const size_t sendCount, [[maybe_unused]] const std::vector<uint8_t> &data) noexcept {
+            return sendCount != 1;
+        });
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>())
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // step over 2^32 milliseconds one millisecond at a time
+    static constexpr std::chrono::milliseconds timeStep = 1ms;
+    const int64_t stepCount = getLinkConfiguration().retransmitTimeout / timeStep;
+    for (int64_t step = 1; step < stepCount; ++step) {
+        CAPTURE(step);
+        advance(timeStep);
+        REQUIRE(anotherLinkHandler.getMessages().empty());
+    }
+
+    // let the last millisecond of the retransmit timeout pass
+    advance(timeStep);
+    REQUIRE(anotherLinkHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(clock.getTime() > wrapTimestamp);
+}
+
+TEST_CASE_METHOD(TestLink,
                  "A sender never outruns the duplicate history of its receiver",
                  "[Link][testAcknowledgedSpread]")
 {
