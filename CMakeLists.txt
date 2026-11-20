@@ -58,6 +58,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # create core library
 add_library(${PROJECT_NAME}_core_lib
+    core/include/Clock.h core/src/Clock.cpp
     core/include/Transport.h core/src/Transport.cpp
 )
 
