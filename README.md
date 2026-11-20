@@ -5,6 +5,7 @@ Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
 ## Building the project
 1. Clone the project with: `git clone https://github.com/mustafa-gokce/sercom.git`
 2. Go to the source directory.
+3. Populate dependencies: `git submodule update --init --recursive`
 
 ### Linux
 1. Open a terminal.
@@ -13,6 +14,12 @@ Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
 4. `mkdir build && cd build`
 5. `cmake -S .. -B . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
 6. `cmake --build .`
+
+## Run tests
+### Linux
+1. Open a terminal.
+2. Go to the build directory.
+3. `./sercom_test --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
 
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
