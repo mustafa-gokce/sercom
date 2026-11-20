@@ -110,6 +110,16 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_host_lib
     )
 
+    # create frame building example executable
+    add_executable(${PROJECT_NAME}_example_02_build_frame
+        examples/02_build_frame.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_02_build_frame PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_host_lib
+    )
+
     # create field writing and reading example executable
     add_executable(${PROJECT_NAME}_example_05_write_and_read_fields
         examples/05_write_and_read_fields.cpp
