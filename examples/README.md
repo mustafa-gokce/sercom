@@ -21,6 +21,7 @@ because its messages travel over the link layer of example 18.
 |---|---|---|---|---|---|
 | S01 | L09, L11, L16, L17 | 01 | Raw Serial | Prints every byte of a serial port and sends a text once per second: a byte stream without frames | [guide](01_raw_serial.md), [source](01_raw_serial.cpp) |
 | S04 | L24, L25, L26 | 05 | Write and Read Fields | Writes and reads integer and float fields with `ByteWriter` and `ByteReader`, then the sticky error of a record cut short | [guide](05_write_and_read_fields.md), [source](05_write_and_read_fields.cpp) |
+| S06 | L37, L38 (also L35) | 06 | CRC32 of a Text | The CRC32 of `123456789` equals the check value `0xCBF43926`, and every flipped bit changes it | [guide](06_crc32_of_text.md), [source](06_crc32_of_text.cpp) |
 
 ## Building the examples
 1. Open a terminal.
