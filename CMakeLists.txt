@@ -56,6 +56,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# create host library
+add_library(${PROJECT_NAME}_host_lib
+    host/include/HostSettings.h host/src/HostSettings.cpp
+)
+
 # compiler flag add macro
 macro(add_compiler_flags)
     foreach (flag ${ARGV})
