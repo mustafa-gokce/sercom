@@ -32,6 +32,7 @@ TEST_CASE_METHOD(TestCliApplication,
     REQUIRE(CliApplication::fromCommandType(CliApplication::CommandType::LED) == "led");
     REQUIRE(CliApplication::fromCommandType(CliApplication::CommandType::TELEMETRY) == "telemetry");
     REQUIRE(CliApplication::fromCommandType(CliApplication::CommandType::MONITOR) == "monitor");
+    REQUIRE(CliApplication::fromCommandType(CliApplication::CommandType::STRESS) == "stress");
 }
 
 TEST_CASE_METHOD(TestCliApplication,
@@ -45,6 +46,7 @@ TEST_CASE_METHOD(TestCliApplication,
     REQUIRE(CliApplication::toCommandType("led") == CliApplication::CommandType::LED);
     REQUIRE(CliApplication::toCommandType("telemetry") == CliApplication::CommandType::TELEMETRY);
     REQUIRE(CliApplication::toCommandType("monitor") == CliApplication::CommandType::MONITOR);
+    REQUIRE(CliApplication::toCommandType("stress") == CliApplication::CommandType::STRESS);
     REQUIRE(CliApplication::toCommandType("LOREM_IPSUM") == CliApplication::CommandType::UNKNOWN);
     REQUIRE(CliApplication::toCommandType("PING") == CliApplication::CommandType::UNKNOWN);
     REQUIRE(CliApplication::toCommandType("ping ") == CliApplication::CommandType::UNKNOWN);
