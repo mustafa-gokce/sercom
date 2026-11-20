@@ -18,6 +18,8 @@ constexpr size_t DefaultDuplicateHistorySize
 
 constexpr size_t MAXIMUM_FRAME_SIZE = Definitions::FRAME_OVERHEAD
                                       + MaximumPayloadSize; // maximum frame size in bytes
+constexpr size_t MAXIMUM_ACKNOWLEDGED_SPREAD = DefaultDuplicateHistorySize - MaximumPendingFrames
+                                               + 1; // maximum acknowledged messages after the oldest
 
 constexpr std::chrono::milliseconds DEFAULT_INTER_BYTE_TIMEOUT_MSEC
     = 50ms; // default silence that drops a partial frame in milliseconds
