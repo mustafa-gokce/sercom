@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -767,4 +768,83 @@ TEST_CASE_METHOD(TestLink,
     // check one confirmation and the unexpected acknowledgement
     REQUIRE(testLinkHandler.getDeliveryResults().size() == static_cast<size_t>(1));
     REQUIRE(testLink->getStatistics().unexpectedAcknowledgementCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A sender never outruns the duplicate history of its receiver",
+                 "[Link][testAcknowledgedSpread]")
+{
+    // send a first acknowledged message whose every frame is lost
+    testTransport.setFilter(
+        []([[maybe_unused]] const size_t sendCount, const std::vector<uint8_t> &data) noexcept {
+            return Frame::Frame(data.data(), data.size()).getMessageCounter() != 0;
+        });
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({0x00}))
+            == Definitions::SendStatusType::SENT);
+
+    // send acknowledged messages until the spread limit stops them
+    size_t sentCount = 1;
+    while (testLink->getSendAcknowledgedAllowed()) {
+        // send the next acknowledged message and count it
+        CAPTURE(sentCount);
+        REQUIRE(
+            sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({static_cast<uint8_t>(sentCount)}))
+            == Definitions::SendStatusType::SENT);
+        pump();
+        ++sentCount;
+    }
+    REQUIRE(sentCount == Settings::MAXIMUM_ACKNOWLEDGED_SPREAD);
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>())
+            == Definitions::SendStatusType::WINDOW_FULL);
+
+    // send an unacknowledged message (never limited)
+    REQUIRE(testLink->sendMessage(0x0103, nullptr, 0, false, messageCounter)
+            == Definitions::SendStatusType::SENT);
+
+    // let the lost message fail
+    const Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    for (uint8_t retransmission = 0; retransmission <= linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        advance(linkConfiguration.retransmitTimeout);
+    }
+
+    // check that acknowledged messages can be sent again
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE_FALSE(deliveryResults.empty());
+    REQUIRE(deliveryResults.back().deliveryFailureType
+            == Definitions::DeliveryFailureType::TIMED_OUT);
+    REQUIRE(testLink->getSendAcknowledgedAllowed());
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A late retransmission is recognized even after many newer messages",
+                 "[Link][testLateRetransmission]")
+{
+    // send a first acknowledged message whose first acknowledgement is lost
+    anotherTransport.setFilter(
+        [](const size_t sendCount, [[maybe_unused]] const std::vector<uint8_t> &data) noexcept {
+            return sendCount != 1;
+        });
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({0x00}))
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // send newer acknowledged messages until the spread limit stops them
+    while (testLink->getSendAcknowledgedAllowed()) {
+        REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({0x01}))
+                == Definitions::SendStatusType::SENT);
+        pump();
+    }
+
+    // let the retransmit timeout pass
+    advance(getLinkConfiguration().retransmitTimeout);
+
+    // check that the first message was delivered once
+    const std::vector<Frame::Frame> messages = anotherLinkHandler.getMessages();
+    const size_t firstMessageCount = static_cast<size_t>(
+        std::count_if(messages.cbegin(), messages.cend(), [](const Frame::Frame &message) {
+            return message.getMessageCounter() == 0;
+        }));
+    REQUIRE(firstMessageCount == static_cast<size_t>(1));
+    REQUIRE(anotherLink->getStatistics().duplicateFrameCounter == static_cast<uint64_t>(1));
 }
