@@ -57,7 +57,8 @@ answers with a response that also asks for an acknowledgement. The link layer of
 that work under both of them.
 
 At the end, `// host must have received a response to every request` checks that the host link
-delivered two messages, and `// LED of the device must be on` asks the mock platform.
+delivered two messages, and `// LED of the device must be on` asks the mock platform. Example 22
+adds the device info request and shows every frame of the conversation.
 
 ## Step 4: Run the program
 
