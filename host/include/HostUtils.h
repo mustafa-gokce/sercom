@@ -53,6 +53,22 @@ namespace sercom::HostUtils {
 [[nodiscard]] std::string getRightJustifiedText(std::string_view text, size_t width);
 
 /*
+ * Parse a decimal or 0x prefixed hexadecimal text to a 32 bit integer up to the maximum.
+ * Get false when the text is no such number.
+ */
+[[nodiscard]] bool parseUint32(std::string_view text, uint32_t maximum, uint32_t &value);
+
+/*
+ * Parse a command line argument to a 32 bit integer within the minimum and the maximum.
+ * Warn the user and get false when the argument is no such number.
+ */
+[[nodiscard]] bool parseArgument(std::string_view argument,
+                                 std::string_view argumentName,
+                                 uint32_t minimum,
+                                 uint32_t maximum,
+                                 uint32_t &value);
+
+/*
  * Print a result line to standard output.
  */
 void printLine(const std::string &line);
