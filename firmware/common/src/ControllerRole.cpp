@@ -35,6 +35,37 @@ namespace {
     return echoPayload;
 }
 
+/*
+ * Write a temperature in 0.01 degree steps as degrees Celsius with two decimals.
+ * The temperature without a reading is written as no reading.
+ */
+void writeTemperatureText(const int16_t temperature,
+                          char *temperatureAsText,
+                          const size_t temperatureAsTextSize)
+{
+    // write a temperature without a reading as no reading
+    if (temperature == Messages::UNAVAILABLE_TEMPERATURE) {
+        // write no reading
+        [[maybe_unused]] const int temperatureAsTextLength = std::snprintf(temperatureAsText,
+                                                                           temperatureAsTextSize,
+                                                                           "no reading");
+
+        // do not proceed further
+        return;
+    }
+
+    // write the temperature in degrees Celsius with two decimals
+    static constexpr int32_t temperatureStepsPerDegree = 100;
+    const int32_t temperatureMagnitude = std::abs(static_cast<int32_t>(temperature));
+    [[maybe_unused]] const int temperatureAsTextLength
+        = std::snprintf(temperatureAsText,
+                        temperatureAsTextSize,
+                        "%s%" PRId32 ".%02" PRId32 " C",
+                        temperature < 0 ? "-" : "",
+                        temperatureMagnitude / temperatureStepsPerDegree,
+                        temperatureMagnitude % temperatureStepsPerDegree);
+}
+
 } // namespace
 
 std::string_view fromControllerStepType(const ControllerStepType controllerStepType)
@@ -248,10 +279,13 @@ void ControllerRole::onReceivedTelemetryReportResponse(
     // keep track of telemetry report responses
     ++this->controllerReport.telemetryReportResponseCounter;
 
-    // get the temperature in degrees Celsius with two decimals
-    static constexpr int32_t temperatureStepsPerDegree = 100;
-    const int32_t temperature = static_cast<int32_t>(telemetryReportResponse.getTemperature());
-    const int32_t temperatureMagnitude = std::abs(temperature);
+    // get the temperature as text
+    static constexpr size_t temperatureAsTextSize = 16;
+    std::array<char, temperatureAsTextSize> temperatureAsText
+        = std::array<char, temperatureAsTextSize>();
+    writeTemperatureText(telemetryReportResponse.getTemperature(),
+                         temperatureAsText.data(),
+                         temperatureAsText.size());
 
     // notify the user
     std::array<char, CommonSettings::LOG_LINE_SIZE> debugMessage
@@ -260,13 +294,11 @@ void ControllerRole::onReceivedTelemetryReportResponse(
         = std::snprintf(debugMessage.data(),
                         debugMessage.size(),
                         "Telemetry #%" PRIu32 ": uptime %" PRIu32 " ms, free heap %" PRIu32
-                        " bytes, temperature %s%" PRId32 ".%02" PRId32 " C",
+                        " bytes, temperature %s",
                         static_cast<uint32_t>(telemetryReportResponse.getSequence()),
                         static_cast<uint32_t>(telemetryReportResponse.getUptime().count()),
                         telemetryReportResponse.getFreeHeapSize(),
-                        temperature < 0 ? "-" : "",
-                        temperatureMagnitude / temperatureStepsPerDegree,
-                        temperatureMagnitude % temperatureStepsPerDegree);
+                        temperatureAsText.data());
     this->console.printLog(Messages::LogLevelType::DEBUG, debugMessage.data());
 }
 
