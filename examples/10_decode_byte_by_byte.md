@@ -12,7 +12,7 @@ byte, so the decoder must collect bytes until a whole frame is there.
 
 ## Before you start
 
-1. Watch lecture L43 "Decoder design options" (section S08).
+1. Watch lecture L46 "Decoder design options" (section S08).
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -115,5 +115,5 @@ The exit code `0` means the decoder found exactly one frame and dropped no byte.
   `processBuffer()` and the handler interface.
 - `core/src/Link.cpp`: the link layer feeds every received read into its decoder.
 - `docs/PROTOCOL.md`, section "4. Receiver rules (frame layer)".
-- Lectures: L43 "Decoder design options", L46 "CRC check and copying the frame out" and L50
+- Lectures: L46 "Decoder design options", L49 "CRC check and copying the frame out" and L53
   "Handler interface and decoder statistics".
