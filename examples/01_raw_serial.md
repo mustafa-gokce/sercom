@@ -13,7 +13,7 @@ runs on Linux and on Windows.
 
 ## Before you start
 
-1. Watch lectures L09 "Streams are not messages", L11 "A first serial program: raw bytes in and out" and L17 "Pseudo terminals and socat" first. You need three terminals in the source directory.
+1. Watch lectures L10 "Streams are not messages", L13 "A first serial program: raw bytes in and out" and L19 "Pseudo terminals and socat" first, on Windows also L20 "Virtual COM port pairs on Windows: com0com". You need three terminals in the source directory.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git socat` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows. On Windows create the com0com pair `COM10` and `COM11` of `tools/COM0COM.md`.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`. On Windows open PowerShell 7 with the path of the README.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -42,7 +42,7 @@ Prints every byte of the serial port at 115200 8N1 and sends a text once per sec
 
 - The first line is a warning. The number in brackets is the time in seconds since the first log line.
 - The usage text says what the program expects. `115200 8N1` means 115200 bits per second, 8 data bits, no parity
-  bit and 1 stop bit (lecture L06).
+  bit and 1 stop bit (lecture L07).
 
 Print the exit code with `echo $?`, in PowerShell with `$LASTEXITCODE`. You see `64`, the value of
 `HostSettings::INVALID_COMMAND_LINE_EXIT_CODE` for a wrong command line.
@@ -205,5 +205,6 @@ with Ctrl+C in the second terminal.
 - `host/src/HostUtils.cpp` defines `installStopHandlers`, `getRunning`, `SteadyClock`, `printLine` and `logWarning`.
 - `host/include/HostSettings.h` holds `DEFAULT_BAUD_RATE` and the exit codes.
 - `tools/SOCAT.md` explains virtual serial links on Linux, `tools/COM0COM.md` the com0com pairs of Windows.
-- Lectures: L09 "Streams are not messages", L11 "A first serial program: raw bytes in and out", L16 "The port is
-  complete: clocks, signals and a first run" and L17 "Pseudo terminals and socat".
+- Lectures: L10 "Streams are not messages", L13 "A first serial program: raw bytes in and out", L18 "The port is
+  complete: stop signals, a timer and a first run", L19 "Pseudo terminals and socat" and L20 "Virtual COM port
+  pairs on Windows: com0com".
