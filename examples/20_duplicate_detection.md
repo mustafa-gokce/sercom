@@ -14,10 +14,10 @@ matters for a message like "add 10 to the counter": done twice, it would be wron
 ## Before you start
 
 1. Watch lecture L69 "Duplicate suppression and restarted peers" (section S11) and run example 19 first.
-2. Install the build tools once: `sudo apt install build-essential cmake ninja-build git` (README.md, section "Building the project").
+2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
-5. Configure the build: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug`
+5. Configure the build: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64`, on Windows with `-DCMAKE_PREFIX_PATH=C:/Qt/5.12.12/mingw73_64`
 6. Build every program: `cmake --build build`
 7. The program of this example is `build/sercom_example_20_duplicate_detection`.
 
