@@ -175,6 +175,69 @@ std::string getRightJustifiedText(const std::string_view text, const size_t widt
     return justifiedText;
 }
 
+bool parseUint32(const std::string_view text, const uint32_t maximum, uint32_t &value)
+{
+    // get the digits and their base
+    const bool hexadecimal = text.size() > 2 && text[0] == '0'
+                             && (text[1] == 'x' || text[1] == 'X');
+    const std::string_view digits = hexadecimal ? text.substr(2) : text;
+    const int base = hexadecimal ? 16 : 10;
+
+    // digits must be digits of the base only
+    static constexpr std::string_view decimalDigits = "0123456789";
+    static constexpr std::string_view hexadecimalDigits = "0123456789ABCDEFabcdef";
+    const std::string_view baseDigits = hexadecimal ? hexadecimalDigits : decimalDigits;
+    if (digits.empty() || digits.find_first_not_of(baseDigits) != std::string_view::npos) {
+        return false;
+    }
+
+    // digits must form one number of 64 bits
+    bool converted = false;
+    const uint64_t textAsNumber = QString::fromUtf8(digits.data(), static_cast<int>(digits.size()))
+                                      .toULongLong(&converted, base);
+    if (!converted) {
+        return false;
+    }
+
+    // number must not exceed the maximum
+    if (textAsNumber > maximum) {
+        return false;
+    }
+
+    // set the value
+    value = static_cast<uint32_t>(textAsNumber);
+
+    // text parsed successfully
+    return true;
+}
+
+bool parseArgument(const std::string_view argument,
+                   const std::string_view argumentName,
+                   const uint32_t minimum,
+                   const uint32_t maximum,
+                   uint32_t &value)
+{
+    // argument must be a number within the limits
+    uint32_t argumentAsNumber = 0;
+    if (!parseUint32(argument, maximum, argumentAsNumber) || argumentAsNumber < minimum) {
+        // warn the user
+        const std::string warningMessage = "Invalid " + std::string(argumentName) + " argument "
+                                           + std::string(argument) + ", expected a number from "
+                                           + std::to_string(minimum) + " to "
+                                           + std::to_string(maximum);
+        logWarning(warningMessage);
+
+        // do not proceed further
+        return false;
+    }
+
+    // set the value
+    value = argumentAsNumber;
+
+    // argument parsed successfully
+    return true;
+}
+
 void printLine(const std::string &line)
 {
     // print the line at once
