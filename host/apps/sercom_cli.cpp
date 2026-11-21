@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -23,6 +24,7 @@ enum class OptionType : uint8_t {
     UNKNOWN = 0, // unknown option
     BAUD = 1,    // baud rate of the serial port
     HELP = 2,    // request of the usage text
+    TRACE = 3,   // print of every frame on the serial port
 };
 
 /*
@@ -151,6 +153,9 @@ std::string_view fromOptionType(const OptionType optionType)
     case OptionType::HELP: {
         return {"--help"};
     }
+    case OptionType::TRACE: {
+        return {"--trace"};
+    }
     case OptionType::UNKNOWN:
     default: {
         return {};
@@ -165,6 +170,9 @@ OptionType toOptionType(const std::string_view optionType)
     }
     if (optionType == std::string_view("--help")) {
         return OptionType::HELP;
+    }
+    if (optionType == std::string_view("--trace")) {
+        return OptionType::TRACE;
     }
     return OptionType::UNKNOWN;
 }
@@ -203,12 +211,13 @@ void printUsage(const std::string_view programName)
     // print the usage text
     const std::string usage
         = std::string("Usage: ") + std::string(programName)
-          + " <port> [--baud N] <command> [arguments]\n"
+          + " <port> [--baud N] [--trace] <command> [arguments]\n"
             "Port:\n"
             "  <port>                               device path such as /dev/ttyUSB0 on Linux,\n"
             "                                       COM port such as COM3 on Windows\n"
             "Options:\n"
             "  --baud N                             baud rate of the serial port\n"
+            "  --trace                              print every frame in both directions\n"
             "Commands:\n"
             "  ping [count]                         measure round trip time\n"
             "  info                                 print device information\n"
@@ -223,8 +232,20 @@ bool parseCommandLine(const int argc, char *argv[], sercom::CliApplication::Comm
 {
     using namespace sercom;
 
+    // get the arguments without the trace option
+    const std::vector<std::string> givenArguments(argv + 1, argv + argc);
+    std::vector<std::string> arguments;
+    std::copy_if(givenArguments.cbegin(),
+                 givenArguments.cend(),
+                 std::back_inserter(arguments),
+                 [](const std::string &argument) {
+                     return toOptionType(argument) != OptionType::TRACE;
+                 });
+
+    // set the trace option when it was given
+    commandLine.traced = arguments.size() < givenArguments.size();
+
     // serial port argument must be given
-    const std::vector<std::string> arguments(argv + 1, argv + argc);
     if (arguments.empty()) {
         HostUtils::logWarning("Missing serial port argument");
         return false;
