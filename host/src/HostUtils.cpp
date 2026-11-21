@@ -14,7 +14,6 @@
 #include "../../app/include/Messages.h"
 #include "../../core/include/Settings.h"
 
-#include "../include/HostSettings.h"
 #include "../include/SerialPort.h"
 
 namespace sercom::HostUtils {
@@ -147,7 +146,7 @@ std::string getDecimalText(const double value, const int decimalCount)
 std::string getTemperatureText(const int16_t temperature)
 {
     // temperature must have a reading
-    if (temperature == HostSettings::UNAVAILABLE_TEMPERATURE) {
+    if (temperature == Messages::UNAVAILABLE_TEMPERATURE) {
         return "no reading";
     }
 
