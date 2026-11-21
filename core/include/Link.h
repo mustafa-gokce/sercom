@@ -53,12 +53,13 @@ struct LinkStatistics
  */
 struct PendingMessage
 {
-    bool used = false;                                           // slot holds a message
-    uint16_t messageCounter = 0;                                 // message counter of the message
-    uint16_t messageType = 0;                                    // message type of the message
-    uint8_t payloadLength = 0;                                   // payload length in bytes
-    uint8_t retransmissionCount = 0;                             // retransmissions so far
-    std::chrono::milliseconds lastSentTimestamp{};               // time of the latest transmission
+    bool used = false;                             // slot holds a message
+    uint16_t messageCounter = 0;                   // message counter of the message
+    uint16_t messageType = 0;                      // message type of the message
+    uint8_t payloadLength = 0;                     // payload length in bytes
+    uint8_t retransmissionCount = 0;               // retransmissions so far
+    std::chrono::milliseconds lastSentTimestamp{}; // time of the latest transmission
+    uint32_t sendSequence = 0;                     // acknowledged messages sent before it
     std::array<uint8_t, Settings::MaximumPayloadSize> payload{}; // payload for retransmissions
 };
 
@@ -192,6 +193,11 @@ private:
 
 private:
     /*
+     * Get whether the oldest pending message still allows a new acknowledged message.
+     */
+    [[nodiscard]] bool getWithinSpread() const;
+
+    /*
      * Send a frame to the transport.
      */
     [[nodiscard]] bool sendFrame(const Frame::Frame &frame);
@@ -229,6 +235,7 @@ private:
     FrameDecoder::FrameDecoder frameDecoder; // decoder of the received bytes
     size_t nextReceivedMessageIndex;         // history entry to overwrite next
     uint16_t nextMessageCounter;             // message counter of the next message
+    uint32_t acknowledgedSendSequence;       // number of sent acknowledged messages
     LinkStatistics statistics;               // link statistics
     std::array<PendingMessage, Settings::MaximumPendingFrames> pendingMessages; // sent messages
     std::array<ReceivedMessage, Settings::DefaultDuplicateHistorySize>
