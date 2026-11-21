@@ -12,7 +12,7 @@ after a device reset or from electrical noise, and the decoder must find the nex
 
 ## Before you start
 
-1. Watch lecture L44 "Finding the sync word" (section S08).
+1. Watch lecture L47 "Finding the sync word" (section S08).
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -98,5 +98,5 @@ The exit code `0` means the decoder found both frames and discarded exactly the 
 - `core/include/FrameDecoder.h`: `DecoderStatistics`.
 - `host/apps/sercom_dump.cpp`: decodes captured traffic and prints the same statistics.
 - `docs/PROTOCOL.md`, section "4. Receiver rules (frame layer)", rules 1, 2 and 5.
-- Lectures: L44 "Finding the sync word", L47 "Resynchronization: drop one byte, rescan the
-  rest" and L50 "Handler interface and decoder statistics".
+- Lectures: L47 "Finding the sync word", L50 "Resynchronization: drop one byte, rescan the
+  rest" and L53 "Handler interface and decoder statistics".
