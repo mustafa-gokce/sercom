@@ -4,7 +4,10 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
+#include <numeric>
+#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -520,6 +523,15 @@ public:
     }
 
     /*
+     * Get the echo responses in arrival order.
+     */
+    [[nodiscard]] std::vector<Messages::EchoResponse> getEchoResponses() const
+    {
+        // expose the echo responses
+        return this->echoResponses;
+    }
+
+    /*
      * Get the message types of the confirmed requests.
      */
     [[nodiscard]] std::vector<Messages::MessageType> getConfirmedMessageTypes() const
@@ -595,6 +607,17 @@ public:
         // close device client and device application
         this->deviceApplication.reset(nullptr);
         this->deviceClient.reset(nullptr);
+    }
+
+    /*
+     * Get the payload bytes of a message.
+     */
+    [[nodiscard]] static std::vector<uint8_t> getPayload(
+        const Messages::GenericMessage &genericMessage)
+    {
+        // expose a copy of the payload bytes
+        return std::vector<uint8_t>(genericMessage.getPayload(),
+                                    genericMessage.getPayload() + genericMessage.getPayloadLength());
     }
 
     /*
@@ -824,6 +847,22 @@ TEST_CASE_METHOD(TestDeviceApplication,
 }
 
 TEST_CASE_METHOD(TestDeviceApplication,
+                 "An echo request comes back byte for byte",
+                 "[DeviceApplication][testEchoRequest]")
+{
+    // send an echo request
+    const std::vector<uint8_t> data = {0xA5, 0xC3, 0x00, 0xFF, 0x42};
+    REQUIRE(deviceClient->sendEchoRequest(data.data(), data.size(), messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the echo response on the host
+    const std::vector<Messages::EchoResponse> echoResponses = clientHandler.getEchoResponses();
+    REQUIRE(echoResponses.size() == static_cast<size_t>(1));
+    REQUIRE(getPayload(echoResponses.at(0)) == data);
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
                  "Telemetry starts, follows the telemetry period and stops",
                  "[DeviceApplication][testTelemetry]")
 {
@@ -1012,4 +1051,114 @@ TEST_CASE_METHOD(TestDeviceApplication,
     REQUIRE(devicePlatform.getLedSwitchCount() == Settings::MaximumPendingFrames);
     REQUIRE_FALSE(failedRequests.empty());
     REQUIRE(failedRequests.back().remoteMessageStatusType == Definitions::MessageStatusType::BUSY);
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "Requests and responses survive heavy frame loss in both directions",
+                 "[DeviceApplication][testHeavyFrameLoss]")
+{
+    // repeat the exchange over a lossy line for every seed
+    static constexpr uint32_t seedCount = 100;
+    static constexpr double lossProbability = 0.1;
+    static constexpr uint8_t requestCount = 30;
+    static constexpr int maximumStepCount = 2000;
+    static constexpr int finalStepCount = 200;
+    static constexpr std::chrono::milliseconds stepDuration
+        = Settings::DEFAULT_RETRANSMIT_TIMEOUT_MSEC / 5;
+    for (uint32_t seed = 1; seed <= seedCount; ++seed) {
+        // restart both sides behind a loss filter of the seed
+        CAPTURE(seed);
+        restart();
+        std::mt19937 generator(seed);
+        std::uniform_real_distribution<double> lossDistribution(0.0, 1.0);
+        const auto lossFilter =
+            [&generator, &lossDistribution]([[maybe_unused]] const size_t sendCount,
+                                            [[maybe_unused]] const std::vector<uint8_t> &data) {
+                return lossDistribution(generator) >= lossProbability;
+            };
+        hostTransport.setFilter(lossFilter);
+        deviceTransport.setFilter(lossFilter);
+
+        // list the identifiers of the requests to send
+        std::vector<uint8_t> waitingIdentifiers(requestCount);
+        std::iota(waitingIdentifiers.begin(), waitingIdentifiers.end(), static_cast<uint8_t>(0));
+        std::vector<uint8_t> messageCounterIdentifiers(static_cast<size_t>(
+                                                           std::numeric_limits<uint16_t>::max())
+                                                           + 1,
+                                                       0);
+        std::vector<size_t> timedOutResendCounts(requestCount, 0);
+        size_t handledFailureCount = 0;
+
+        // send and resend the requests until every request is finished
+        const auto getFinished = [this, &waitingIdentifiers, &handledFailureCount]() {
+            return waitingIdentifiers.empty() && deviceClient->getPendingCount() == 0
+                   && handledFailureCount == clientHandler.getFailedRequests().size();
+        };
+        int stepCount = 0;
+        while (stepCount < maximumStepCount && !getFinished()) {
+            // resend the failed requests (busy ones never reached the application)
+            const std::vector<FailedRequest> failedRequests = clientHandler.getFailedRequests();
+            std::for_each(failedRequests.cbegin() + static_cast<ptrdiff_t>(handledFailureCount),
+                          failedRequests.cend(),
+                          [&messageCounterIdentifiers, &timedOutResendCounts, &waitingIdentifiers](
+                              const FailedRequest &failedRequest) {
+                              // remember the timed out resends
+                              const uint8_t identifier = messageCounterIdentifiers.at(
+                                  failedRequest.messageCounter);
+                              if (failedRequest.remoteMessageStatusType
+                                  != Definitions::MessageStatusType::BUSY) {
+                                  ++timedOutResendCounts.at(identifier);
+                              }
+
+                              // resend the request
+                              waitingIdentifiers.push_back(identifier);
+                          });
+            handledFailureCount = failedRequests.size();
+
+            // send the next waiting request
+            if (!waitingIdentifiers.empty() && deviceClient->getSendRequestAllowed()) {
+                const std::vector<uint8_t> data = {waitingIdentifiers.front()};
+                uint16_t echoMessageCounter = 0;
+                if (deviceClient->sendEchoRequest(data.data(), data.size(), echoMessageCounter)
+                    == Definitions::SendStatusType::SENT) {
+                    messageCounterIdentifiers.at(echoMessageCounter) = waitingIdentifiers.front();
+                    waitingIdentifiers.erase(waitingIdentifiers.begin());
+                }
+            }
+
+            // let a step pass
+            advance(stepDuration);
+            ++stepCount;
+        }
+
+        // let the device retransmit its last responses
+        for (int step = 0; step < finalStepCount; ++step) {
+            advance(stepDuration);
+        }
+
+        // check that nothing waits or flies
+        REQUIRE(waitingIdentifiers.empty());
+        REQUIRE(deviceClient->getPendingCount() == static_cast<size_t>(0));
+
+        // count the echo responses of every request
+        const std::vector<Messages::EchoResponse> echoResponses = clientHandler.getEchoResponses();
+        std::vector<size_t> echoResponseCounts(requestCount, 0);
+        std::for_each(echoResponses.cbegin(),
+                      echoResponses.cend(),
+                      [&echoResponseCounts](const Messages::EchoResponse &echoResponse) {
+                          // count the echo response for its request
+                          const std::vector<uint8_t> payload = getPayload(echoResponse);
+                          CAPTURE(payload);
+                          REQUIRE(payload.size() == static_cast<size_t>(1));
+                          REQUIRE(payload.at(0) < requestCount);
+                          ++echoResponseCounts.at(payload.at(0));
+                      });
+
+        // check one echo plus one per timed out resend
+        for (uint8_t identifier = 0; identifier < requestCount; ++identifier) {
+            CAPTURE(identifier);
+            REQUIRE(echoResponseCounts.at(identifier) >= static_cast<size_t>(1));
+            REQUIRE(echoResponseCounts.at(identifier) <= timedOutResendCounts.at(identifier) + 1);
+        }
+    }
 }
