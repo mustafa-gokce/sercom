@@ -16,7 +16,8 @@ import subprocess
 import sys
 
 # directories of the own C++ sources, relative to the source directory
-SOURCE_DIRECTORIES = ('core', 'app', 'host', 'firmware/esp32/include', 'firmware/esp32/src', 'tests', 'examples',
+SOURCE_DIRECTORIES = ('core', 'app', 'host', 'firmware/common/include', 'firmware/common/src', 'firmware/esp32/include',
+                      'firmware/esp32/src', 'tests', 'examples',
                       'fuzz')
 
 # extensions of the C++ sources
@@ -83,7 +84,8 @@ IDIOM_RULES = (
     ('R-024', 'nodiscard on an enum converter', r'\[\[nodiscard\]\] [^(]*\b(from|to)[A-Z]\w*(Type|Key)\(', 'headers',
      'code', None, None),
     ('R-012', 'include through an include directory', r'#include "[^.]', 'all', 'line', None, None),
-    ('R-033', 'override', r'\boverride\b', 'all', 'code', None, None),
+    ('R-033', 'override outside the destructor of a class that others derive from', r'\boverride\b', 'all', 'code',
+     r'^\s+~\w+\(\) override;$', None),
     ('R-248', 'letter-suffixed name', r'\b[a-z][a-zA-Z]*[a-z][AB]\b', 'all', 'code', None, None),
     ('R-251', 'char **argv', r'char \*\*argv', 'all', 'code', None, None),
     ('R-242', 'make_unique, make_shared or reset()', r'make_unique|make_shared|\.reset\(\)', 'all', 'code', None,
