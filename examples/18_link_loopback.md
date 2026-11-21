@@ -13,7 +13,7 @@ that a message arrived.
 
 ## Before you start
 
-1. Watch lecture L67 "ACK and NACK frames" (section S11).
+1. Watch lecture L70 "ACK and NACK frames" (section S11).
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -107,5 +107,5 @@ The exit code `0` means the device got the message once and the host got its ack
   `sendAcknowledgement()`.
 - `core/include/Transport.h`: the interface that `MockTransport` and the serial port implement.
 - `tests/test_Link.cpp`: the same two links in memory, with many more cases.
-- Lectures: L65 "Message counters and 16-bit wraparound", L67 "ACK and NACK frames" and L72
+- Lectures: L68 "Message counters and 16-bit wraparound", L70 "ACK and NACK frames" and L75
   "Testing the link layer in memory".
