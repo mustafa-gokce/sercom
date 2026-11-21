@@ -36,7 +36,7 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 2. Install PlatformIO: `pip install platformio`
 3. Check that PlatformIO runs: `pio --version`; when PowerShell does not find `pio` on Windows, put the `Scripts` directory that pip names in its warning on the path or call `python -m platformio` in place of `pio`
 4. Go to the source directory.
-5. `pio run -d firmware/esp32`
+5. Build both firmware environments: `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console`
 
 ## Run tests
 ### Linux
@@ -92,6 +92,7 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 5. Flash the firmware with the protocol on the USB port: `pio run -d firmware/esp32 -e esp32dev -t upload`
 6. Print the device information and every frame on the wire: `build/sercom_cli /dev/ttyUSB0 --trace info`, on Windows with the COM port of the board: `build/sercom_cli.exe COM3 --trace info`
 7. Measure one ping on the board: `build/sercom_example_24_serial_ping /dev/ttyUSB0`
+8. Follow [docs/HARDWARE.md](docs/HARDWARE.md) for the wiring, the console firmware `esp32dev-console` with the protocol on UART2, the COM ports of Windows and the troubleshooting list.
 
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
