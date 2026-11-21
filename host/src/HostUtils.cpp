@@ -33,17 +33,6 @@ void handleStopSignal([[maybe_unused]] const int signalNumber)
 }
 
 /*
- * Get the steady time of the host.
- */
-[[nodiscard]] std::chrono::milliseconds getSteadyTime()
-{
-    // expose the steady time in milliseconds
-    const std::chrono::steady_clock::duration steadyTime = std::chrono::steady_clock::now()
-                                                               .time_since_epoch();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(steadyTime);
-}
-
-/*
  * Get the time since the first log line as timestamp text.
  */
 [[nodiscard]] std::string getTimestampText()
@@ -155,8 +144,8 @@ std::string getDecimalText(const double value, const int decimalCount)
 std::chrono::milliseconds getElapsedTime()
 {
     // expose the time since the first call
-    static const std::chrono::milliseconds startTimestamp = getSteadyTime();
-    return getSteadyTime() - startTimestamp;
+    static const SteadyClock steadyClock;
+    return steadyClock.getTime();
 }
 
 std::string getTimeText(const std::chrono::milliseconds time)
@@ -523,15 +512,18 @@ bool getRunning()
 }
 
 SteadyClock::SteadyClock()
-    : startTimestamp(getSteadyTime())
-{}
+    : elapsedTimer()
+{
+    // start the time at zero
+    this->elapsedTimer.start();
+}
 
 SteadyClock::~SteadyClock() {}
 
 std::chrono::milliseconds SteadyClock::getTime() const
 {
     // expose the time since construction
-    return getSteadyTime() - this->startTimestamp;
+    return std::chrono::milliseconds(this->elapsedTimer.elapsed());
 }
 
 } // namespace sercom::HostUtils

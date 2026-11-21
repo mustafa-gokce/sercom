@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+#include <QElapsedTimer>
+
 #include "../../core/include/Clock.h"
 #include "../../core/include/Definitions.h"
 #include "../../core/include/Frame.h"
@@ -161,7 +163,7 @@ class SteadyClock final : public Clock::Clock
 {
 public:
     /*
-     * Steady clock of the host that starts at zero on construction.
+     * Steady clock of the host on a QElapsedTimer that starts at zero on construction.
      */
     SteadyClock();
     ~SteadyClock() final;
@@ -181,7 +183,7 @@ public:
     [[nodiscard]] std::chrono::milliseconds getTime() const final;
 
 private:
-    const std::chrono::milliseconds startTimestamp; // steady time at construction
+    QElapsedTimer elapsedTimer; // monotonic timer started at construction
 };
 
 } // namespace sercom::HostUtils
