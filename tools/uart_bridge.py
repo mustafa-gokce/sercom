@@ -8,6 +8,9 @@ of that second back, so the first request of every host command would go out aga
 This bridge owns the pseudo terminal and passes every byte at once in both directions.
 Bytes of the chip are dropped while no program holds the pseudo terminal open, as a USB bridge without a reader does.
 The bridge connects to the socket again when QEMU restarts, so the pseudo terminal stays like the port of a board.
+QSerialPort opens a port in exclusive mode and ends the mode when it closes the port. A pseudo terminal keeps the mode
+of a killed program and refuses every other program, so the bridge then links a new pseudo terminal in its place, as
+the port of a board is free again once the program is gone.
 """
 
 import argparse
@@ -31,6 +34,9 @@ CLOSED_POLL_TIMEOUT = 1
 # errors of a pseudo terminal without a reader or without room
 TERMINAL_ERRORS = (errno.EAGAIN, errno.EIO)
 
+# error of a pseudo terminal in the exclusive mode of a program
+EXCLUSIVE_ERROR = errno.EBUSY
+
 
 def parse_arguments():
     """Parse the command line."""
@@ -43,16 +49,18 @@ def parse_arguments():
 
 
 def open_terminal(link):
-    """Open a raw pseudo terminal, link its name and return the master descriptor."""
+    """Open a raw pseudo terminal, replace the link with its name and return the master descriptor and the name."""
     master, slave = os.openpty()
     tty.setraw(slave)
     name = os.ttyname(slave)
     os.close(slave)
     os.set_blocking(master, False)
-    if os.path.lexists(link):
-        os.unlink(link)
-    os.symlink(name, link)
-    return master
+    new_link = '%s.new' % link
+    if os.path.lexists(new_link):
+        os.unlink(new_link)
+    os.symlink(name, new_link)
+    os.replace(new_link, link)
+    return master, name
 
 
 def connect_socket(path, retry_delay):
@@ -74,14 +82,33 @@ def get_terminal_open(master):
     return not any(events & select.POLLHUP for _, events in poller.poll(0))
 
 
+def get_terminal_exclusive(master, name):
+    """Return whether no program holds the pseudo terminal open and it still refuses a new one."""
+    try:
+        descriptor = os.open(name, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    except OSError as error:
+        if error.errno != EXCLUSIVE_ERROR:
+            raise
+        return not get_terminal_open(master)
+    os.close(descriptor)
+    return False
+
+
 def main():
     """Forward the bytes between the socket and the pseudo terminal until the bridge is stopped."""
     arguments = parse_arguments()
-    master = open_terminal(arguments.link)
+    master, name = open_terminal(arguments.link)
     connection = connect_socket(arguments.socket, arguments.retry_delay)
+    terminal_was_open = False
     while True:
-        # wait for bytes of the chip and, with a reader, for bytes of the program
+        # link a new pseudo terminal when the program that held it open left it exclusive
         terminal_open = get_terminal_open(master)
+        if terminal_was_open and not terminal_open and get_terminal_exclusive(master, name):
+            os.close(master)
+            master, name = open_terminal(arguments.link)
+        terminal_was_open = terminal_open
+
+        # wait for bytes of the chip and, with a reader, for bytes of the program
         poller = select.poll()
         poller.register(connection, select.POLLIN)
         if terminal_open:
