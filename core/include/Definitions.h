@@ -68,6 +68,50 @@ std::string_view fromDecodeErrorType(DecodeErrorType decodeErrorType);
 DecodeErrorType toDecodeErrorType(std::string_view decodeErrorType);
 
 /*
+ * Message status type.
+ */
+enum class MessageStatusType : uint8_t {
+    UNKNOWN = 0,                  // reason not given or not understood
+    ACCEPTED = 1,                 // message is accepted
+    UNSUPPORTED_MESSAGE_TYPE = 2, // receiver does not implement the message type
+    MALFORMED_PAYLOAD = 3,        // payload does not match the message type
+    BUSY = 4,                     // receiver cannot handle the message now
+    INVALID_ARGUMENT = 5,         // field of the payload is out of range
+};
+
+/*
+ * Message status type to integer.
+ */
+uint8_t fromMessageStatusType(MessageStatusType messageStatusType);
+
+/*
+ * Integer to message status type.
+ */
+MessageStatusType toMessageStatusType(uint8_t messageStatusType);
+
+/*
+ * Send status type.
+ */
+enum class SendStatusType : uint8_t {
+    UNKNOWN = 0,          // unknown send status
+    SENT = 1,             // frame is written to the transport
+    WINDOW_FULL = 2,      // no free slot for an acknowledged message
+    PAYLOAD_TOO_LONG = 3, // payload is above the limit of this build
+    TRANSPORT_ERROR = 4,  // transport could not write the frame
+    INVALID_ARGUMENT = 5, // argument is missing or does not fit into its message field
+};
+
+/*
+ * Send status type to string.
+ */
+std::string_view fromSendStatusType(SendStatusType sendStatusType);
+
+/*
+ * String to send status type.
+ */
+SendStatusType toSendStatusType(std::string_view sendStatusType);
+
+/*
  * Check whether a flag is set in the value of a FLAGS field.
  */
 [[nodiscard]] bool isFrameFlagSet(uint8_t flags, FrameFlagType frameFlagType);
