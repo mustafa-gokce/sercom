@@ -22,6 +22,7 @@ struct DecoderStatistics
     uint64_t incomingFrameCounter = 0;  // frames that passed every check
     uint64_t invalidVersionCounter = 0; // frame candidates with an unsupported version
     uint64_t payloadTooLongCounter = 0; // frame candidates with a payload above the limit
+    uint64_t crcMismatchCounter = 0;    // frame candidates with a wrong CRC32
 };
 
 class FrameDecoderHandler

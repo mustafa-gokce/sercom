@@ -113,8 +113,16 @@ void FrameDecoder::processBuffer()
             break;
         }
 
-        // copy the frame out of the buffer
+        // CRC32 must match the frame
         const Frame::Frame frame(candidate, frameSize);
+        if (!frame.getCRCValid()) {
+            // keep track of CRC32 mismatches
+            ++this->statistics.crcMismatchCounter;
+
+            // reject the candidate and scan again
+            this->rejectCandidate(Definitions::DecodeErrorType::CRC_MISMATCH);
+            continue;
+        }
 
         // consume the frame
         this->discardBytes(frameSize, false);
