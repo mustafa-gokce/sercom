@@ -4,14 +4,53 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include <QByteArray>
+#include <QMetaType>
 #include <QObject>
 #include <QSerialPort>
 
 #include "../../core/include/Transport.h"
 
 namespace sercom::SerialPort {
+
+/*
+ * Serial port status type.
+ */
+enum class SerialPortStatusType : uint8_t {
+    UNKNOWN = 0,               // unknown serial port status
+    OK = 1,                    // operation succeeded
+    TIMED_OUT = 2,             // no byte arrived within the timeout
+    NOT_OPEN = 3,              // serial port is not open
+    OPEN_FAILED = 4,           // device could not be opened
+    CONFIGURATION_FAILED = 5,  // device did not take the configuration
+    UNSUPPORTED_BAUD_RATE = 6, // serial port does not support the baud rate
+    READ_FAILED = 7,           // reading from the device failed
+    DISCONNECTED = 8,          // device was removed or became unavailable
+    WRITE_FAILED = 9,          // writing to the device failed
+};
+
+/*
+ * Serial port status type to string.
+ */
+std::string_view fromSerialPortStatusType(SerialPortStatusType serialPortStatusType);
+
+/*
+ * String to serial port status type.
+ */
+SerialPortStatusType toSerialPortStatusType(std::string_view serialPortStatusType);
+
+/*
+ * Get the serial port status type of a QSerialPort error.
+ */
+[[nodiscard]] SerialPortStatusType getSerialPortStatusType(
+    QSerialPort::SerialPortError serialPortError);
+
+/*
+ * Check whether the serial port supports the baud rate.
+ */
+[[nodiscard]] bool isBaudRateSupported(uint32_t baudRate);
 
 class SerialPort final : public QObject, public sercom::Transport::Transport
 {
@@ -37,7 +76,7 @@ public:
      * Open and configure a serial device, a pseudo terminal or a COM port.
      * Close an open port first.
      */
-    [[nodiscard]] bool open(const std::string &portName, uint32_t baudRate);
+    [[nodiscard]] SerialPortStatusType open(const std::string &portName, uint32_t baudRate);
 
     /*
      * Send the bytes that wait for the driver and close the port.
@@ -67,11 +106,21 @@ signals:
      */
     void receivedData(const QByteArray &data);
 
+    /*
+     * Notify listeners about an error of the open port.
+     */
+    void errorHappened(sercom::SerialPort::SerialPortStatusType serialPortStatusType);
+
 private slots:
     /*
      * Listen for received bytes that are ready to read.
      */
     void onReadyRead();
+
+    /*
+     * Listen for an error of the serial port.
+     */
+    void onErrorOccurred(QSerialPort::SerialPortError serialPortError);
 
 private:
     QSerialPort serialPort; // serial port of Qt
@@ -79,5 +128,9 @@ private:
 };
 
 } // namespace sercom::SerialPort
+
+// meta type declarations
+Q_DECLARE_METATYPE(sercom::SerialPort::SerialPortStatusType)
+Q_DECLARE_METATYPE(sercom::SerialPort::SerialPortStatusType *)
 
 #endif // SERCOM_SERIAL_PORT_H
