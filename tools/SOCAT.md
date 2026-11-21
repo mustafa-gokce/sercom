@@ -167,4 +167,5 @@ leftovers from crashes.
 
 See also: `NOISE.md` for the noise options, what each mode tests, and the
 recommended profiles, and `noisy_link.sh` for the scripted version of this setup
-(`tools/noisy_link.sh --help` lists its options).
+(`tools/noisy_link.sh --help` lists its options). Windows has no pseudo terminals:
+`COM0COM.md` builds the same link from two com0com pairs with `tools/noisy_link.ps1`.
