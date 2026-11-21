@@ -546,6 +546,34 @@ TEST_CASE_METHOD(TestLink,
     REQUIRE(testLink->getStatistics().retransmissionCounter == static_cast<uint64_t>(1));
 }
 
+TEST_CASE_METHOD(
+    TestLink,
+    "A lost acknowledgement causes a duplicate that is answered but not delivered again",
+    "[Link][testLostAcknowledgement]")
+{
+    // send an acknowledged message whose first acknowledgement is lost
+    anotherTransport.setFilter(
+        [](const size_t sendCount, [[maybe_unused]] const std::vector<uint8_t> &data) noexcept {
+            return sendCount != 1;
+        });
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({0xAA}))
+            == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE(anotherLinkHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(testLinkHandler.getDeliveryResults().empty());
+
+    // let the retransmit timeout pass
+    advance(getLinkConfiguration().retransmitTimeout);
+
+    // check the single delivery and confirmation and the counted duplicate
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(anotherLinkHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.at(0).confirmed);
+    REQUIRE(anotherLink->getStatistics().duplicateFrameCounter == static_cast<uint64_t>(1));
+    REQUIRE(anotherLink->getStatistics().outgoingAcknowledgementCounter == static_cast<uint64_t>(2));
+}
+
 TEST_CASE_METHOD(TestLink,
                  "Delivery fails after the configured number of retransmissions",
                  "[Link][testDeliveryTimeout]")
@@ -603,6 +631,31 @@ TEST_CASE_METHOD(TestLink,
     // check that no retransmission follows
     advance(10 * getLinkConfiguration().retransmitTimeout);
     REQUIRE(testLink->getStatistics().retransmissionCounter == static_cast<uint64_t>(0));
+}
+
+TEST_CASE_METHOD(
+    TestLink,
+    "A lost rejection is repeated with the same status without asking the application again",
+    "[Link][testLostRejection]")
+{
+    // send an acknowledged message whose first rejection is lost
+    anotherLinkHandler.setMessageStatusType(Definitions::MessageStatusType::BUSY);
+    anotherTransport.setFilter(
+        [](const size_t sendCount, [[maybe_unused]] const std::vector<uint8_t> &data) noexcept {
+            return sendCount != 1;
+        });
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>())
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // let the retransmit timeout pass
+    advance(getLinkConfiguration().retransmitTimeout);
+
+    // check one delivery and the repeated rejection
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(anotherLinkHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.at(0).remoteMessageStatusType == Definitions::MessageStatusType::BUSY);
 }
 
 TEST_CASE_METHOD(TestLink,
@@ -669,4 +722,49 @@ TEST_CASE_METHOD(TestLink,
     // check the empty window and the statistics
     REQUIRE(testLink->getPendingCount() == static_cast<size_t>(0));
     REQUIRE(testLink->getStatistics().transportErrorCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A restarted peer reusing message counters is not mistaken for a duplicate",
+                 "[Link][testRestartedPeer]")
+{
+    // send four acknowledged messages
+    static constexpr uint8_t messageCount = 4;
+    for (uint8_t messageIndex = 0; messageIndex < messageCount; ++messageIndex) {
+        CAPTURE(messageIndex);
+        REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({messageIndex}))
+                == Definitions::SendStatusType::SENT);
+        pump();
+    }
+    REQUIRE(anotherLinkHandler.getMessages().size() == static_cast<size_t>(messageCount));
+
+    // close the test link
+    testLink.reset(nullptr);
+
+    // restart the test link with its message counters at zero
+    testLink.reset(new Link::Link(testTransport, testLinkHandler, clock, getLinkConfiguration()));
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>({0x55}))
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the new message (only retransmissions are duplicates)
+    const std::vector<Frame::Frame> messages = anotherLinkHandler.getMessages();
+    REQUIRE(messages.size() == static_cast<size_t>(messageCount) + 1);
+    REQUIRE(getPayload(messages.back()) == std::vector<uint8_t>({0x55}));
+    REQUIRE(anotherLink->getStatistics().duplicateFrameCounter == static_cast<uint64_t>(0));
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A late duplicate acknowledgement is counted and ignored",
+                 "[Link][testDuplicateAcknowledgement]")
+{
+    // send an acknowledged message whose acknowledgement arrives twice
+    anotherTransport.setDuplicated(true);
+    REQUIRE(sendAcknowledgedMessage(0x0100, std::vector<uint8_t>())
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check one confirmation and the unexpected acknowledgement
+    REQUIRE(testLinkHandler.getDeliveryResults().size() == static_cast<size_t>(1));
+    REQUIRE(testLink->getStatistics().unexpectedAcknowledgementCounter == static_cast<uint64_t>(1));
 }
