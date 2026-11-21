@@ -13,10 +13,12 @@ namespace sercom::FirmwareSettings {
 
 using namespace std::chrono_literals;
 
-extern const bool ConsolePrinted;             // console on UART0 and protocol on UART2
-extern const std::string_view SerialPortName; // name of the protocol serial port
-extern const int8_t SerialReceivePin;         // GPIO of the protocol receive pin
-extern const int8_t SerialTransmitPin;        // GPIO of the protocol transmit pin
+extern const bool ConsolePrinted;              // console on UART0 and protocol on UART2
+extern const bool ControllerRun;               // controller role instead of the device role
+extern const std::string_view ApplicationName; // name of the application on the protocol serial port
+extern const std::string_view SerialPortName;  // name of the protocol serial port
+extern const int8_t SerialReceivePin;          // GPIO of the protocol receive pin
+extern const int8_t SerialTransmitPin;         // GPIO of the protocol transmit pin
 
 constexpr std::string_view UART0_PORT_NAME = "UART0"; // name of the serial port on the USB bridge
 constexpr int8_t UART0_RECEIVE_PIN = 3;               // GPIO of the UART0 receive pin
