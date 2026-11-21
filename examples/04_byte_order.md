@@ -12,7 +12,7 @@ byte order.
 
 ## Before you start
 
-1. Watch lecture L22 "Endianness and byte-wise serialization" first.
+1. Watch lecture L25 "Endianness and byte-wise serialization" first.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -125,5 +125,5 @@ You see `0`.
 - `core/src/Frame.cpp` loads the message counter, the message type and the CRC32 of a frame with `loadUint16` and
   `loadUint32`.
 - `app/src/Messages.cpp` loads the request timestamp of a ping request with `loadUint32`.
-- Lectures: L22 "Endianness and byte-wise serialization", L21 "Bytes and fixed-width integers" and L27 "Anatomy of a
+- Lectures: L25 "Endianness and byte-wise serialization", L24 "Bytes and fixed-width integers" and L30 "Anatomy of a
   frame".
