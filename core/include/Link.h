@@ -20,6 +20,10 @@ namespace sercom::Link {
  */
 struct LinkConfiguration
 {
+    std::chrono::milliseconds retransmitTimeout
+        = Settings::DEFAULT_RETRANSMIT_TIMEOUT_MSEC; // wait for an answer in milliseconds
+    uint8_t maximumRetransmissions
+        = Settings::DEFAULT_MAXIMUM_RETRANSMISSIONS; // retransmissions before a delivery fails
     std::chrono::milliseconds interByteTimeout
         = Settings::DEFAULT_INTER_BYTE_TIMEOUT_MSEC; // decoder silence limit in milliseconds
 };
@@ -36,7 +40,8 @@ struct LinkStatistics
     uint64_t incomingAcknowledgementCounter = 0;   // ACK frames of a pending message
     uint64_t outgoingRejectionCounter = 0;         // sent NACK frames
     uint64_t incomingRejectionCounter = 0;         // NACK frames of a pending message
-    uint64_t failedDeliveryCounter = 0;            // rejected messages
+    uint64_t retransmissionCounter = 0;            // frames sent again after a timeout
+    uint64_t failedDeliveryCounter = 0;            // timed out or rejected messages
     uint64_t unexpectedAcknowledgementCounter = 0; // ACK or NACK frames without a pending message
     uint64_t transportErrorCounter = 0;            // frames the transport could not take
     FrameDecoder::DecoderStatistics decoderStatistics; // decoder statistics
@@ -51,6 +56,8 @@ struct PendingMessage
     uint16_t messageCounter = 0;                                 // message counter of the message
     uint16_t messageType = 0;                                    // message type of the message
     uint8_t payloadLength = 0;                                   // payload length in bytes
+    uint8_t retransmissionCount = 0;                             // retransmissions so far
+    std::chrono::milliseconds lastSentTimestamp{};               // time of the latest transmission
     std::array<uint8_t, Settings::MaximumPayloadSize> payload{}; // payload for retransmissions
 };
 
@@ -100,7 +107,7 @@ class Link final : public FrameDecoder::FrameDecoderHandler
 {
 public:
     /*
-     * Link layer with message counters and acknowledgements.
+     * Link layer with message counters, acknowledgements and retransmissions.
      */
     explicit Link(Transport::Transport &transport,
                   LinkHandler &handler,
@@ -119,6 +126,7 @@ public:
 public:
     /*
      * Send a message and store the message counter it carries.
+     * Acknowledged messages are sent again until they are confirmed or fail.
      */
     [[nodiscard]] Definitions::SendStatusType sendMessage(uint16_t messageType,
                                                           const uint8_t *payload,
@@ -132,7 +140,7 @@ public:
     void onReceivedData(const uint8_t *data, size_t size);
 
     /*
-     * Maintain the inter byte timeout.
+     * Maintain the retransmissions and the inter byte timeout.
      */
     void maintain();
 
@@ -165,6 +173,7 @@ private:
 
     /*
      * Listen for a decode error.
+     * Corrupted frames are not answered because the sender retransmits after its timeout.
      */
     void onDecodeError(Definitions::DecodeErrorType decodeErrorType) final;
 
@@ -189,6 +198,7 @@ private:
     Transport::Transport &transport;         // reference for transport
     LinkHandler &handler;                    // reference to handler
     const Clock::Clock &clock;               // reference for clock
+    const LinkConfiguration configuration;   // link configuration
     FrameDecoder::FrameDecoder frameDecoder; // decoder of the received bytes
     uint16_t nextMessageCounter;             // message counter of the next message
     LinkStatistics statistics;               // link statistics

@@ -13,6 +13,7 @@ Link::Link(Transport::Transport &transport,
     : transport(transport)
     , handler(handler)
     , clock(clock)
+    , configuration(configuration)
     , frameDecoder(*this, configuration.interByteTimeout)
     , nextMessageCounter(0)
     , statistics()
@@ -65,6 +66,8 @@ Definitions::SendStatusType Link::sendMessage(const uint16_t messageType,
         iterator->messageCounter = assignedMessageCounter;
         iterator->messageType = messageType;
         iterator->payloadLength = static_cast<uint8_t>(payloadLength);
+        iterator->retransmissionCount = 0;
+        iterator->lastSentTimestamp = this->clock.getTime();
         std::copy_n(payload, payloadLength, iterator->payload.begin());
     }
 
@@ -88,6 +91,58 @@ void Link::maintain()
 
     // drop a partial frame of a silent line
     this->frameDecoder.checkTimeout(currentTime);
+
+    // iterate over the pending messages
+    std::for_each(this->pendingMessages.begin(),
+                  this->pendingMessages.end(),
+                  [this, currentTime](PendingMessage &pendingMessage) {
+                      // slot must hold a message
+                      if (!pendingMessage.used) {
+                          return;
+                      }
+
+                      // retransmit timeout must have passed
+                      if (currentTime - pendingMessage.lastSentTimestamp
+                          < this->configuration.retransmitTimeout) {
+                          return;
+                      }
+
+                      // give up after the last retransmission
+                      if (pendingMessage.retransmissionCount
+                          >= this->configuration.maximumRetransmissions) {
+                          // free the slot
+                          pendingMessage.used = false;
+
+                          // keep track of failed deliveries
+                          ++this->statistics.failedDeliveryCounter;
+
+                          // notify listeners about the failed delivery
+                          this->handler.onDeliveryFailed(pendingMessage.messageCounter,
+                                                         pendingMessage.messageType,
+                                                         Definitions::DeliveryFailureType::TIMED_OUT,
+                                                         Definitions::MessageStatusType::UNKNOWN);
+
+                          // do not proceed further
+                          return;
+                      }
+
+                      // keep track of retransmissions
+                      ++pendingMessage.retransmissionCount;
+                      pendingMessage.lastSentTimestamp = currentTime;
+                      ++this->statistics.retransmissionCounter;
+
+                      // send the message again with the retransmission flag
+                      const uint8_t flags = static_cast<uint8_t>(
+                          Definitions::fromFrameFlagType(Definitions::FrameFlagType::ACK_REQUEST)
+                          | Definitions::fromFrameFlagType(
+                              Definitions::FrameFlagType::RETRANSMISSION));
+                      const Frame::Frame frame(flags,
+                                               pendingMessage.messageCounter,
+                                               pendingMessage.messageType,
+                                               pendingMessage.payload.data(),
+                                               pendingMessage.payloadLength);
+                      [[maybe_unused]] const bool frameSent = this->sendFrame(frame);
+                  });
 }
 
 bool Link::getSendAcknowledgedAllowed() const
