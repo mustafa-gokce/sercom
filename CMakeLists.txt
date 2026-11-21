@@ -447,6 +447,16 @@ if (SERCOM_BUILD_BINARIES)
     )
 endif()
 
+# copy the Qt libraries and the MinGW runtime next to the Windows executables on a Windows build host
+if (WIN32 AND CMAKE_HOST_WIN32 AND SERCOM_BUILD_BINARIES)
+    get_target_property(QT_QMAKE_EXECUTABLE Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
+    get_filename_component(QT_BINARY_DIRECTORY ${QT_QMAKE_EXECUTABLE} DIRECTORY)
+    add_custom_command(TARGET ${PROJECT_NAME}_cli POST_BUILD
+        COMMAND ${QT_BINARY_DIRECTORY}/windeployqt.exe --no-translations --compiler-runtime
+                $<TARGET_FILE:${PROJECT_NAME}_cli>
+    )
+endif()
+
 # create fuzz executables (only with the fuzzer flags passed from outside)
 if (CMAKE_CXX_FLAGS MATCHES "fuzzer-no-link")
     # create frame decoder fuzz executable
