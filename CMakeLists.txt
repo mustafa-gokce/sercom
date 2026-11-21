@@ -473,6 +473,19 @@ if (SERCOM_BUILD_BINARIES)
         Qt${QT_VERSION_MAJOR}::Core
     )
 
+    # create serial ping example executable
+    add_executable(${PROJECT_NAME}_example_24_serial_ping
+        examples/24_serial_ping.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_24_serial_ping PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
+    )
+
     # create message dispatching example executable
     add_executable(${PROJECT_NAME}_example_25_dispatch_messages
         examples/25_dispatch_messages.cpp
