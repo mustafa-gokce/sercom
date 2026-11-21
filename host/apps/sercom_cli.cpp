@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 
+#include <QCoreApplication>
+
 #include "../../app/include/AppSettings.h"
 #include "../../app/include/Messages.h"
 #include "../../core/include/Settings.h"
@@ -133,6 +135,9 @@ int main(int argc, char *argv[])
 
     // install the stop handlers
     HostUtils::installStopHandlers();
+
+    // initialize the Qt application of the event loop
+    const QCoreApplication application(argc, argv);
 
     // run the command
     CliApplication::CliApplication cliApplication(commandLine);
