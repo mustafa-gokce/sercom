@@ -48,3 +48,5 @@ because its messages travel over the link layer of example 18.
 6. It runs example 24 on a `socat` pseudo terminal pair against `build/sercom_device_sim`.
 7. Without `socat` it skips examples 01 and 24 with a message.
 8. The exit code is 0 when every example exited with 0, otherwise 1.
+9. On Windows run the PowerShell twin instead: `tools/run_examples.ps1 build`
+10. It runs examples 01 and 24 on the com0com pair `COM10` and `COM11` of `tools/COM0COM.md`, stops example 01 with Ctrl+C and skips both with a message without the pair.
