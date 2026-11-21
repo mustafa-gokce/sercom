@@ -453,7 +453,8 @@ TEST_CASE_METHOD(TestFrameDecoder,
                  "[FrameDecoder][testPayloadTooLong]")
 {
     // payload limit must be below the largest field value
-    if constexpr (Settings::MaximumPayloadSize >= std::numeric_limits<uint8_t>::max()) {
+    static constexpr size_t largestPayloadLength = std::numeric_limits<uint8_t>::max();
+    if constexpr (Settings::MaximumPayloadSize >= largestPayloadLength) {
         SKIP("This build accepts every length the one byte field can carry");
     }
 
