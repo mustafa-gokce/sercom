@@ -42,6 +42,13 @@ constexpr std::chrono::milliseconds MAXIMUM_COMMAND_DURATION_MSEC
     = 24 * 60 * 60 * 1000ms;                    // maximum command duration in milliseconds
 constexpr uint32_t MAXIMUM_PING_COUNT = 100000; // maximum ping requests of the ping command
 
+constexpr uint32_t DEFAULT_ECHO_PAYLOAD_SIZE = 64; // default echo payload size in bytes
+constexpr uint32_t DEFAULT_ECHO_WINDOW_SIZE = 2;   // default echo requests in flight
+constexpr uint32_t MAXIMUM_ECHO_COUNT = 1000000;   // maximum echo requests of the stress command
+constexpr size_t ECHO_HEADER_SIZE = 4;             // echo sequence number size in bytes
+constexpr std::chrono::milliseconds ECHO_LOSS_TIMEOUT_MSEC = RESPONSE_TIMEOUT_MSEC
+                                                             * 2; // echo loss timeout in milliseconds
+
 constexpr std::string_view DEFAULT_DEVICE_NAME = "sercom-device-sim"; // default device name
 constexpr uint32_t SIMULATED_FREE_HEAP_SIZE = 180000; // simulated free heap size in bytes
 constexpr int16_t SIMULATED_TEMPERATURE = 2500; // simulated mean temperature in 0.01 degree steps
