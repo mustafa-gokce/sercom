@@ -449,6 +449,18 @@ if (SERCOM_BUILD_BINARIES)
         Qt${QT_VERSION_MAJOR}::Core
     )
 
+    # create conversation trace example executable
+    add_executable(${PROJECT_NAME}_example_22_trace_a_conversation
+        examples/22_trace_a_conversation.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_22_trace_a_conversation PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
+
     # create custom message example executable
     add_executable(${PROJECT_NAME}_example_23_custom_message
         examples/23_custom_message.cpp
