@@ -142,6 +142,7 @@ add_library(${PROJECT_NAME}_host_lib
     host/include/SerialPort.h host/src/SerialPort.cpp
 
     host/include/SimulatedPlatform.h host/src/SimulatedPlatform.cpp
+    host/include/DeviceSimulator.h host/src/DeviceSimulator.cpp
 )
 target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
     ${PROJECT_NAME}_settings
