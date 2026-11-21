@@ -4,6 +4,7 @@
 #include <limits>
 #include <memory>
 #include <random>
+#include <set>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -611,6 +612,91 @@ TEST_CASE_METHOD(TestFrameDecoder,
     // check the cleared statistics after a reset
     testFrameDecoder->reset();
     REQUIRE(testFrameDecoder->getStatistics().incomingByteCounter == static_cast<uint64_t>(0));
+}
+
+TEST_CASE_METHOD(TestFrameDecoder,
+                 "Random noise never produces a frame that was not sent",
+                 "[FrameDecoder][testRandomNoise]")
+{
+    // receive random bytes of a fixed seed
+    static constexpr uint32_t randomSeed = 2024;
+    static constexpr size_t noiseSize = 200000;
+    std::mt19937 generator(randomSeed);
+    std::uniform_int_distribution<int> byteDistribution(0, std::numeric_limits<uint8_t>::max());
+    std::vector<uint8_t> noise(noiseSize);
+    std::generate(noise.begin(), noise.end(), [&generator, &byteDistribution]() {
+        return static_cast<uint8_t>(byteDistribution(generator));
+    });
+    receiveData(noise);
+
+    // check that no frame was found
+    REQUIRE(testDecoderHandler.getFrames().empty());
+}
+
+TEST_CASE_METHOD(TestFrameDecoder,
+                 "A damaged stream only ever yields frames that were sent intact",
+                 "[FrameDecoder][testDamagedStream]")
+{
+    // create a clean stream and remember every sent message counter
+    static constexpr uint16_t frameCount = 2000;
+    static constexpr size_t payloadLength = 20;
+    std::set<uint16_t> sentMessageCounters;
+    std::vector<uint8_t> stream;
+    for (uint16_t messageCounter = 0; messageCounter < frameCount; ++messageCounter) {
+        appendData(stream,
+                   getFrameData(0,
+                                messageCounter,
+                                0x0100,
+                                std::vector<uint8_t>(payloadLength,
+                                                     static_cast<uint8_t>(messageCounter))));
+        sentMessageCounters.insert(messageCounter);
+    }
+
+    // damage the stream with a fixed seed
+    static constexpr uint32_t randomSeed = 7;
+    static constexpr double damageProbability = 0.002;
+    std::mt19937 generator(randomSeed);
+    std::uniform_real_distribution<double> chanceDistribution(0.0, 1.0);
+    std::uniform_int_distribution<int> byteDistribution(0, std::numeric_limits<uint8_t>::max());
+    std::vector<uint8_t> noisyStream;
+    std::for_each(stream.cbegin(),
+                  stream.cend(),
+                  [&generator, &chanceDistribution, &byteDistribution, &noisyStream](
+                      const uint8_t byte) {
+                      // drop the byte
+                      if (chanceDistribution(generator) < damageProbability) {
+                          return;
+                      }
+
+                      // flip a bit of the byte
+                      const bool flipped = chanceDistribution(generator) < damageProbability;
+                      noisyStream.push_back(flipped ? static_cast<uint8_t>(byte ^ 0x10) : byte);
+
+                      // insert a random byte after the byte
+                      if (chanceDistribution(generator) < damageProbability) {
+                          noisyStream.push_back(static_cast<uint8_t>(byteDistribution(generator)));
+                      }
+                  });
+
+    // receive the damaged stream
+    receiveData(noisyStream);
+
+    // check that most frames survive (at least three quarters)
+    const std::vector<Frame::Frame> frames = testDecoderHandler.getFrames();
+    WARN("The damaged stream delivered " << frames.size() << " of " << frameCount
+                                         << " frames, expected more than " << frameCount * 3 / 4
+                                         << " frames");
+    REQUIRE(frames.size() > static_cast<size_t>(frameCount) * 3 / 4);
+
+    // check that every received frame was sent with its payload
+    std::for_each(frames.cbegin(), frames.cend(), [&sentMessageCounters](const Frame::Frame &frame) {
+        // check the message counter and the payload of the frame
+        CAPTURE(frame.getMessageCounter());
+        REQUIRE(sentMessageCounters.count(frame.getMessageCounter()) == static_cast<size_t>(1));
+        REQUIRE(getPayload(frame)
+                == std::vector<uint8_t>(payloadLength,
+                                        static_cast<uint8_t>(frame.getMessageCounter())));
+    });
 }
 
 TEST_CASE_METHOD(TestFrameDecoder,
