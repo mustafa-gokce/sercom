@@ -519,6 +519,7 @@ if (SERCOM_BUILD_TESTS)
         tests/test_HostUtils.cpp
         tests/test_RingBuffer.cpp
         tests/test_Console.cpp
+        tests/test_ActivityLed.cpp
     )
     target_link_libraries(${PROJECT_NAME}_test PRIVATE
         ${PROJECT_NAME}_settings
