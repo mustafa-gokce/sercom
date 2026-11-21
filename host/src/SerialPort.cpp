@@ -256,4 +256,22 @@ void SerialPort::onErrorOccurred(const QSerialPort::SerialPortError serialPortEr
     emit this->errorHappened(getSerialPortStatusType(serialPortError));
 }
 
+namespace {
+
+/*
+ * Register the status type of the error signal for spies, variants and queued connections.
+ */
+void registerSerialPortMetaTypes()
+{
+    // register the status type and its pointer form with the Qt meta type system
+    [[maybe_unused]] const int serialPortStatusTypeId = qRegisterMetaType<SerialPortStatusType>();
+    [[maybe_unused]] const int serialPortStatusTypePointerId
+        = qRegisterMetaType<SerialPortStatusType *>();
+}
+
+// ensure the types are registered at startup
+Q_CONSTRUCTOR_FUNCTION(registerSerialPortMetaTypes)
+
+} // namespace
+
 } // namespace sercom::SerialPort

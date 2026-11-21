@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include <QByteArray>
+#include <QMetaType>
 #include <QObject>
 #include <QSerialPort>
 
@@ -127,5 +128,9 @@ private:
 };
 
 } // namespace sercom::SerialPort
+
+// meta type declarations
+Q_DECLARE_METATYPE(sercom::SerialPort::SerialPortStatusType)
+Q_DECLARE_METATYPE(sercom::SerialPort::SerialPortStatusType *)
 
 #endif // SERCOM_SERIAL_PORT_H
