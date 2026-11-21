@@ -113,6 +113,7 @@ add_library(${PROJECT_NAME}_core_lib
 
     core/include/Clock.h core/src/Clock.cpp
     core/include/Transport.h core/src/Transport.cpp
+    core/include/Link.h core/src/Link.cpp
 )
 target_link_libraries(${PROJECT_NAME}_core_lib PRIVATE
     ${PROJECT_NAME}_settings

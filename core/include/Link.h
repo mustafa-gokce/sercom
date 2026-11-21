@@ -1,0 +1,167 @@
+#ifndef SERCOM_LINK_H
+#define SERCOM_LINK_H
+
+#include <array>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+
+#include "../include/Clock.h"
+#include "../include/Definitions.h"
+#include "../include/Frame.h"
+#include "../include/FrameDecoder.h"
+#include "../include/Settings.h"
+#include "../include/Transport.h"
+
+namespace sercom::Link {
+
+/*
+ * Link configuration.
+ */
+struct LinkConfiguration
+{
+    std::chrono::milliseconds interByteTimeout
+        = Settings::DEFAULT_INTER_BYTE_TIMEOUT_MSEC; // decoder silence limit in milliseconds
+};
+
+/*
+ * Link statistics since construction.
+ */
+struct LinkStatistics
+{
+    uint64_t outgoingFrameCounter = 0;                 // frames written to the transport
+    uint64_t incomingFrameCounter = 0;                 // valid frames from the decoder
+    uint64_t deliveredMessageCounter = 0;              // messages handed to the application
+    uint64_t transportErrorCounter = 0;                // frames the transport could not take
+    FrameDecoder::DecoderStatistics decoderStatistics; // decoder statistics
+};
+
+/*
+ * Acknowledged message that waits for an answer.
+ */
+struct PendingMessage
+{
+    bool used = false;                                           // slot holds a message
+    uint16_t messageCounter = 0;                                 // message counter of the message
+    uint16_t messageType = 0;                                    // message type of the message
+    uint8_t payloadLength = 0;                                   // payload length in bytes
+    std::array<uint8_t, Settings::MaximumPayloadSize> payload{}; // payload for retransmissions
+};
+
+class LinkHandler
+{
+public:
+    /*
+     * Receiver of link layer events, implemented by the application.
+     */
+    LinkHandler() = default;
+    virtual ~LinkHandler();
+
+    // delete copy constructor and copy assignment operator
+    LinkHandler(const LinkHandler &) = delete;
+    LinkHandler &operator=(const LinkHandler &) = delete;
+
+    // delete move constructor and move assignment operator
+    LinkHandler(LinkHandler &&) = delete;
+    LinkHandler &operator=(LinkHandler &&) = delete;
+
+public:
+    /*
+     * Listen for a received message and get the message status that answers a requested ACK.
+     * The frame reference is valid during the call only.
+     */
+    [[nodiscard]] virtual Definitions::MessageStatusType onReceivedMessage(const Frame::Frame &frame)
+        = 0;
+};
+
+class Link final : public FrameDecoder::FrameDecoderHandler
+{
+public:
+    /*
+     * Link layer with message counters.
+     */
+    explicit Link(Transport::Transport &transport,
+                  LinkHandler &handler,
+                  const Clock::Clock &clock,
+                  const LinkConfiguration &configuration = LinkConfiguration());
+    ~Link() final;
+
+    // delete copy constructor and copy assignment operator
+    Link(const Link &) = delete;
+    Link &operator=(const Link &) = delete;
+
+    // delete move constructor and move assignment operator
+    Link(Link &&) = delete;
+    Link &operator=(Link &&) = delete;
+
+public:
+    /*
+     * Send a message and store the message counter it carries.
+     */
+    [[nodiscard]] Definitions::SendStatusType sendMessage(uint16_t messageType,
+                                                          const uint8_t *payload,
+                                                          size_t payloadLength,
+                                                          bool acknowledged,
+                                                          uint16_t &messageCounter);
+
+    /*
+     * Listen for received data and hand it to the decoder.
+     */
+    void onReceivedData(const uint8_t *data, size_t size);
+
+    /*
+     * Maintain the inter byte timeout.
+     */
+    void maintain();
+
+public:
+    /*
+     * Get whether an acknowledged message can be sent now.
+     */
+    [[nodiscard]] bool getSendAcknowledgedAllowed() const;
+
+    /*
+     * Get the number of acknowledged messages that wait for an answer.
+     */
+    [[nodiscard]] size_t getPendingCount() const;
+
+    /*
+     * Get the message counter of the next message.
+     */
+    [[nodiscard]] uint16_t getNextMessageCounter() const;
+
+    /*
+     * Get the link statistics.
+     */
+    [[nodiscard]] LinkStatistics getStatistics() const;
+
+private:
+    /*
+     * Listen for a received frame.
+     */
+    void onReceivedFrame(const Frame::Frame &frame) final;
+
+    /*
+     * Listen for a decode error.
+     */
+    void onDecodeError(Definitions::DecodeErrorType decodeErrorType) final;
+
+private:
+    /*
+     * Send a frame to the transport.
+     */
+    [[nodiscard]] bool sendFrame(const Frame::Frame &frame);
+
+private:
+    Transport::Transport &transport;         // reference for transport
+    LinkHandler &handler;                    // reference to handler
+    const Clock::Clock &clock;               // reference for clock
+    FrameDecoder::FrameDecoder frameDecoder; // decoder of the received bytes
+    uint16_t nextMessageCounter;             // message counter of the next message
+    LinkStatistics statistics;               // link statistics
+    std::array<PendingMessage, Settings::MaximumPendingFrames> pendingMessages; // sent messages
+};
+
+} // namespace sercom::Link
+
+#endif // SERCOM_LINK_H
