@@ -12,7 +12,7 @@ Without the CRC check, the damaged frame would switch the LED off instead of on.
 
 ## Before you start
 
-1. Watch lecture L46 "CRC check and copying the frame out" (section S08).
+1. Watch lecture L49 "CRC check and copying the frame out" (section S08).
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -100,6 +100,6 @@ The exit code `0` means the decoder rejected the damaged frame and accepted the 
 - `core/src/FrameDecoder.cpp`: `processBuffer()` counts `crcMismatchCounter` and calls
   `rejectCandidate()`.
 - `tools/NOISE.md`: the test checklist for damaged frames.
-- Lectures: L46 "CRC check and copying the frame out" and L47 "Resynchronization: drop one
-  byte, rescan the rest"; what the CRC32 can find is L38 "What CRC32 guarantees and what it
+- Lectures: L49 "CRC check and copying the frame out" and L50 "Resynchronization: drop one
+  byte, rescan the rest"; what the CRC32 can find is L41 "What CRC32 guarantees and what it
   does not".
