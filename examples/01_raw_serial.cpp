@@ -83,6 +83,26 @@ int main(int argc, char *argv[])
         });
     });
 
+    // stop with a failure when the open port fails
+    QObject::connect(&serialPort,
+                     &QSerialPort::errorOccurred,
+                     [&serialPort, &portName](const QSerialPort::SerialPortError serialPortError) {
+                         // error must have happened
+                         if (serialPortError == QSerialPort::SerialPortError::NoError) {
+                             return;
+                         }
+
+                         // warn the user
+                         const std::string warningMessage = "Can not read the serial port "
+                                                            + portName + " ("
+                                                            + serialPort.errorString().toStdString()
+                                                            + ")";
+                         HostUtils::logWarning(warningMessage);
+
+                         // stop the event loop with the failure
+                         QCoreApplication::exit(1);
+                     });
+
     // send a text once per second and stop when a stop signal arrives
     static constexpr std::chrono::milliseconds timerPeriod = 100ms;
     static constexpr std::chrono::milliseconds messagePeriod = 1 * 1000ms;
