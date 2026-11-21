@@ -22,6 +22,7 @@ because its messages travel over the link layer of example 18.
 |---|---|---|---|---|---|
 | S01 | L10, L13, L18, L19, L20 | 01 | Raw Serial | Prints every byte of a serial port and sends a text once per second: a byte stream without frames | [guide](01_raw_serial.md), [source](01_raw_serial.cpp) |
 | S04 | L27, L28, L29 | 05 | Write and Read Fields | Writes and reads integer and float fields with `ByteWriter` and `ByteReader`, then the sticky error of a record cut short | [guide](05_write_and_read_fields.md), [source](05_write_and_read_fields.cpp) |
+| S06 | L40, L41 (also L38) | 06 | CRC32 of a Text | The CRC32 of `123456789` equals the check value `0xCBF43926`, and every flipped bit changes it | [guide](06_crc32_of_text.md), [source](06_crc32_of_text.cpp) |
 
 ## Building the examples
 1. Open a terminal, on Windows PowerShell 7 with the path of the README.
