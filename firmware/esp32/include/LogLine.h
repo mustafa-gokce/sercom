@@ -5,8 +5,7 @@
 #include <cstddef>
 
 #include "../../../app/include/Messages.h"
-
-#include "../include/FirmwareSettings.h"
+#include "../../common/include/CommonSettings.h"
 
 namespace sercom::LogLine {
 
@@ -17,7 +16,7 @@ struct LogLine
 {
     Messages::LogLevelType logLevelType = Messages::LogLevelType::UNKNOWN; // log level type
     size_t textLength = 0;                                                 // length in characters
-    std::array<char, FirmwareSettings::LOG_LINE_SIZE> text{};              // unterminated text
+    std::array<char, CommonSettings::LOG_LINE_SIZE> text{};                // unterminated text
 };
 
 } // namespace sercom::LogLine
