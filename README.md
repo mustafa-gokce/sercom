@@ -84,6 +84,15 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 9. Stop the device simulator and the noisy link with Ctrl+C in their windows.
 10. A port name from `COM1` to `COM256` works as it is, `\\.\COM10` works too.
 
+### ESP32
+1. Connect the board over USB.
+2. Close every serial monitor, the protocol uses the same USB port.
+3. Open a terminal.
+4. Go to the source directory.
+5. Flash the firmware with the protocol on the USB port: `pio run -d firmware/esp32 -e esp32dev -t upload`
+6. Print the device information and every frame on the wire: `build/sercom_cli /dev/ttyUSB0 --trace info`, on Windows with the COM port of the board: `build/sercom_cli.exe COM3 --trace info`
+7. Measure one ping on the board: `build/sercom_example_24_serial_ping /dev/ttyUSB0`
+
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
 1. Fork the project.
