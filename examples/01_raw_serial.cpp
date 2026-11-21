@@ -55,6 +55,10 @@ int main(int argc, char *argv[])
     QSerialPort serialPort;
     serialPort.setPortName(QString::fromStdString(portName));
     serialPort.setBaudRate(static_cast<qint32>(HostSettings::DEFAULT_BAUD_RATE));
+    serialPort.setDataBits(QSerialPort::DataBits::Data8);
+    serialPort.setParity(QSerialPort::Parity::NoParity);
+    serialPort.setStopBits(QSerialPort::StopBits::OneStop);
+    serialPort.setFlowControl(QSerialPort::FlowControl::NoFlowControl);
     if (!serialPort.open(QIODevice::OpenModeFlag::ReadWrite)) {
         // warn the user
         const std::string warningMessage = "Can not open the serial port " + portName + " ("
