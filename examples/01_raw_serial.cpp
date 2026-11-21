@@ -2,14 +2,19 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include <QByteArray>
+#include <QCoreApplication>
+#include <QObject>
+#include <QSerialPort>
+#include <QString>
+#include <QTimer>
+
 #include "../host/include/HostSettings.h"
 #include "../host/include/HostUtils.h"
-#include "../host/include/SerialPort.h"
 
 /*
  * Print the usage text.
@@ -36,6 +41,9 @@ int main(int argc, char *argv[])
     using namespace sercom;
     using namespace std::chrono_literals;
 
+    // initialize the Qt application of the event loop
+    const QCoreApplication application(argc, argv);
+
     // command line must be valid
     std::string portName;
     if (!parseCommandLine(argc, argv, portName)) {
@@ -46,16 +54,18 @@ int main(int argc, char *argv[])
     // install the stop handlers
     HostUtils::installStopHandlers();
 
-    // serial port must open
-    SerialPort::SerialPort serialPort;
-    const SerialPort::SerialPortStatusType openStatusType
-        = serialPort.open(portName, HostSettings::DEFAULT_BAUD_RATE);
-    if (openStatusType != SerialPort::SerialPortStatusType::OK) {
+    // serial port must open in raw 8N1 mode without flow control
+    QSerialPort serialPort;
+    serialPort.setPortName(QString::fromStdString(portName));
+    serialPort.setBaudRate(static_cast<qint32>(HostSettings::DEFAULT_BAUD_RATE));
+    serialPort.setDataBits(QSerialPort::DataBits::Data8);
+    serialPort.setParity(QSerialPort::Parity::NoParity);
+    serialPort.setStopBits(QSerialPort::StopBits::OneStop);
+    serialPort.setFlowControl(QSerialPort::FlowControl::NoFlowControl);
+    if (!serialPort.open(QIODevice::OpenModeFlag::ReadWrite)) {
         // warn the user
         const std::string warningMessage = "Can not open the serial port " + portName + " ("
-                                           + std::string(
-                                               SerialPort::fromSerialPortStatusType(openStatusType))
-                                           + ")";
+                                           + serialPort.errorString().toStdString() + ")";
         HostUtils::logWarning(warningMessage);
 
         // do not proceed further
@@ -67,68 +77,87 @@ int main(int argc, char *argv[])
     HostUtils::printLine(listeningLine);
     HostUtils::printLine("Press Ctrl+C to exit.");
 
-    // read and send until a stop signal arrives
-    static constexpr std::chrono::milliseconds readTimeout = 100ms;
+    // print every byte that arrives
+    QObject::connect(&serialPort, &QSerialPort::readyRead, [&serialPort]() {
+        // iterate over the received bytes
+        const QByteArray data = serialPort.readAll();
+        std::for_each(data.cbegin(), data.cend(), [](const char character) {
+            printReceivedByte(static_cast<uint8_t>(character));
+        });
+    });
+
+    // stop with a failure when the open port fails
+    QObject::connect(&serialPort,
+                     &QSerialPort::errorOccurred,
+                     [&serialPort, &portName](const QSerialPort::SerialPortError serialPortError) {
+                         // error must have happened
+                         if (serialPortError == QSerialPort::SerialPortError::NoError) {
+                             return;
+                         }
+
+                         // warn the user
+                         const std::string warningMessage = "Can not read the serial port "
+                                                            + portName + " ("
+                                                            + serialPort.errorString().toStdString()
+                                                            + ")";
+                         HostUtils::logWarning(warningMessage);
+
+                         // stop the event loop with the failure
+                         QCoreApplication::exit(1);
+                     });
+
+    // send a text once per second and stop when a stop signal arrives
+    static constexpr std::chrono::milliseconds timerPeriod = 100ms;
     static constexpr std::chrono::milliseconds messagePeriod = 1 * 1000ms;
     static constexpr std::string_view message = "a=1;b=2;c=3;\n";
     const HostUtils::SteadyClock clock;
     std::chrono::milliseconds lastMessageTimestamp = clock.getTime();
-    std::vector<uint8_t> readBuffer(HostSettings::READ_BUFFER_SIZE);
-    while (HostUtils::getRunning()) {
-        // read must succeed or time out
-        size_t size = 0;
-        const SerialPort::SerialPortStatusType readStatusType = serialPort.read(readBuffer.data(),
-                                                                                readBuffer.size(),
-                                                                                size,
-                                                                                readTimeout);
-        if (readStatusType != SerialPort::SerialPortStatusType::OK
-            && readStatusType != SerialPort::SerialPortStatusType::TIMED_OUT) {
-            // warn the user
-            const std::string warningMessage = "Can not read the serial port " + portName + " ("
-                                               + std::string(SerialPort::fromSerialPortStatusType(
-                                                   readStatusType))
-                                               + ")";
-            HostUtils::logWarning(warningMessage);
+    QTimer timer;
+    QObject::connect(&timer,
+                     &QTimer::timeout,
+                     [&serialPort, &portName, &clock, &lastMessageTimestamp]() {
+                         // stop signal must not have arrived
+                         if (!HostUtils::getRunning()) {
+                             QCoreApplication::quit();
+                             return;
+                         }
 
-            // do not proceed further
-            return 1;
-        }
+                         // message period must have passed since the last message
+                         const std::chrono::milliseconds currentTime = clock.getTime();
+                         if (currentTime - lastMessageTimestamp < messagePeriod) {
+                             return;
+                         }
 
-        // iterate over the received bytes
-        std::for_each(readBuffer.cbegin(),
-                      std::next(readBuffer.cbegin(), static_cast<ptrdiff_t>(size)),
-                      printReceivedByte);
+                         /*
+                          * Message must be sent as text without frame boundaries and error detection.
+                          * The frames of the rest of the repository add both.
+                          */
+                         const qint64 messageSize = static_cast<qint64>(message.size());
+                         if (serialPort.write(message.data(), messageSize) != messageSize) {
+                             // warn the user
+                             const std::string warningMessage = "Can not send the message on "
+                                                                + portName;
+                             HostUtils::logWarning(warningMessage);
 
-        // message period must have passed since the last message
-        const std::chrono::milliseconds currentTime = clock.getTime();
-        if (currentTime - lastMessageTimestamp < messagePeriod) {
-            continue;
-        }
+                             // stop the event loop with the failure
+                             QCoreApplication::exit(1);
+                             return;
+                         }
 
-        /*
-         * Message must be sent as text without frame boundaries and error detection.
-         * The frames of the rest of the repository add both.
-         */
-        if (!serialPort.sendData(reinterpret_cast<const uint8_t *>(message.data()),
-                                 message.size())) {
-            // warn the user
-            const std::string warningMessage = "Can not send the message on " + portName;
-            HostUtils::logWarning(warningMessage);
+                         // remember the time of the message
+                         lastMessageTimestamp = currentTime;
+                     });
+    timer.start(timerPeriod);
 
-            // do not proceed further
-            return 1;
-        }
-
-        // remember the time of the message
-        lastMessageTimestamp = currentTime;
-    }
+    // run the event loop until a stop signal or a failure
+    const int exitCode = QCoreApplication::exec();
 
     // close the serial port
     serialPort.close();
     HostUtils::printLine("\nSerial device closed.");
 
-    // example finished successfully
-    return 0;
+    // expose whether the example finished successfully
+    return exitCode;
 }
 
 void printUsage(const std::string_view programName)
