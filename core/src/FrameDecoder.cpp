@@ -5,10 +5,14 @@
 
 namespace sercom::FrameDecoder {
 
+using namespace std::chrono_literals;
+
 FrameDecoderHandler::~FrameDecoderHandler() {}
 
-FrameDecoder::FrameDecoder(FrameDecoderHandler &handler)
+FrameDecoder::FrameDecoder(FrameDecoderHandler &handler,
+                           const std::chrono::milliseconds interByteTimeout)
     : handler(handler)
+    , interByteTimeout(interByteTimeout)
     , buffer()
     , bufferStart(0)
     , bufferEnd(0)
@@ -35,6 +39,9 @@ void FrameDecoder::onReceivedData(const uint8_t *data,
 
 void FrameDecoder::onReceivedByte(const uint8_t byte, const std::chrono::milliseconds currentTime)
 {
+    // drop a partial frame of an ended transmission
+    this->checkTimeout(currentTime);
+
     // keep track of bytes
     ++this->statistics.incomingByteCounter;
     this->lastByteTimestamp = currentTime;
@@ -44,6 +51,33 @@ void FrameDecoder::onReceivedByte(const uint8_t byte, const std::chrono::millise
 
     // process the buffered bytes
     this->processBuffer();
+}
+
+void FrameDecoder::checkTimeout(const std::chrono::milliseconds currentTime)
+{
+    // timeout must be enabled
+    if (this->interByteTimeout == 0ms) {
+        return;
+    }
+
+    // partial frame must exist
+    if (this->getBufferedSize() == 0) {
+        return;
+    }
+
+    // line must be silent for longer than the timeout
+    if (currentTime - this->lastByteTimestamp <= this->interByteTimeout) {
+        return;
+    }
+
+    // drop the stale bytes
+    this->discardBytes(this->getBufferedSize(), true);
+
+    // keep track of inter byte timeouts
+    ++this->statistics.interByteTimeoutCounter;
+
+    // notify listeners about the inter byte timeout
+    this->handler.onDecodeError(Definitions::DecodeErrorType::INTER_BYTE_TIMEOUT);
 }
 
 DecoderStatistics FrameDecoder::getStatistics() const
