@@ -70,9 +70,12 @@ CliApplication::CliApplication(const CommandLine &commandLine)
     , maintainTimer()
     , finished(false)
     , exitCode(0)
+    , waitingForDevice(false)
     , waitingForResponse(false)
     , monitoring(false)
     , startTimestamp(0)
+    , waitTimestamp(0)
+    , waitIncomingFrameCounter(0)
     , lastRequestTimestamp(0)
     , lastReconnectTimestamp(0)
     , lastPeriodicRequestTimestamp(0)
@@ -126,8 +129,9 @@ int CliApplication::run()
                                             + this->getSerialPortText();
     HostUtils::logDebug(startedDebugMessage);
 
-    // start the command
+    // start the command and wait for the device
     this->startCommand();
+    this->waitForDevice();
 
     // run the command on the event loop until it finishes or is stopped
     this->startTimestamp = this->clock.getTime();
@@ -425,7 +429,7 @@ void CliApplication::onReceivedData(const QByteArray &data)
     this->deviceClient.onReceivedData(receivedData, size);
 
     // command must be running
-    if (this->finished) {
+    if (this->finished || this->waitingForDevice) {
         return;
     }
 
@@ -480,6 +484,12 @@ void CliApplication::maintain()
     // stop the event loop when the command finished
     if (this->finished) {
         QCoreApplication::quit();
+        return;
+    }
+
+    // wait for the device before the command advances
+    if (this->waitingForDevice) {
+        this->progressWaitForDevice();
         return;
     }
 
@@ -549,6 +559,66 @@ void CliApplication::attemptReconnect()
     // notify the user
     const std::string debugMessage = "CliApplication connected to serial port from "
                                      + this->getSerialPortText();
+    HostUtils::logDebug(debugMessage);
+}
+
+void CliApplication::waitForDevice()
+{
+    // serial port must be open for an unfinished command
+    if (!this->serialPort.getOpened() || this->finished) {
+        return;
+    }
+
+    // notify the user
+    const std::string waitingDebugMessage = "Waiting for the device on " + this->getSerialPortText()
+                                            + " for at most "
+                                            + std::to_string(
+                                                HostSettings::DEVICE_BOOT_TIMEOUT_MSEC.count())
+                                            + " ms";
+    HostUtils::logDebug(waitingDebugMessage);
+
+    // ask a running device for an answer
+    uint16_t messageCounter = 0;
+    [[maybe_unused]] const Definitions::SendStatusType sendStatusType
+        = this->deviceClient.sendPingRequest(messageCounter);
+
+    // wait for the first frame of the device and the end of the ping request within the boot time
+    this->waitingForDevice = true;
+    this->waitTimestamp = this->clock.getTime();
+    this->waitIncomingFrameCounter = this->deviceClient.getLinkStatistics().incomingFrameCounter;
+}
+
+void CliApplication::progressWaitForDevice()
+{
+    // wait must be over by an answer of the device or by the boot time
+    const std::chrono::milliseconds currentTime = this->clock.getTime();
+    const std::chrono::milliseconds waitTime = currentTime - this->waitTimestamp;
+    const bool deviceSilent = this->deviceClient.getLinkStatistics().incomingFrameCounter
+                              == this->waitIncomingFrameCounter;
+    if ((deviceSilent || this->deviceClient.getPendingCount() > 0)
+        && waitTime < HostSettings::DEVICE_BOOT_TIMEOUT_MSEC) {
+        return;
+    }
+
+    // start the command after the wait
+    this->waitingForDevice = false;
+    this->startTimestamp = currentTime;
+
+    // device must have answered within the boot time
+    if (deviceSilent) {
+        // warn the user
+        const std::string warningMessage = "Device did not answer within "
+                                           + std::to_string(waitTime.count())
+                                           + " ms, the command starts anyway";
+        HostUtils::logWarning(warningMessage);
+
+        // do not proceed further
+        return;
+    }
+
+    // notify the user
+    const std::string debugMessage = "Device answered after " + std::to_string(waitTime.count())
+                                     + " ms";
     HostUtils::logDebug(debugMessage);
 }
 

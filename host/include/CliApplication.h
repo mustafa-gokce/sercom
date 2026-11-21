@@ -180,7 +180,7 @@ private slots:
     void onErrorHappened(sercom::SerialPort::SerialPortStatusType serialPortStatusType);
 
     /*
-     * Maintain the device client, the serial port and the command.
+     * Maintain the device client, the serial port, the wait for the device and the command.
      * Stop the event loop when the command finished or a stop signal arrived.
      */
     void maintain();
@@ -195,6 +195,18 @@ private:
      * Attempt to reconnect the serial port when it is closed or the device went silent.
      */
     void attemptReconnect();
+
+    /*
+     * Start to wait up to the boot time for the first frame of the device after the serial port opened.
+     * A ping request asks a device that is already running for an answer.
+     * The wait also lasts until that ping request is acknowledged or has failed.
+     */
+    void waitForDevice();
+
+    /*
+     * Finish the wait for the device once it answered or the boot time passed.
+     */
+    void progressWaitForDevice();
 
     /*
      * Send a ping request as periodic request while the link is idle.
@@ -304,9 +316,12 @@ private:
     QTimer maintainTimer;                                   // timer of the maintenance period
     bool finished;                                          // command is finished
     int exitCode;                                           // exit code of the process
+    bool waitingForDevice;                                  // first frame of the device is awaited
     bool waitingForResponse;                                // response of a request is awaited
     bool monitoring;                                        // device reports are printed
     std::chrono::milliseconds startTimestamp;               // time the command started
+    std::chrono::milliseconds waitTimestamp;                // time the wait for the device started
+    uint64_t waitIncomingFrameCounter;                      // frames received before the wait
     std::chrono::milliseconds lastRequestTimestamp;         // time of the last request
     std::chrono::milliseconds lastReconnectTimestamp;       // time of the last reconnect attempt
     std::chrono::milliseconds lastPeriodicRequestTimestamp; // time of the last periodic request
