@@ -12,7 +12,7 @@ confirmed. This is how the link layer turns a line that loses frames into one th
 
 ## Before you start
 
-1. Watch lecture L68 "Retransmission timers and the RETRANSMISSION flag" (section S11) and run example 18 first.
+1. Watch lecture L71 "Retransmission timers and the RETRANSMISSION flag" (section S11) and run example 18 first.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -120,7 +120,7 @@ The exit code `0` means the host retransmitted once and the delivery was confirm
    although nothing was lost, the device answers the repeat once more, and the statistics show
    `acknowledgements received 1` and `unexpected acknowledgements 1`: the second ACK found no
    pending message. The exit code is still `0`. An answer that is slower than the retransmit
-   timeout costs extra frames like this; L92 is about choosing the timeout.
+   timeout costs extra frames like this; L101 is about choosing the timeout.
 
 ## Where this is used
 
@@ -131,5 +131,5 @@ The exit code `0` means the host retransmitted once and the delivery was confirm
 - `core/include/Settings.h`: `DEFAULT_RETRANSMIT_TIMEOUT_MSEC` and
   `DEFAULT_MAXIMUM_RETRANSMISSIONS`.
 - `tests/test_Link.cpp`: the tests of lost data with a mock clock.
-- Lectures: L68 "Retransmission timers and the RETRANSMISSION flag", L71 "Injecting the clock"
-  and L72 "Testing the link layer in memory".
+- Lectures: L71 "Retransmission timers and the RETRANSMISSION flag", L74 "Injecting the clock"
+  and L75 "Testing the link layer in memory".
