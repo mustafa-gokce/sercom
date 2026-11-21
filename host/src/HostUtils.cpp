@@ -12,6 +12,7 @@
 #include <QTextStream>
 
 #include "../../app/include/Messages.h"
+#include "../../core/include/Settings.h"
 
 #include "../include/SerialPort.h"
 
@@ -424,6 +425,70 @@ std::string getFrameFlagsText(const uint8_t flags)
 
     // expose the flag names
     return flagsAsText;
+}
+
+std::string getTracedFrameLine(const FrameTracer::TraceDirectionType traceDirectionType,
+                               const Frame::Frame &frame,
+                               const std::chrono::milliseconds currentTime)
+{
+    // get the message type by its name
+    const Messages::MessageType messageType = Messages::toMessageType(frame.getMessageType());
+    std::string messageTypeAsText(Messages::getMessageTypeText(messageType));
+
+    // show an unknown message type by its number
+    static constexpr size_t messageTypeDigitCount = 2 * Definitions::MESSAGE_TYPE_SIZE;
+    if (messageType == Messages::MessageType::UNKNOWN) {
+        messageTypeAsText = "0x" + getHexText(frame.getMessageType(), messageTypeDigitCount);
+    }
+
+    // get the payload up to the traced payload limit
+    const size_t payloadLength = frame.getPayloadLength();
+    const size_t tracedPayloadSize = std::min(payloadLength, Settings::MAXIMUM_TRACED_PAYLOAD_SIZE);
+    std::string payloadAsText = toHexString(frame.getPayload(), tracedPayloadSize);
+    if (tracedPayloadSize < payloadLength) {
+        payloadAsText += " ..";
+    }
+
+    // get the fields as text in their columns
+    std::string line
+        = getTimeText(currentTime) + " "
+          + std::string(FrameTracer::getTraceDirectionTypeText(traceDirectionType)) + " #"
+          + getLeftJustifiedText(std::to_string(frame.getMessageCounter()),
+                                 Settings::TRACED_MESSAGE_COUNTER_WIDTH)
+          + " " + getLeftJustifiedText(messageTypeAsText, Settings::TRACED_MESSAGE_TYPE_WIDTH) + " "
+          + getLeftJustifiedText(getFrameFlagsText(frame.getFlags()), Settings::TRACED_FLAGS_WIDTH)
+          + " len "
+          + getRightJustifiedText(std::to_string(payloadLength),
+                                  Settings::TRACED_PAYLOAD_LENGTH_WIDTH);
+
+    // add the payload of a frame with a payload
+    if (!payloadAsText.empty()) {
+        line += "  " + payloadAsText;
+    }
+
+    // add the result of the CRC32 check
+    line += frame.getCRCValid() ? "  CRC ok" : "  CRC bad";
+
+    // expose the line
+    return line;
+}
+
+std::string getUnframedDataLine(const FrameTracer::TraceDirectionType traceDirectionType,
+                                const uint8_t *data,
+                                const size_t size,
+                                const std::chrono::milliseconds currentTime)
+{
+    // get text as escaped text and other bytes as hex
+    const std::string dataAsText = FrameTracer::isTextData(data, size) ? toEscapedString(data, size)
+                                                                       : toHexString(data, size);
+
+    // get the size with its unit in the singular for one byte
+    const std::string sizeAsText = std::to_string(size) + (size == 1 ? " byte" : " bytes");
+
+    // expose the bytes behind the time and the direction
+    return getTimeText(currentTime) + " "
+           + std::string(FrameTracer::getTraceDirectionTypeText(traceDirectionType))
+           + " unframed data, " + sizeAsText + ": " + dataAsText;
 }
 
 void printLine(const std::string &line)
