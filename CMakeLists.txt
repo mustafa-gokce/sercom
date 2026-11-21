@@ -81,6 +81,20 @@ target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
     Qt${QT_VERSION_MAJOR}::SerialPort
 )
 
+# create example executables
+if (SERCOM_BUILD_BINARIES)
+    # create raw serial example executable
+    add_executable(${PROJECT_NAME}_example_01_raw_serial
+        examples/01_raw_serial.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_01_raw_serial PRIVATE
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
+    )
+endif()
+
 # compiler flag add macro
 macro(add_compiler_flags)
     foreach (flag ${ARGV})
