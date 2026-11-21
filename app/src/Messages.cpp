@@ -1,6 +1,12 @@
 #include "../include/Messages.h"
 
+#include <algorithm>
+
+#include "../../core/include/ByteCodec.h"
+
 namespace sercom::Messages {
+
+using namespace std::chrono_literals;
 
 uint16_t fromMessageType(const MessageType messageType)
 {
@@ -128,6 +134,381 @@ std::string_view getLogLevelTypeText(const LogLevelType logLevelType)
         return {"UNKNOWN"};
     }
     }
+}
+
+GenericMessage::GenericMessage()
+    : payload()
+    , payloadLength(0)
+{}
+
+GenericMessage::GenericMessage(const uint8_t *data, const size_t size)
+    : payload()
+    , payloadLength(0)
+{
+    // data must fit into a payload of this build
+    if (size > this->payload.size()) {
+        return;
+    }
+
+    // data must exist when it is not empty
+    if (size > 0 && data == nullptr) {
+        return;
+    }
+
+    // copy the data into the payload
+    std::copy_n(data, size, this->payload.begin());
+    this->payloadLength = size;
+}
+
+GenericMessage::GenericMessage(const Frame::Frame &frame)
+    : GenericMessage(frame.getPayload(), frame.getPayloadLength())
+{}
+
+const uint8_t *GenericMessage::getPayload() const
+{
+    // expose the payload bytes
+    return this->payload.data();
+}
+
+size_t GenericMessage::getPayloadLength() const
+{
+    // expose the payload length
+    return this->payloadLength;
+}
+
+PingRequest::PingRequest(const std::chrono::milliseconds requestTimestamp)
+{
+    // write the request timestamp
+    ByteCodec::ByteWriter byteWriter(this->payload.data(), this->payload.size());
+    byteWriter.writeUint32(static_cast<uint32_t>(requestTimestamp.count()));
+
+    // keep the payload length
+    this->payloadLength = byteWriter.getSize();
+}
+
+PingRequest::PingRequest(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+std::chrono::milliseconds PingRequest::getRequestTimestamp() const
+{
+    // payload must hold every field
+    if (this->payloadLength < PING_REQUEST_SIZE) {
+        return {};
+    }
+
+    // expose the request timestamp
+    return std::chrono::milliseconds(ByteCodec::loadUint32(this->payload.data()));
+}
+
+PingResponse::PingResponse(const std::chrono::milliseconds requestTimestamp,
+                           const std::chrono::milliseconds uptime)
+{
+    // write the request timestamp and the uptime
+    ByteCodec::ByteWriter byteWriter(this->payload.data(), this->payload.size());
+    byteWriter.writeUint32(static_cast<uint32_t>(requestTimestamp.count()));
+    byteWriter.writeUint32(static_cast<uint32_t>(uptime.count()));
+
+    // keep the payload length
+    this->payloadLength = byteWriter.getSize();
+}
+
+PingResponse::PingResponse(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+std::chrono::milliseconds PingResponse::getRequestTimestamp() const
+{
+    // payload must hold every field
+    if (this->payloadLength < PING_RESPONSE_SIZE) {
+        return {};
+    }
+
+    // expose the request timestamp
+    return std::chrono::milliseconds(ByteCodec::loadUint32(this->payload.data()));
+}
+
+std::chrono::milliseconds PingResponse::getUptime() const
+{
+    // payload must hold every field
+    if (this->payloadLength < PING_RESPONSE_SIZE) {
+        return {};
+    }
+
+    // expose the uptime
+    return std::chrono::milliseconds(ByteCodec::loadUint32(this->payload.data() + 4));
+}
+
+DeviceInfoResponse::DeviceInfoResponse(const uint8_t firmwareVersionMajor,
+                                       const uint8_t firmwareVersionMinor,
+                                       const std::chrono::milliseconds uptime,
+                                       const uint32_t freeHeapSize,
+                                       const std::string_view deviceName)
+{
+    // device name must not exceed the maximum device name length
+    if (deviceName.size() > MAXIMUM_DEVICE_NAME_LENGTH) {
+        return;
+    }
+
+    // device name must fit into the payload
+    if (DEVICE_INFO_RESPONSE_SIZE + deviceName.size() > this->payload.size()) {
+        return;
+    }
+
+    // write every field and the device name
+    ByteCodec::ByteWriter byteWriter(this->payload.data(), this->payload.size());
+    byteWriter.writeUint8(firmwareVersionMajor);
+    byteWriter.writeUint8(firmwareVersionMinor);
+    byteWriter.writeUint32(static_cast<uint32_t>(uptime.count()));
+    byteWriter.writeUint32(freeHeapSize);
+    byteWriter.writeString(deviceName.data(), deviceName.size());
+
+    // keep the payload length
+    this->payloadLength = byteWriter.getSize();
+}
+
+DeviceInfoResponse::DeviceInfoResponse(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+uint8_t DeviceInfoResponse::getFirmwareVersionMajor() const
+{
+    // payload must hold every field
+    if (this->payloadLength < DEVICE_INFO_RESPONSE_SIZE) {
+        return 0;
+    }
+
+    // expose the major firmware version
+    return this->payload[0];
+}
+
+uint8_t DeviceInfoResponse::getFirmwareVersionMinor() const
+{
+    // payload must hold every field
+    if (this->payloadLength < DEVICE_INFO_RESPONSE_SIZE) {
+        return 0;
+    }
+
+    // expose the minor firmware version
+    return this->payload[1];
+}
+
+std::chrono::milliseconds DeviceInfoResponse::getUptime() const
+{
+    // payload must hold every field
+    if (this->payloadLength < DEVICE_INFO_RESPONSE_SIZE) {
+        return {};
+    }
+
+    // expose the uptime
+    return std::chrono::milliseconds(ByteCodec::loadUint32(this->payload.data() + 2));
+}
+
+uint32_t DeviceInfoResponse::getFreeHeapSize() const
+{
+    // payload must hold every field
+    if (this->payloadLength < DEVICE_INFO_RESPONSE_SIZE) {
+        return 0;
+    }
+
+    // expose the free heap size
+    return ByteCodec::loadUint32(this->payload.data() + 6);
+}
+
+LogReportResponse::LogReportResponse(const LogLevelType logLevelType, const std::string_view text)
+{
+    // text must not exceed the maximum log text length
+    if (text.size() > MAXIMUM_LOG_TEXT_LENGTH) {
+        return;
+    }
+
+    // text must fit into the payload
+    if (LOG_REPORT_RESPONSE_SIZE + text.size() > this->payload.size()) {
+        return;
+    }
+
+    // write the log level type and the text
+    ByteCodec::ByteWriter byteWriter(this->payload.data(), this->payload.size());
+    byteWriter.writeUint8(fromLogLevelType(logLevelType));
+    byteWriter.writeString(text.data(), text.size());
+
+    // keep the payload length
+    this->payloadLength = byteWriter.getSize();
+}
+
+LogReportResponse::LogReportResponse(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+LogLevelType LogReportResponse::getLogLevelType() const
+{
+    // payload must hold every field
+    if (this->payloadLength < LOG_REPORT_RESPONSE_SIZE) {
+        return LogLevelType::UNKNOWN;
+    }
+
+    // expose the log level type
+    return toLogLevelType(this->payload[0]);
+}
+
+EchoRequest::EchoRequest(const uint8_t *data, const size_t size)
+    : GenericMessage(data, size)
+{}
+
+EchoRequest::EchoRequest(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+EchoResponse::EchoResponse(const uint8_t *data, const size_t size)
+    : GenericMessage(data, size)
+{}
+
+EchoResponse::EchoResponse(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+SetLedRequest::SetLedRequest(const bool ledOn)
+{
+    // write the LED state as zero or one
+    ByteCodec::ByteWriter byteWriter(this->payload.data(), this->payload.size());
+    byteWriter.writeUint8(static_cast<uint8_t>(ledOn));
+
+    // keep the payload length
+    this->payloadLength = byteWriter.getSize();
+}
+
+SetLedRequest::SetLedRequest(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+bool SetLedRequest::getLedOn() const
+{
+    // payload must hold every field
+    if (this->payloadLength < SET_LED_REQUEST_SIZE) {
+        return false;
+    }
+
+    // expose whether the LED is switched on
+    return this->payload[0] == 1;
+}
+
+SetLedResponse::SetLedResponse(const bool ledOn)
+{
+    // write the LED state as zero or one
+    ByteCodec::ByteWriter byteWriter(this->payload.data(), this->payload.size());
+    byteWriter.writeUint8(static_cast<uint8_t>(ledOn));
+
+    // keep the payload length
+    this->payloadLength = byteWriter.getSize();
+}
+
+SetLedResponse::SetLedResponse(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+bool SetLedResponse::getLedOn() const
+{
+    // payload must hold every field
+    if (this->payloadLength < SET_LED_RESPONSE_SIZE) {
+        return false;
+    }
+
+    // expose whether the LED is on
+    return this->payload[0] == 1;
+}
+
+SetTelemetryPeriodRequest::SetTelemetryPeriodRequest(const std::chrono::milliseconds telemetryPeriod)
+{
+    // telemetry period must fit into its field
+    if (telemetryPeriod < 0ms || telemetryPeriod > MAXIMUM_TELEMETRY_PERIOD_MSEC) {
+        return;
+    }
+
+    // write the telemetry period
+    ByteCodec::ByteWriter byteWriter(this->payload.data(), this->payload.size());
+    byteWriter.writeUint16(static_cast<uint16_t>(telemetryPeriod.count()));
+
+    // keep the payload length
+    this->payloadLength = byteWriter.getSize();
+}
+
+SetTelemetryPeriodRequest::SetTelemetryPeriodRequest(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+std::chrono::milliseconds SetTelemetryPeriodRequest::getTelemetryPeriod() const
+{
+    // payload must hold every field
+    if (this->payloadLength < SET_TELEMETRY_PERIOD_REQUEST_SIZE) {
+        return {};
+    }
+
+    // expose the telemetry period
+    return std::chrono::milliseconds(ByteCodec::loadUint16(this->payload.data()));
+}
+
+TelemetryReportResponse::TelemetryReportResponse(const uint16_t sequence,
+                                                 const std::chrono::milliseconds uptime,
+                                                 const uint32_t freeHeapSize,
+                                                 const int16_t temperature)
+{
+    // write every field
+    ByteCodec::ByteWriter byteWriter(this->payload.data(), this->payload.size());
+    byteWriter.writeUint16(sequence);
+    byteWriter.writeUint32(static_cast<uint32_t>(uptime.count()));
+    byteWriter.writeUint32(freeHeapSize);
+    byteWriter.writeInt16(temperature);
+
+    // keep the payload length
+    this->payloadLength = byteWriter.getSize();
+}
+
+TelemetryReportResponse::TelemetryReportResponse(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+uint16_t TelemetryReportResponse::getSequence() const
+{
+    // payload must hold every field
+    if (this->payloadLength < TELEMETRY_REPORT_RESPONSE_SIZE) {
+        return 0;
+    }
+
+    // expose the sequence
+    return ByteCodec::loadUint16(this->payload.data());
+}
+
+std::chrono::milliseconds TelemetryReportResponse::getUptime() const
+{
+    // payload must hold every field
+    if (this->payloadLength < TELEMETRY_REPORT_RESPONSE_SIZE) {
+        return {};
+    }
+
+    // expose the uptime
+    return std::chrono::milliseconds(ByteCodec::loadUint32(this->payload.data() + 2));
+}
+
+uint32_t TelemetryReportResponse::getFreeHeapSize() const
+{
+    // payload must hold every field
+    if (this->payloadLength < TELEMETRY_REPORT_RESPONSE_SIZE) {
+        return 0;
+    }
+
+    // expose the free heap size
+    return ByteCodec::loadUint32(this->payload.data() + 6);
+}
+
+int16_t TelemetryReportResponse::getTemperature() const
+{
+    // payload must hold every field
+    if (this->payloadLength < TELEMETRY_REPORT_RESPONSE_SIZE) {
+        return 0;
+    }
+
+    // expose the two's complement bit pattern of the temperature
+    return static_cast<int16_t>(ByteCodec::loadUint16(this->payload.data() + 10));
 }
 
 } // namespace sercom::Messages
