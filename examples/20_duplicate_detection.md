@@ -13,7 +13,7 @@ matters for a message like "add 10 to the counter": done twice, it would be wron
 
 ## Before you start
 
-1. Watch lecture L69 "Duplicate suppression and restarted peers" (section S11) and run example 19 first.
+1. Watch lecture L72 "Duplicate suppression and restarted peers" (section S11) and run example 19 first.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -122,5 +122,5 @@ got its acknowledgement.
   `getReceivedMessageWithMessageCounter()` and `rememberReceivedMessage()`.
 - `core/include/Settings.h`: `DefaultDuplicateHistorySize` and `MAXIMUM_ACKNOWLEDGED_SPREAD`.
 - `tests/test_Link.cpp`: the lost ACK and peer restart tests.
-- Lectures: L69 "Duplicate suppression and restarted peers", L70 "The spread limit: a bug found by
-  the end-to-end test" and L72 "Testing the link layer in memory".
+- Lectures: L72 "Duplicate suppression and restarted peers", L73 "The spread limit: a bug found by
+  the end-to-end test" and L75 "Testing the link layer in memory".
