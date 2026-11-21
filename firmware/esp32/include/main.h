@@ -2,13 +2,23 @@
 #define SERCOM_MAIN_H
 
 /*
- * Open the serial port and configure the board.
+ * Set up the device and start the receive and protocol tasks.
  */
 void setup();
 
 /*
- * Feed the received bytes to the device application and maintain it.
+ * Delete the loop task of the framework because every job runs in its own task.
  */
 void loop();
+
+/*
+ * Move the bytes of the UART driver into the receive stream buffer as soon as they arrive.
+ */
+[[noreturn]] void uartReceiveTask(void *parameter);
+
+/*
+ * Feed the received bytes to the device application and maintain it.
+ */
+[[noreturn]] void protocolTask(void *parameter);
 
 #endif // SERCOM_MAIN_H
