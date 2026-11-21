@@ -123,7 +123,7 @@ The exit code `0` means the retransmitted frame kept both of its flags.
 - `core/include/Definitions.h`: `FrameFlagType`, `fromFrameFlagType()` and `isFrameFlagSet()`.
 - `core/include/Frame.h`: `Frame::getFlags()` and `Frame::getFlag()`.
 - `core/src/Link.cpp`: sends ACK_REQUEST, RETRANSMISSION, ACK and NACK frames.
-- `host/include/HostUtils.h`: `getFrameFlagsText()`.
+- `host/include/HostUtils.h`: `getFrameFlagsText()`, used by the frame trace of the host tools.
 - `docs/PROTOCOL.md`, section "3. Flags".
 - Lectures: L32 "Version, flags, counter and type" and L30 "Anatomy of a frame"; the flags come
   back in L70 "ACK and NACK frames" and L71 "Retransmission timers and the RETRANSMISSION flag".
