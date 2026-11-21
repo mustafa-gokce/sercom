@@ -32,6 +32,7 @@ enum class CommandType : uint8_t {
     LED = 3,       // switch the device LED
     TELEMETRY = 4, // set the telemetry period and print telemetry
     MONITOR = 5,   // print telemetry and device logs
+    STRESS = 6,    // run the echo stress test
 };
 
 /*
@@ -52,10 +53,11 @@ struct CommandLine
     std::string portName;                                // serial port name
     uint32_t baudRate = HostSettings::DEFAULT_BAUD_RATE; // baud rate in bits per second
     CommandType commandType = CommandType::UNKNOWN;      // command to run
-    uint32_t requestCount = 1;                           // ping requests to send
+    uint32_t requestCount = 1;                           // ping or echo requests to send
     bool ledOn = false;                                  // LED is switched on
     std::chrono::milliseconds telemetryPeriod
         = std::chrono::milliseconds::zero(); // telemetry period in milliseconds
+    uint32_t echoWindowSize = HostSettings::DEFAULT_ECHO_WINDOW_SIZE;   // echo requests in flight
     uint32_t echoPayloadSize = HostSettings::DEFAULT_ECHO_PAYLOAD_SIZE; // echo payload size in bytes
     std::chrono::milliseconds duration
         = HostSettings::DEFAULT_COMMAND_DURATION_MSEC; // command duration in milliseconds
@@ -202,9 +204,34 @@ private:
     void progressListenCommand();
 
     /*
+     * Advance the stress command.
+     */
+    void progressStressCommand();
+
+    /*
      * Send the request of a command that waits for one response.
      */
     void sendCommandRequest();
+
+    /*
+     * Send the next echo request of the stress command.
+     * A busy echo request is sent again before the next one.
+     * Get false when no echo request could be sent.
+     */
+    [[nodiscard]] bool sendStressEchoRequest();
+
+    /*
+     * Send the newest busy echo request again.
+     * Get false when the echo request could not be sent.
+     */
+    [[nodiscard]] bool sendEchoRequestAgain();
+
+    /*
+     * Send an echo request with the sequence number and remember it as pending.
+     * Get false when the echo request could not be sent.
+     */
+    [[nodiscard]] bool sendEchoRequest(uint32_t sequenceNumber,
+                                       std::chrono::milliseconds requestTimestamp);
 
     /*
      * Check the send status of a request, warn the user and finish the command on a lasting error.
@@ -214,9 +241,25 @@ private:
                                        Definitions::SendStatusType sendStatusType);
 
     /*
+     * Handle a failed echo request of the stress command.
+     */
+    void handleFailedEchoRequest(uint16_t messageCounter,
+                                 Definitions::MessageStatusType remoteMessageStatusType);
+
+    /*
+     * Forget an echo request whose echo response never came.
+     */
+    void forgetLostEchoRequest(uint32_t sequenceNumber);
+
+    /*
      * Finish the command with the exit code.
      */
     void finish(int exitCode);
+
+    /*
+     * Print the stress report.
+     */
+    void printStressReport() const;
 
     /*
      * Get the serial port name and the baud rate as text.
@@ -246,12 +289,16 @@ private:
     uint64_t outgoingPingRequestCounter;                    // ping requests of the ping command
     uint64_t incomingPingResponseCounter;                   // ping responses of the ping command
     uint64_t failedPingRequestCounter;                      // ping requests without ping response
+    uint32_t nextEchoSequenceNumber;                        // sequence number of the next echo
     uint64_t verifiedEchoResponseCounter;                   // echo responses with the echo payload
     uint64_t corruptedEchoResponseCounter;                  // echo responses with another payload
     uint64_t unexpectedEchoResponseCounter;                 // echo responses without echo request
+    uint64_t lostEchoRequestCounter;                        // echo requests without echo response
+    uint64_t busyEchoRequestCounter;                        // echo requests sent again when busy
     std::chrono::milliseconds echoRoundTripTimeSum;         // sum of the echo round trip times
     std::chrono::milliseconds maximumEchoRoundTripTime;     // longest echo round trip time
     std::map<uint32_t, PendingEcho> pendingEchoes;          // pending echoes by sequence number
+    std::vector<uint32_t> retrySequenceNumbers;             // busy echo requests to send again
 };
 
 } // namespace sercom::CliApplication
