@@ -116,6 +116,15 @@ target_link_libraries(${PROJECT_NAME}_core_lib PRIVATE
     ${PROJECT_NAME}_settings
 )
 
+# create application library
+add_library(${PROJECT_NAME}_app_lib
+    app/include/Messages.h app/src/Messages.cpp
+)
+target_link_libraries(${PROJECT_NAME}_app_lib PRIVATE
+    ${PROJECT_NAME}_settings
+    ${PROJECT_NAME}_core_lib
+)
+
 # create host library
 add_library(${PROJECT_NAME}_host_lib
     host/include/HostSettings.h host/src/HostSettings.cpp
@@ -126,6 +135,7 @@ add_library(${PROJECT_NAME}_host_lib
 target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
     ${PROJECT_NAME}_settings
     ${PROJECT_NAME}_core_lib
+    ${PROJECT_NAME}_app_lib
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::SerialPort
 )
@@ -151,6 +161,7 @@ if (SERCOM_BUILD_BINARIES)
     target_link_libraries(${PROJECT_NAME}_example_02_build_frame PRIVATE
         ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
         Qt${QT_VERSION_MAJOR}::Core
     )
@@ -162,6 +173,7 @@ if (SERCOM_BUILD_BINARIES)
     target_link_libraries(${PROJECT_NAME}_example_03_decode_noisy_stream PRIVATE
         ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
         Qt${QT_VERSION_MAJOR}::Core
     )
@@ -217,6 +229,7 @@ if (SERCOM_BUILD_TESTS)
     target_link_libraries(${PROJECT_NAME}_test PRIVATE
         ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
         Catch2::Catch2
         Qt${QT_VERSION_MAJOR}::Core
