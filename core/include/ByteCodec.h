@@ -1,6 +1,7 @@
 #ifndef SERCOM_BYTE_CODEC_H
 #define SERCOM_BYTE_CODEC_H
 
+#include <cstddef>
 #include <cstdint>
 
 namespace sercom::ByteCodec {
@@ -24,6 +25,75 @@ void storeUint32(uint8_t *destination, uint32_t value);
  * Load a 32 bit value from four bytes with the least significant byte first.
  */
 [[nodiscard]] uint32_t loadUint32(const uint8_t *source);
+
+class ByteWriter final
+{
+public:
+    /*
+     * Writer of little-endian values into a buffer of the caller.
+     * The first write that does not fit makes the writer invalid and every later write is ignored.
+     */
+    explicit ByteWriter(uint8_t *buffer, size_t capacity);
+    ~ByteWriter();
+
+    // delete copy constructor and copy assignment operator
+    ByteWriter(const ByteWriter &) = delete;
+    ByteWriter &operator=(const ByteWriter &) = delete;
+
+    // delete move constructor and move assignment operator
+    ByteWriter(ByteWriter &&) = delete;
+    ByteWriter &operator=(ByteWriter &&) = delete;
+
+public:
+    /*
+     * Write a uint8_t value.
+     */
+    void writeUint8(uint8_t value);
+
+    /*
+     * Write a uint16_t value.
+     */
+    void writeUint16(uint16_t value);
+
+    /*
+     * Write a uint32_t value.
+     */
+    void writeUint32(uint32_t value);
+
+    /*
+     * Write raw bytes.
+     */
+    void writeBytes(const uint8_t *data, size_t size);
+
+public:
+    /*
+     * Get the number of written bytes.
+     */
+    [[nodiscard]] size_t getSize() const;
+
+    /*
+     * Get the number of bytes that still fit into the buffer.
+     */
+    [[nodiscard]] size_t getRemainingSize() const;
+
+    /*
+     * Get whether every write so far fitted into the buffer.
+     */
+    [[nodiscard]] bool getValid() const;
+
+private:
+    /*
+     * Reserve bytes for a write.
+     * Get null and make the writer invalid when the bytes do not fit.
+     */
+    [[nodiscard]] uint8_t *reserve(size_t size);
+
+private:
+    uint8_t *buffer;             // destination buffer
+    const size_t bufferCapacity; // destination buffer size in bytes
+    size_t position;             // index of the next byte to write
+    bool valid;                  // every write so far fitted
+};
 
 } // namespace sercom::ByteCodec
 
