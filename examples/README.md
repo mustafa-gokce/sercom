@@ -38,6 +38,8 @@ because its messages travel over the link layer of example 18.
 | S10 | L65 (also L53, L62, L77) | 25 | Dispatch Messages | Switches on the message type of four decoded frames and calls one function per type, an unknown type included | [guide](25_dispatch_messages.md), [source](25_dispatch_messages.cpp) |
 | S10 | L63, L66 (also L64, L79) | 16 | Device Info Message | Prints a device info response field by field, the length-prefixed name included, and reads it back | [guide](16_device_info_message.md), [source](16_device_info_message.cpp) |
 | S10 | L63, L66 (also L25, L85) | 17 | Telemetry Message | Prints a telemetry report field by field and scales the received values to seconds, KiB and degrees Celsius | [guide](17_telemetry_message.md), [source](17_telemetry_message.cpp) |
+| S11 | L70 (also L68, L75) | 18 | Link Loopback | Two links in memory: a request with ACK_REQUEST, the ACK that echoes counter and type, the confirmed delivery | [guide](18_link_loopback.md), [source](18_link_loopback.cpp) |
+| S11 | L62, L65 (also L64, L66) | 23 | Custom Message | Adds an own message type pair, answers it on the device and rejects wrong requests with a status | [guide](23_custom_message.md), [source](23_custom_message.cpp) |
 
 ## Building the examples
 1. Open a terminal, on Windows PowerShell 7 with the path of the README.
