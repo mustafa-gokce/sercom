@@ -178,6 +178,18 @@ if (SERCOM_BUILD_BINARIES)
         Qt${QT_VERSION_MAJOR}::Core
     )
 
+    # create byte order example executable
+    add_executable(${PROJECT_NAME}_example_04_byte_order
+        examples/04_byte_order.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_04_byte_order PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
+
     # create field writing and reading example executable
     add_executable(${PROJECT_NAME}_example_05_write_and_read_fields
         examples/05_write_and_read_fields.cpp
