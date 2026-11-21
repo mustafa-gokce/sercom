@@ -59,13 +59,29 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# let the options of the dependencies honor the set() lines
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+
 # handle Qt targets
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+# disable file prefix check
+set(CATCH_ENABLE_REPRODUCIBLE_BUILD OFF)
+
+# disable Catch2 extra build targets
+set(CATCH_DEVELOPMENT_BUILD OFF)
+set(CATCH_INSTALL_DOCS OFF)
+set(CATCH_INSTALL_EXTRAS OFF)
+
 # find Qt packages of the host targets
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core SerialPort Test)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core SerialPort Test)
+
+# include external library dependencies
+if (SERCOM_BUILD_TESTS)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/dep/Catch2)
+endif()
 
 # privately reusable settings
 add_library(${PROJECT_NAME}_settings INTERFACE)
@@ -154,6 +170,34 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
         Qt${QT_VERSION_MAJOR}::Core
+    )
+endif()
+
+# create test executable for auto tests
+if (SERCOM_BUILD_TESTS)
+    add_executable(${PROJECT_NAME}_test
+        tests/test_main.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_test PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_host_lib
+        Catch2::Catch2
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
+        Qt${QT_VERSION_MAJOR}::Test
+    )
+endif()
+
+# introduce test
+if (SERCOM_BUILD_TESTS)
+    enable_testing()
+    add_test(
+        NAME ${PROJECT_NAME}_test
+        COMMAND ${PROJECT_NAME}_test
+        --reporter JUnit::out=test_results_junit.xml
+        --reporter xml::out=test_results.xml
+        --reporter console
     )
 endif()
 
