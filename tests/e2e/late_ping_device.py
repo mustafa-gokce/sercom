@@ -2,7 +2,8 @@
 
     python3 tests/e2e/late_ping_device.py LINK [--mode late|failed] [--timeout SECONDS]
 
-The device opens a pseudo terminal and links its name to LINK.
+The device opens a pseudo terminal and links its name to LINK. A Windows COM port name such as COM11 opens that
+port through pyserial instead, one end of a com0com pair whose other end sercom_cli opens.
 In the late mode it acknowledges the boot ping request without an answer, waits for the next ping
 request and then answers the boot ping first and the next ping second, with the uptimes 1111 ms and
 2222 ms. In the failed mode it answers the boot ping request with a log report only, so that request
@@ -12,11 +13,11 @@ In both modes a ping command of one ping must succeed and print the uptime 2222 
 
 import argparse
 import os
+import re
 import select
 import struct
 import sys
 import time
-import tty
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools'))
 import sercom_frame
@@ -31,6 +32,64 @@ LATE_UPTIME_MSEC = 1111
 COMMAND_UPTIME_MSEC = 2222
 READ_SIZE = 4096
 POLL_PERIOD_SECONDS = 0.05
+BAUD_RATE = 115200
+COM_PORT_NAME = re.compile(r'^(\\\\\.\\)?COM[0-9]+$', re.IGNORECASE)
+
+
+class PseudoTerminal:
+    """The master side of a pseudo terminal whose slave side is linked to a name."""
+
+    def __init__(self, link):
+        import tty
+        self.link = link
+        self.master, self.slave = os.openpty()
+        tty.setraw(self.slave)
+        if os.path.lexists(link):
+            os.remove(link)
+        os.symlink(os.ttyname(self.slave), link)
+
+    def read(self):
+        """Return the received bytes or None after a quiet poll period."""
+        readable, _, _ = select.select([self.master], [], [], POLL_PERIOD_SECONDS)
+        if not readable:
+            return None
+        return os.read(self.master, READ_SIZE)
+
+    def write(self, data):
+        """Send bytes."""
+        os.write(self.master, data)
+
+    def close(self):
+        """Remove the link and close both sides."""
+        os.remove(self.link)
+        os.close(self.master)
+        os.close(self.slave)
+
+
+class ComPort:
+    """A Windows COM port opened through pyserial."""
+
+    def __init__(self, name):
+        try:
+            import serial
+        except ImportError:
+            sys.exit('COM ports need pyserial: python -m pip install pyserial')
+        self.port = serial.Serial(name, BAUD_RATE, timeout=POLL_PERIOD_SECONDS)
+
+    def read(self):
+        """Return the received bytes or None after a quiet poll period."""
+        data = self.port.read(1)
+        if not data:
+            return None
+        return data + self.port.read(self.port.in_waiting)
+
+    def write(self, data):
+        """Send bytes."""
+        self.port.write(data)
+
+    def close(self):
+        """Close the port."""
+        self.port.close()
 
 
 def get_ping_response(message_counter, request_timestamp, uptime):
@@ -50,8 +109,8 @@ def get_acknowledgement(message_counter):
     return sercom_frame.encode(ACK_FLAG, message_counter, PING_REQUEST_TYPE)
 
 
-def run_device(master, arguments):
-    """Answer the ping requests on the master side of the pseudo terminal until the timeout."""
+def run_device(port, arguments):
+    """Answer the ping requests on the port until the timeout."""
     decoder = sercom_frame.Decoder()
     boot_ping = None
     command_ping = None
@@ -60,14 +119,14 @@ def run_device(master, arguments):
     while time.monotonic() < deadline:
         # send the scheduled frames that are due
         for frame in [frame for send_time, frame in scheduled if send_time <= time.monotonic()]:
-            os.write(master, frame)
+            port.write(frame)
         scheduled = [(send_time, frame) for send_time, frame in scheduled if send_time > time.monotonic()]
 
         # take the ping requests of the host
-        readable, _, _ = select.select([master], [], [], POLL_PERIOD_SECONDS)
-        if not readable:
+        data = port.read()
+        if data is None:
             continue
-        for result in decoder.on_received_data(os.read(master, READ_SIZE)):
+        for result in decoder.on_received_data(data):
             if result[0] != 'frame':
                 continue
             fields = result[1]
@@ -82,27 +141,27 @@ def run_device(master, arguments):
                 boot_ping = (fields['counter'], request_timestamp)
                 time.sleep(arguments.delay)
                 if arguments.mode == 'late':
-                    os.write(master, get_acknowledgement(fields['counter']))
+                    port.write(get_acknowledgement(fields['counter']))
                 else:
-                    os.write(master, get_log_report(0, 'booted'))
+                    port.write(get_log_report(0, 'booted'))
                 continue
 
             # acknowledge a retransmission of the boot ping in the late mode only
             if fields['counter'] == boot_ping[0]:
                 if arguments.mode == 'late':
-                    os.write(master, get_acknowledgement(fields['counter']))
+                    port.write(get_acknowledgement(fields['counter']))
                 continue
 
             # acknowledge a retransmission of the ping of the command again
-            os.write(master, get_acknowledgement(fields['counter']))
+            port.write(get_acknowledgement(fields['counter']))
             if command_ping is not None:
                 continue
             command_ping = (fields['counter'], request_timestamp)
 
             # answer the boot ping first and the ping of the command second
             if arguments.mode == 'late':
-                os.write(master, get_ping_response(0, boot_ping[1], LATE_UPTIME_MSEC))
-                os.write(master, get_ping_response(1, request_timestamp, COMMAND_UPTIME_MSEC))
+                port.write(get_ping_response(0, boot_ping[1], LATE_UPTIME_MSEC))
+                port.write(get_ping_response(1, request_timestamp, COMMAND_UPTIME_MSEC))
                 continue
 
             # answer the ping of the command after the response delay
@@ -112,7 +171,7 @@ def run_device(master, arguments):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('link', help='path of the link to the pseudo terminal of the device')
+    parser.add_argument('link', help='path of the link to the pseudo terminal of the device or a COM port name')
     parser.add_argument('--mode', choices=('late', 'failed'), default='late',
                         help='late answers the boot ping late, failed lets it fail (default late)')
     parser.add_argument('--timeout', type=float, default=10.0, help='run time in seconds (default 10)')
@@ -122,22 +181,16 @@ def main():
                         help='delay of the ping answer of the command in the failed mode in seconds (default 2)')
     arguments = parser.parse_args()
 
-    # open the pseudo terminal raw and link its name
-    master, slave = os.openpty()
-    tty.setraw(slave)
-    if os.path.lexists(arguments.link):
-        os.remove(arguments.link)
-    os.symlink(os.ttyname(slave), arguments.link)
+    # open the COM port or the pseudo terminal raw and link its name
+    port = ComPort(arguments.link) if COM_PORT_NAME.match(arguments.link) else PseudoTerminal(arguments.link)
     print('Late ping device ready on %s in the %s mode' % (arguments.link, arguments.mode))
     sys.stdout.flush()
 
     # answer until the timeout
     try:
-        run_device(master, arguments)
+        run_device(port, arguments)
     finally:
-        os.remove(arguments.link)
-        os.close(master)
-        os.close(slave)
+        port.close()
 
 
 if __name__ == '__main__':
