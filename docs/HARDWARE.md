@@ -442,12 +442,15 @@ emulator tools need a Linux host: `tools/run_emulator.sh` is a Bash script and
 `tools/run_emulator.sh` serves each serial port of QEMU on a unix socket and starts
 `tools/uart_bridge.py` for it, which links a pseudo terminal of its own into the run
 directory. QEMU's own `-serial pty` notices a program that opens the pseudo terminal
-only about once a second and holds the bytes of that second back: every command then
-showed its first ping request sent again, `Device answered after 928 ms` and 3
-retransmissions per stress test. Through the bridge the Qt `sercom_cli` had the first
-answer of the STM32F4 after 4 to 7 ms in 8 runs, and `stress 300 32 2` ran without a
-retransmission at 1.5 to 2.1 ms average and 5 to 15 ms maximum latency. Like a USB
-bridge, it drops the output of the chip while no program holds the port open.
+only about once a second and holds the bytes of that second back. Measured with the Qt
+`sercom_cli` on the STM32F4 in 8 runs of each command, every command on QEMU's own
+pseudo terminal sent its first ping request again every 250 ms: `ping 1` showed
+`Device answered after` 679 to 1001 ms and `stress 300 32 2` 998 to 1005 ms with 3
+retransmissions per stress test; the first command after a pause waits less, the next
+ones the whole second. Through the bridge the first answer came after 2 to 4 ms, and
+`stress 300 32 2` ran without a retransmission at 1.1 to 1.5 ms average and 3 to 5 ms
+maximum latency. Like a USB bridge, it drops the output of the chip while no program
+holds the port open.
 `QSerialPort` opens a port in exclusive mode and ends the mode when it closes the port;
 when a tool is killed before that, the bridge links a new pseudo terminal in place of
 the refused one, as the port of a board is free again once the program is gone.
