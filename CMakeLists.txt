@@ -212,6 +212,18 @@ if (SERCOM_BUILD_BINARIES)
         Qt${QT_VERSION_MAJOR}::Core
     )
 
+    # create piecewise CRC32 example executable
+    add_executable(${PROJECT_NAME}_example_07_crc32_in_pieces
+        examples/07_crc32_in_pieces.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_07_crc32_in_pieces PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
+
     # create frame reading example executable
     add_executable(${PROJECT_NAME}_example_08_read_a_frame
         examples/08_read_a_frame.cpp
