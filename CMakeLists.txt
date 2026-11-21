@@ -72,6 +72,8 @@ add_library(${PROJECT_NAME}_core_lib
 # create host library
 add_library(${PROJECT_NAME}_host_lib
     host/include/HostSettings.h host/src/HostSettings.cpp
+
+    host/include/HostUtils.h host/src/HostUtils.cpp
 )
 target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
     ${PROJECT_NAME}_core_lib
