@@ -1,7 +1,9 @@
 # Hardware Bring-Up
 
 This document takes an ESP32 DevKit board from the box to a traced conversation with
-the host tools. It covers both firmware environments of `firmware/esp32/platformio.ini`:
+the host tools. Sections 10 to 12 do the same for the STM32F4 Nucleo boards, wire two
+boards to each other and run both targets in QEMU without a board. Sections 1 to 9
+cover the device environments of `firmware/esp32/platformio.ini`:
 
 | Environment | Protocol | USB port of the board shows | Host tools open |
 |---|---|---|---|
@@ -278,9 +280,137 @@ lines go to standard error. `2>/dev/null` keeps only the frames and the results.
 | A CH340 board appears and disappears again, `dmesg` shows `usbfs: interface 0 claimed by ch341 while 'brltty' sets config` | the braille display service of Ubuntu takes CH340 adapters | `sudo apt remove brltty`, plug the board in again |
 | `OPEN_FAILED` although the permissions are right, or the frames arrive in parts | another program holds the port: a serial monitor, `screen`, `minicom`, a second `sercom_cli`, the PlatformIO upload | `fuser -v /dev/ttyUSB0` names the program; close it |
 | `unframed data` lines with boot text right after the start, the uptime of `info` is always small | the board resets when the port opens | expected on DevKit boards; the boot wait covers it; `esp32dev-console` avoids the reset |
-| only `unframed data` lines in hex, no frame, `Device did not answer within 3000 ms` | wrong baud rate on one side | both sides use 115200 (`SERIAL_BAUD_RATE` in `FirmwareSettings.h`, `--baud` of the tools) |
+| only `unframed data` lines in hex, no frame, `Device did not answer within 3000 ms` | wrong baud rate on one side | both sides use 115200 (`SERIAL_BAUD_RATE` in `firmware/common/include/CommonSettings.h`, `--baud` of the tools) |
 | boot text appears as noise in the statistics (`decoder bytes discarded`) | the ROM bootloader prints on UART0 before the firmware starts | expected; the decoder drops it and `--trace` shows it as text |
 | `esp32dev-console`: nothing or garbage on the adapter port | no common ground, TX and RX swapped, or a 5 V adapter | GND to GND, adapter TX to GPIO16, adapter RX to GPIO17, 3.3 V adapter |
 | `esp32dev-console`: the console stays empty | the console is the USB port of the board, not the adapter | `pio device monitor ... -p` with the board's port at 115200 baud |
 | `Device did not answer within 3000 ms` with the right baud rate | firmware not flashed, board held in reset or in download mode, wrong port | press EN, flash again, try the other `/dev/ttyUSB` device (`ls -l /dev/serial/by-id/` names them) |
 | `N console lines dropped` on the console | the console prints more than 115200 baud carries | expected during a stress test; the protocol keeps its speed |
+
+## 10. STM32F4 Nucleo boards
+
+`firmware/stm32f4` is a bare metal PlatformIO project: the CMSIS headers and start-up
+code of `ststm32@19.7.1`, no HAL, no RTOS, no heap and no exceptions. It runs the same
+device role of `firmware/common` as the ESP32 in a superloop. Its environments:
+
+| Environment | Board | Protocol | Console |
+|---|---|---|---|
+| `nucleo_f401re` | Nucleo-F401RE | USART2, the ST-LINK virtual COM port | none |
+| `nucleo_f411re` | Nucleo-F411RE | USART2, the ST-LINK virtual COM port | none |
+| `nucleo_f401re-console` | Nucleo-F401RE | USART1, PA9 transmits (D8), PA10 receives (D2) | USART2, the virtual COM port |
+| `nucleo_f401re-controller` | Nucleo-F401RE | controller of a device on USART1 | USART2, the virtual COM port |
+| `netduinoplus2-qemu` | STM32F405 of the QEMU machine `netduinoplus2` | USART2 | none |
+| `netduinoplus2-qemu-controller` | STM32F405 of the QEMU machine `netduinoplus2` | controller on USART1 | USART2 |
+
+The ST-LINK of a Nucleo-64 board carries USART2 (PA2 transmits, PA3 receives) to the
+host as a virtual COM port, `/dev/ttyACM0` on Linux. Opening it does not reset the
+chip and the chip prints no boot text, so the first frame of the host is answered at
+once. The user LED LD2 is PA5 (`LED_PIN` in `firmware/stm32f4/include/FirmwareSettings.h`).
+
+1. Build every environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller`.
+2. Connect the ST-LINK USB connector of the board.
+3. Flash the device firmware through the ST-LINK: `pio run -d firmware/stm32f4 -e nucleo_f401re -t upload`.
+4. Print the device information with every frame: `build/sercom_cli /dev/ttyACM0 --trace info`.
+5. Run the other commands of section 7 on `/dev/ttyACM0`.
+
+How the firmware uses the chip:
+
+| Part | Choice | Why |
+|---|---|---|
+| Clock | HSI at 16 MHz, the clock after reset, without the PLL | nothing in the protocol needs more, and no clock-ready flag must be waited for |
+| Time | SysTick interrupt every millisecond counts a 64 bit `Stm32Clock` | the clock of `core/include/Clock.h` must not wrap; a read masks the interrupt for the two loads |
+| Baud rate | BRR 139 at 16 MHz, 115108 baud, 0.08 % below 115200 | far inside the tolerance of a UART |
+| Receive | RXNE interrupt into a 2048 byte ring buffer (`RING_BUFFER_SIZE`) | the superloop may be busy, the ring holds 178 ms of a full line |
+| Transmit | TXE interrupt from a second 2048 byte ring buffer | `sendData` returns at once and waits only when the ring is full, the contract of the ESP32 UART driver; the same `UsartPort` is the console output, which drops a line instead of stalling |
+| Loop | receive, heartbeat every 5 s, `maintain()`, then `__WFI()` | the SysTick interrupt wakes the loop at least once per millisecond |
+| Free heap field | bytes between the end of the static data and the deepest stack use, found with a fill pattern written at the start | the firmware has no heap: `_sbrk` refuses every request, so this is the memory still free |
+| Temperature | internal sensor on ADC1 channel 18 (16 on the F405) with the factory readings at 30 and 110 °C | a conversion that does not end within 2 ms reports `-32768` (-327.68 °C), the protocol value of no reading |
+
+The heartbeat log line of the STM32F4 is `Heartbeat: free memory <bytes> bytes, dropped
+received bytes <count>`.
+
+## 11. Device to device
+
+The controller role of `firmware/common/include/ControllerRole.h` runs the
+`DeviceClient` on a microcontroller: it waits for the device, sends 3 ping requests,
+asks for the device information, collects 3 telemetry reports at 200 ms, runs an echo
+stress test of 300 requests with 32 byte payloads and 2 requests in flight, and prints
+every result on its console. A request answered with NACK `BUSY` is sent again, any
+other failed request fails the step. The last two lines are the result:
+
+```text
+[     2.746] log DEBUG: Controller passed every step
+[     2.746] log DEBUG: Controller report: pings 3, info 1, telemetry 3, echoes 300 of 300, busy 0, failed 0
+```
+
+Wire the protocol ports of two boards to each other:
+
+| Controller | Device | Purpose |
+|---|---|---|
+| ESP32 `esp32dev-controller`, GPIO17 (TX2) | Nucleo `nucleo_f401re-console`, PA10 (D2, USART1 RX) | controller to device |
+| ESP32 `esp32dev-controller`, GPIO16 (RX2) | Nucleo `nucleo_f401re-console`, PA9 (D8, USART1 TX) | device to controller |
+| GND | GND | common ground |
+
+or the other way round:
+
+| Controller | Device | Purpose |
+|---|---|---|
+| Nucleo `nucleo_f401re-controller`, PA9 (D8, USART1 TX) | ESP32 `esp32dev-console`, GPIO16 (RX2) | controller to device |
+| Nucleo `nucleo_f401re-controller`, PA10 (D2, USART1 RX) | ESP32 `esp32dev-console`, GPIO17 (TX2) | device to controller |
+| GND | GND | common ground |
+
+- Transmit goes to receive in both directions; two transmit pins on one wire drive
+  against each other.
+- Both boards share ground and nothing else; each one is powered over its own USB port.
+- Both chips use 3.3 V levels. Never connect a 5 V signal or an RS-232 port (±12 V)
+  to a 3.3 V pin; an RS-232 device needs a level shifter such as a MAX3232.
+- The device console runs on USART2, so the Nucleo device uses `nucleo_f401re-console`:
+  PA2 and PA3 of `nucleo_f401re` are wired to the ST-LINK by the solder bridges SB13
+  and SB14.
+- Watch the controller on its console: the USB port of the ESP32 at 115200 baud, or
+  `/dev/ttyACM0` of the Nucleo controller. Each start runs the steps once; press reset
+  to run them again.
+
+A gateway, where the host talks to one board that forwards to the other, is not part
+of version 1 of the protocol; [GATEWAY.md](GATEWAY.md) explains why and how it could be
+added.
+
+## 12. Both targets in QEMU without a board
+
+Both targets also run in QEMU: the ESP32 on Espressif's QEMU, the STM32F4 on the
+`netduinoplus2` machine of the xPack QEMU for Arm, which models an STM32F405.
+
+1. Install socat and the libraries of Espressif's QEMU: `sudo apt install socat libgcrypt20 libglib2.0-0t64 libpixman-1-0 libsdl2-2.0-0 libslirp0`
+2. Download and unpack [xPack QEMU Arm 9.2.4-1](https://github.com/xpack-dev-tools/qemu-arm-xpack/releases/tag/v9.2.4-1) and [Espressif QEMU esp-develop-9.2.2-20260417](https://github.com/espressif/qemu/releases/tag/esp-develop-9.2.2-20260417), the versions of the CI.
+3. Name both emulators: `export ARM_QEMU=<xpack directory>/bin/qemu-system-arm ESP32_QEMU=<espressif directory>/qemu/bin/qemu-system-xtensa`
+4. Build the emulated firmware: `pio run -d firmware/stm32f4 -e netduinoplus2-qemu -e netduinoplus2-qemu-controller` and `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller`
+5. Start the STM32F4 device: `tools/run_emulator.sh start stm32f4 firmware/stm32f4/.pio/build/netduinoplus2-qemu /tmp/stm32f4 --log usart1`
+6. Talk to it like to a board: `build/sercom_cli /tmp/stm32f4/usart2 --trace info`, `build/sercom_cli /tmp/stm32f4/usart2 stress 300 32 2`
+7. Stop it: `tools/run_emulator.sh stop /tmp/stm32f4`
+8. Start the ESP32 device the same way and use `/tmp/esp32/uart0`: `tools/run_emulator.sh start esp32 firmware/esp32/.pio/build/esp32dev /tmp/esp32 --log uart2`
+9. Wire an emulated controller to an emulated device and run every check of the CI: `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
+
+`tools/run_emulator.sh` serves each serial port of QEMU on a unix socket and starts
+`tools/uart_bridge.py` for it, which links a pseudo terminal of its own into the run
+directory. QEMU's own `-serial pty` notices a program that opens the pseudo terminal
+only about once a second and holds the bytes of that second back: every command then
+showed its first ping request sent again, `Device answered after 928 ms` and 3
+retransmissions per stress test. Through the bridge the STM32F4 answered after 5 ms and
+the stress test `stress 300 32 2` ran without a retransmission, 1.5 ms average and 5 ms
+maximum latency. Like a USB bridge, it drops the output of the chip while no program
+holds the port open.
+
+Two emulated chips are wired with socat between their pseudo terminals:
+`socat /tmp/esp32/uart2,raw,echo=0 /tmp/stm32f4/usart2,raw,echo=0`; two
+`tools/noise.py` processes in its place add the noise of `tools/noisy_link.sh`.
+
+What differs from a board:
+
+| | QEMU | Board |
+|---|---|---|
+| STM32F4 chip | STM32F405 with 1 MB flash, of its RAM the firmware uses the 128 KB SRAM; built by `netduinoplus2-qemu` | STM32F401RE (512 KB, 96 KB) or STM32F411RE (512 KB, 128 KB) |
+| STM32F4 clock | the machine runs SysTick from a fixed 168 MHz clock, `LET_RUN_ON_QEMU` selects it; the RCC registers read 0 and ignore writes | HSI at 16 MHz after reset |
+| STM32F4 serial ports | the baud rate register is ignored, bytes move at the speed of the host | 115108 baud from BRR 139 |
+| STM32F4 LED | GPIO is not modelled, the LED state is only remembered | LD2 lights |
+| STM32F4 temperature | the ADC conversion never ends, the telemetry shows `-327.68 C` | calibrated internal sensor |
+| ESP32 | watchdogs off, the temperature reads `-17.78 C`, opening a port does not reset the chip | DTR and RTS reset the chip when a port opens |
