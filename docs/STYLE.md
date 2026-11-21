@@ -1,9 +1,10 @@
 # Coding Style
 
 This document describes the coding and commenting style of sercom. Every C++ file in
-`core/`, `app/`, `host/`, `firmware/esp32/`, `tests/`, `examples/` and `fuzz/` follows
-it, and so does every change. The code is plain C++17 with the standard library; the
-firmware adds the Arduino and FreeRTOS calls it needs and nothing else.
+`core/`, `app/`, `host/`, `firmware/common/`, `firmware/esp32/`, `firmware/stm32f4/`,
+`tests/`, `examples/` and `fuzz/` follows it, and so does every change. The code is plain
+C++17 with the standard library; the ESP32 firmware adds the Arduino and FreeRTOS calls
+it needs, the STM32F4 firmware the CMSIS registers and intrinsics, and nothing else.
 
 Three tools check what a program can count:
 
@@ -480,15 +481,15 @@ if (currentTime - this->lastReconnectTimestamp
 }
 ```
 
-- Periodic housekeeping is `maintain()`; the firmware's protocol task calls
-  `deviceApplication.maintain()`; firmware periods are named settings constants, never a
+- Periodic housekeeping is `maintain()`; the ESP32 protocol task and the STM32F4 superloop
+  call `firmwareRole.maintain()`; firmware periods are named settings constants, never a
   literal in a delay (R-149, R-150).
 - Width helpers spell the type, `readUint16`, `storeUint32`; a reader that can fail returns
   `bool` and fills a reference (R-151).
 - The firmware keeps `include/<Module>.h` and `src/<Module>.cpp` pairs; the program state
   of `main.cpp` is `static` at file scope under `Global variables.` (R-155, R-254).
-- `core/` and `app/` stay free of platform calls; the code builds without a warning on GCC,
-  Clang and the ESP32 toolchain (R-156, R-157).
+- `core/`, `app/` and `firmware/common/` stay free of platform calls; the code builds
+  without a warning on GCC, Clang, the ESP32 toolchain and the Arm toolchain (R-156, R-157).
 
 ## 14. Tests
 
