@@ -1,6 +1,6 @@
 # sercom
 
-Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
+Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows and ESP32 Devices
 
 ## Building the project
 1. Clone the project with: `git clone https://github.com/mustafa-gokce/sercom.git`
@@ -9,11 +9,27 @@ Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
 
 ### Linux
 1. Open a terminal.
-2. Install the tools: `sudo apt install build-essential cmake ninja-build python3 socat gdb git`
-3. Go to the source directory.
-4. `mkdir build && cd build`
-5. `cmake -S .. -B . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
-6. `cmake --build .`
+2. Install the tools: `sudo apt install build-essential cmake ninja-build python3 python3-venv socat gdb git`
+3. Install aqtinstall into its own environment: `python3 -m venv ~/aqt && ~/aqt/bin/pip install aqtinstall`
+4. Install Qt 5.12.12, the only Qt the host code builds with: `~/aqt/bin/aqt install-qt linux desktop 5.12.12 gcc_64 -O ~/Qt`
+5. Go to the source directory.
+6. `mkdir build && cd build`
+7. `cmake -S .. -B . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64`
+8. `cmake --build .`
+
+### Windows
+1. Install Git, CMake, Python 3 and PowerShell 7 (`winget install Git.Git Kitware.CMake Python.Python.3.12 Microsoft.PowerShell`).
+2. Open PowerShell 7 (`pwsh`).
+3. Install aqtinstall: `python -m pip install aqtinstall pyserial`
+4. Install Qt 5.12.12 for MinGW 7.3.0 64-bit: `python -m aqt install-qt windows desktop 5.12.12 win64_mingw73 -O C:\Qt`
+5. Install MinGW 7.3.0 64-bit, the compiler of this Qt and the only Windows compiler of the project: `python -m aqt install-tool windows desktop tools_mingw qt.tools.win64_mingw730 -O C:\Qt`
+6. Install Ninja: `python -m aqt install-tool windows desktop tools_ninja qt.tools.ninja -O C:\Qt`
+7. Put MinGW, Ninja and Qt on the path of the prompt: `$env:PATH = "C:\Qt\Tools\mingw730_64\bin;C:\Qt\Tools\Ninja;C:\Qt\5.12.12\mingw73_64\bin;$env:PATH"`
+8. Go to the source directory.
+9. `mkdir build; cd build`
+10. `cmake -S .. -B . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=C:/Qt/5.12.12/mingw73_64`
+11. `cmake --build .`
+12. The build runs `windeployqt` on `sercom_cli.exe`: the Qt and MinGW DLLs land next to the programs, which then start from any prompt. Qt is linked dynamically under the LGPL.
 
 ### ESP32
 1. Open a terminal.
@@ -27,18 +43,28 @@ Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
 2. Go to the build directory.
 3. `./sercom_test --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
 4. Go to the source directory.
-5. Run the tests with a 64 byte payload limit: `tools/run_small_limit_test.sh`
-6. Run the Python reference self test: `python3 tools/sercom_frame.py self-test`
-7. Run the end to end test over a noisy virtual link: `tests/e2e/noisy_link_test.sh build/sercom_cli build/sercom_device_sim`
-8. Compare the version numbers of the build files: `python3 tools/check_versions.py`
-9. Install Clang, clang-format 18 and clang-tidy 18 (the versions of Ubuntu 24.04): `sudo apt install clang clang-format clang-tidy`
-10. Build and install cppcheck 2.22 into `~/.local/cppcheck-2.22.0`: `tools/analysis/install_cppcheck.sh`
-11. Run the layout, comment, idiom, cppcheck and clang-tidy gates: `CPPCHECK=~/.local/cppcheck-2.22.0/bin/cppcheck tools/run_static_analysis.sh build`
-12. Run the tests with AddressSanitizer and UndefinedBehaviorSanitizer in `build-sanitizers`: `tools/run_sanitizer_test.sh`
-13. Fuzz the frame decoder and the link layer for one minute each in `build-fuzz`: `fuzz/run_fuzzers.sh`
+5. Point the helper scripts at Qt 5.12.12: `export CMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64`
+6. Run the tests with a 64 byte payload limit: `tools/run_small_limit_test.sh`
+7. Run the Python reference self test: `python3 tools/sercom_frame.py self-test`
+8. Run the end to end test over a noisy virtual link: `tests/e2e/noisy_link_test.sh build/sercom_cli build/sercom_device_sim`
+9. Compare the version numbers of the build files: `python3 tools/check_versions.py`
+10. Install Clang, clang-format 18 and clang-tidy 18 (the versions of Ubuntu 24.04): `sudo apt install clang clang-format clang-tidy`
+11. Build and install cppcheck 2.22 into `~/.local/cppcheck-2.22.0`: `tools/analysis/install_cppcheck.sh`
+12. Run the layout, comment, idiom, cppcheck and clang-tidy gates: `CPPCHECK=~/.local/cppcheck-2.22.0/bin/cppcheck tools/run_static_analysis.sh build`
+13. Run the tests with AddressSanitizer and UndefinedBehaviorSanitizer in `build-sanitizers`: `tools/run_sanitizer_test.sh`
+14. Fuzz the frame decoder and the link layer for one minute each in `build-fuzz`: `fuzz/run_fuzzers.sh`
+
+### Windows
+1. Open PowerShell 7 with the path of the build steps.
+2. Go to the build directory.
+3. `./sercom_test.exe --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
+4. Go to the source directory.
+5. Run the Python reference self test: `python tools/sercom_frame.py self-test`
+6. Run every example of the build directory, examples 01 and 24 on the com0com pair `COM10` and `COM11` of [tools/COM0COM.md](tools/COM0COM.md): `tools/run_examples.ps1 build`
+7. Run the end to end test over a noisy link of the com0com pairs `COM10` to `COM13`: `tests/e2e/noisy_link_test.ps1 build/sercom_cli.exe build/sercom_device_sim.exe`
 
 ### ESP32
-1. Build the firmware as above, the protocol code is tested on Linux.
+1. Build the firmware as above, the protocol code is tested on Linux and Windows.
 
 ## Run application
 ### Linux
@@ -60,15 +86,27 @@ Packet Based Binary Serial Protocol for Linux Hosts and ESP32 Devices
 16. Run one example: `build/sercom_example_02_build_frame`
 17. Run every example of the build directory: `tools/run_examples.sh build`
 
+### Windows
+1. Create the com0com pairs `COM10` with `COM11` and `COM12` with `COM13` as [tools/COM0COM.md](tools/COM0COM.md) shows.
+2. Open PowerShell 7 with the path of the build steps.
+3. Go to the source directory.
+4. Start a noisy link between `COM10` and `COM13`: `Start-Process pwsh -ArgumentList '-File', 'tools/noisy_link.ps1', '--profile', 'realistic', '--seed', '1'`
+5. Start the device simulator: `Start-Process build/sercom_device_sim.exe -ArgumentList 'COM13'`
+6. Measure the round trip time: `build/sercom_cli.exe COM10 ping 3`
+7. Print every frame on the wire in both directions: `build/sercom_cli.exe COM10 --trace ping 1`
+8. Run the other commands of the Linux steps the same way, with `COM10` in place of `/tmp/ttyV1`.
+9. Stop the device simulator and the noisy link with Ctrl+C in their windows.
+10. A port name from `COM1` to `COM256` works as it is, `\\.\COM10` works too.
+
 ### ESP32
 1. Connect the board over USB.
 2. Close every serial monitor, the protocol uses the same USB port.
 3. Open a terminal.
 4. Go to the source directory.
 5. Flash the firmware with the protocol on the USB port: `pio run -d firmware/esp32 -e esp32dev -t upload`
-6. Print the device information and every frame on the wire: `build/sercom_cli /dev/ttyUSB0 --trace info`
+6. Print the device information and every frame on the wire: `build/sercom_cli /dev/ttyUSB0 --trace info`, on Windows with the COM port of the board: `build/sercom_cli.exe COM3 --trace info`
 7. Measure one ping on the board: `build/sercom_example_24_serial_ping /dev/ttyUSB0`
-8. Follow [docs/HARDWARE.md](docs/HARDWARE.md) for the wiring, the console firmware `esp32dev-console` with the protocol on UART2 and the troubleshooting list.
+8. Follow [docs/HARDWARE.md](docs/HARDWARE.md) for the wiring, the console firmware `esp32dev-console` with the protocol on UART2, the COM ports of Windows and the troubleshooting list.
 
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
@@ -80,12 +118,13 @@ Contributions follow the rules below, the layout of the repository and the tools
 6. Every contribution comes with its tests.
 7. A contribution must not break the auto tests.
 8. Codes must be formatted with: `clang-format --style=file:tools/analysis/clang-format.yaml -i <file>`
-9. Codes must be checked with `cppcheck` and `clang-tidy` through `tools/run_static_analysis.sh` and must not contain any warnings.
-10. Codes must follow the coding and commenting style of [docs/STYLE.md](docs/STYLE.md), `python3 tools/analysis/check_style.py` checks its countable rules.
-11. Push the branch to the fork.
-12. Open a pull request.
-13. Wait for the tests to pass (changes of timing need at least 10 consecutive passing runs).
-14. Wait for the approval.
+9. Host codes use Qt 5.12.12 and contain no platform branches, `core/` and `app/` stay plain C++ without Qt.
+10. Codes must be checked with `cppcheck` and `clang-tidy` through `tools/run_static_analysis.sh` and must not contain any warnings.
+11. Codes must follow the coding and commenting style of [docs/STYLE.md](docs/STYLE.md), `python3 tools/analysis/check_style.py` checks its countable rules.
+12. Push the branch to the fork.
+13. Open a pull request.
+14. Wait for the tests to pass on Linux and Windows (changes of timing need at least 10 consecutive passing runs).
+15. Wait for the approval.
 
 ## Contributors
 ### [mustafa-gokce](https://github.com/mustafa-gokce) - Maintainer, Developer
