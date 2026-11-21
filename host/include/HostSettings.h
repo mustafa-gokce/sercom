@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 namespace sercom::HostSettings {
 
@@ -16,6 +17,8 @@ constexpr size_t READ_BUFFER_SIZE = 1 * 1024;  // serial port read buffer size i
 
 constexpr std::chrono::milliseconds WRITE_TIMEOUT_MSEC
     = 1 * 1000ms; // serial port write timeout in milliseconds
+
+constexpr std::string_view DEFAULT_DEVICE_NAME = "sercom-device-sim"; // default device name
 
 } // namespace sercom::HostSettings
 
