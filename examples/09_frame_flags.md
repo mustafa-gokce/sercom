@@ -12,7 +12,7 @@ treat it as a repeat. You need to read them in every byte dump.
 
 ## Before you start
 
-1. Watch lecture L29 "Version, flags, counter and type" (section S05).
+1. Watch lecture L32 "Version, flags, counter and type" (section S05).
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -125,5 +125,5 @@ The exit code `0` means the retransmitted frame kept both of its flags.
 - `core/src/Link.cpp`: sends ACK_REQUEST, RETRANSMISSION, ACK and NACK frames.
 - `host/include/HostUtils.h`: `getFrameFlagsText()`, used by the frame trace of the host tools.
 - `docs/PROTOCOL.md`, section "3. Flags".
-- Lectures: L29 "Version, flags, counter and type" and L27 "Anatomy of a frame"; the flags come
-  back in L67 "ACK and NACK frames" and L68 "Retransmission timers and the RETRANSMISSION flag".
+- Lectures: L32 "Version, flags, counter and type" and L30 "Anatomy of a frame"; the flags come
+  back in L70 "ACK and NACK frames" and L71 "Retransmission timers and the RETRANSMISSION flag".
