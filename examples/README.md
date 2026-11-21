@@ -39,6 +39,8 @@ because its messages travel over the link layer of example 18.
 | S10 | L63, L66 (also L64, L79) | 16 | Device Info Message | Prints a device info response field by field, the length-prefixed name included, and reads it back | [guide](16_device_info_message.md), [source](16_device_info_message.cpp) |
 | S10 | L63, L66 (also L25, L85) | 17 | Telemetry Message | Prints a telemetry report field by field and scales the received values to seconds, KiB and degrees Celsius | [guide](17_telemetry_message.md), [source](17_telemetry_message.cpp) |
 | S11 | L70 (also L68, L75) | 18 | Link Loopback | Two links in memory: a request with ACK_REQUEST, the ACK that echoes counter and type, the confirmed delivery | [guide](18_link_loopback.md), [source](18_link_loopback.cpp) |
+| S11 | L71 (also L74, L75) | 19 | Retransmission | The first frame is lost, the retransmit timeout passes and the link sends it again with the RETRANSMISSION flag | [guide](19_retransmission.md), [source](19_retransmission.cpp) |
+| S11 | L72 (also L73, L75) | 20 | Duplicate Detection | The ACK is lost, the retransmitted message is recognised as a duplicate and answered without a second delivery | [guide](20_duplicate_detection.md), [source](20_duplicate_detection.cpp) |
 | S11 | L62, L65 (also L64, L66) | 23 | Custom Message | Adds an own message type pair, answers it on the device and rejects wrong requests with a status | [guide](23_custom_message.md), [source](23_custom_message.cpp) |
 
 ## Building the examples
