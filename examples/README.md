@@ -42,6 +42,7 @@ because its messages travel over the link layer of example 18.
 | S11 | L71 (also L74, L75) | 19 | Retransmission | The first frame is lost, the retransmit timeout passes and the link sends it again with the RETRANSMISSION flag | [guide](19_retransmission.md), [source](19_retransmission.cpp) |
 | S11 | L72 (also L73, L75) | 20 | Duplicate Detection | The ACK is lost, the retransmitted message is recognised as a duplicate and answered without a second delivery | [guide](20_duplicate_detection.md), [source](20_duplicate_detection.cpp) |
 | S11 | L62, L65 (also L64, L66) | 23 | Custom Message | Adds an own message type pair, answers it on the device and rejects wrong requests with a status | [guide](23_custom_message.md), [source](23_custom_message.cpp) |
+| S12 | L81 (also L65, L78) | 21 | Device in One Process | The device application and the host client in one program: a ping and the LED on | [guide](21_device_in_one_process.md), [source](21_device_in_one_process.cpp) |
 
 ## Building the examples
 1. Open a terminal, on Windows PowerShell 7 with the path of the README.
