@@ -183,6 +183,18 @@ if (SERCOM_BUILD_BINARIES)
         Qt${QT_VERSION_MAJOR}::Core
         Qt${QT_VERSION_MAJOR}::SerialPort
     )
+
+    # create capture dump executable
+    add_executable(${PROJECT_NAME}_dump
+        host/apps/sercom_dump.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_dump PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
 endif()
 
 # create example executables
