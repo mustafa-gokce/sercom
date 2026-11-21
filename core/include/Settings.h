@@ -28,6 +28,13 @@ constexpr std::chrono::milliseconds DEFAULT_RETRANSMIT_TIMEOUT_MSEC
 
 constexpr uint8_t DEFAULT_MAXIMUM_RETRANSMISSIONS = 5; // default retransmissions of a message
 
+constexpr size_t MAXIMUM_UNFRAMED_DATA_SIZE = 80;  // maximum unframed data size in bytes
+constexpr size_t MAXIMUM_TRACED_PAYLOAD_SIZE = 16; // maximum traced payload size in bytes
+constexpr size_t TRACED_MESSAGE_COUNTER_WIDTH = 5; // message counter column width in characters
+constexpr size_t TRACED_MESSAGE_TYPE_WIDTH = 28;   // message type column width in characters
+constexpr size_t TRACED_FLAGS_WIDTH = 26;          // flags column width in characters
+constexpr size_t TRACED_PAYLOAD_LENGTH_WIDTH = 3;  // payload length column width in characters
+
 } // namespace sercom::Settings
 
 // check settings
