@@ -207,6 +207,9 @@ void printUsage(const std::string_view programName)
     const std::string usage
         = std::string("Usage: ") + std::string(programName)
           + " <port> [--baud N] [--trace] <command> [arguments]\n"
+            "Port:\n"
+            "  <port>                               device path such as /dev/ttyUSB0 on Linux,\n"
+            "                                       COM port such as COM3 on Windows\n"
             "Options:\n"
             "  --baud N                             baud rate of the serial port\n"
             "  --trace                              print every frame in both directions\n"
