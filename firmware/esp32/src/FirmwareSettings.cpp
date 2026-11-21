@@ -14,4 +14,6 @@ constexpr int8_t SerialReceivePin = UART0_RECEIVE_PIN;
 constexpr int8_t SerialTransmitPin = UART0_TRANSMIT_PIN;
 #endif
 
+constexpr std::string_view ApplicationName = "DeviceApplication";
+
 } // namespace sercom::FirmwareSettings
