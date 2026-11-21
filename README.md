@@ -68,6 +68,9 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 12. Stop the device simulator and the noisy link: `kill %2 %1`
 13. Write one frame into a capture file: `python3 tools/sercom_frame.py encode --type 0x0001 --counter 7 --flags 0x01 --payload E8030000 --binary > /tmp/ping.bin`
 14. Decode the capture file: `build/sercom_dump /tmp/ping.bin`
+15. Pick an example from the index of the 25 examples with their step-by-step guides: [examples/README.md](examples/README.md)
+16. Run one example: `build/sercom_example_02_build_frame`
+17. Run every example of the build directory: `tools/run_examples.sh build`
 
 ### Windows
 1. Create the com0com pairs `COM10` with `COM11` and `COM12` with `COM13` as [tools/COM0COM.md](tools/COM0COM.md) shows.
