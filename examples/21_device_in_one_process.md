@@ -12,7 +12,7 @@ that the protocol logic of the device does not depend on the hardware.
 
 ## Before you start
 
-1. Watch lecture L78 "A device simulator: firmware logic without hardware" (section S12) and run example 18 first.
+1. Watch lecture L81 "A device simulator: firmware logic without hardware" (section S12) and run example 18 first.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -128,5 +128,5 @@ The exit code `0` means two responses arrived and the LED is on.
 - `host/src/SimulatedPlatform.cpp`: the platform of the device simulator, and
   `firmware/esp32/src/Esp32Platform.cpp`: the platform of the ESP32.
 - `tests/test_DeviceApplication.cpp`: the same pair in memory, with many more cases.
-- Lectures: L62 "Dispatching messages", L75 "DeviceClient: requests and replies" and L78 "A device
+- Lectures: L65 "Dispatching messages", L78 "DeviceClient: requests and replies" and L81 "A device
   simulator: firmware logic without hardware".
