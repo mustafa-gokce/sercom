@@ -13,6 +13,8 @@ using namespace std::chrono_literals;
 
 constexpr size_t MaximumPayloadSize = MAXIMUM_PAYLOAD_SIZE;     // maximum payload size in bytes
 constexpr size_t MaximumPendingFrames = MAXIMUM_PENDING_FRAMES; // maximum unacknowledged frames
+constexpr size_t DefaultDuplicateHistorySize
+    = DEFAULT_DUPLICATE_HISTORY_SIZE; // default number of remembered acknowledged messages
 
 constexpr size_t MAXIMUM_FRAME_SIZE = Definitions::FRAME_OVERHEAD
                                       + MaximumPayloadSize; // maximum frame size in bytes
@@ -33,5 +35,8 @@ static_assert(sercom::Settings::MaximumPayloadSize >= 16,
               "Maximum payload size must be at least 16 bytes");
 static_assert(sercom::Settings::MaximumPendingFrames >= 1,
               "Maximum pending frames must be at least 1");
+static_assert(sercom::Settings::DefaultDuplicateHistorySize
+                  >= sercom::Settings::MaximumPendingFrames,
+              "Default duplicate history size must be at least the maximum pending frames");
 
 #endif // SERCOM_SETTINGS_H
