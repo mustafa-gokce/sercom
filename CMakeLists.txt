@@ -509,11 +509,13 @@ if (SERCOM_BUILD_TESTS)
         tests/test_CliApplication.cpp
         tests/test_FrameTracer.cpp
         tests/test_HostUtils.cpp
+        tests/test_RingBuffer.cpp
     )
     target_link_libraries(${PROJECT_NAME}_test PRIVATE
         ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_firmware_lib
         ${PROJECT_NAME}_host_lib
         Catch2::Catch2
     )
