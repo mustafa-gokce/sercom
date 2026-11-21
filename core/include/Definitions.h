@@ -112,6 +112,25 @@ std::string_view fromSendStatusType(SendStatusType sendStatusType);
 SendStatusType toSendStatusType(std::string_view sendStatusType);
 
 /*
+ * Delivery failure type.
+ */
+enum class DeliveryFailureType : uint8_t {
+    UNKNOWN = 0,   // unknown delivery failure
+    TIMED_OUT = 1, // every retransmission stayed unanswered
+    REJECTED = 2,  // peer answered with a NACK
+};
+
+/*
+ * Delivery failure type to string.
+ */
+std::string_view fromDeliveryFailureType(DeliveryFailureType deliveryFailureType);
+
+/*
+ * String to delivery failure type.
+ */
+DeliveryFailureType toDeliveryFailureType(std::string_view deliveryFailureType);
+
+/*
  * Check whether a flag is set in the value of a FLAGS field.
  */
 [[nodiscard]] bool isFrameFlagSet(uint8_t flags, FrameFlagType frameFlagType);

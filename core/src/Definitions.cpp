@@ -126,6 +126,33 @@ SendStatusType toSendStatusType(const std::string_view sendStatusType)
     return SendStatusType::UNKNOWN;
 }
 
+std::string_view fromDeliveryFailureType(const DeliveryFailureType deliveryFailureType)
+{
+    switch (deliveryFailureType) {
+    case DeliveryFailureType::TIMED_OUT: {
+        return {"TIMED_OUT"};
+    }
+    case DeliveryFailureType::REJECTED: {
+        return {"REJECTED"};
+    }
+    case DeliveryFailureType::UNKNOWN:
+    default: {
+        return {"UNKNOWN"};
+    }
+    }
+}
+
+DeliveryFailureType toDeliveryFailureType(const std::string_view deliveryFailureType)
+{
+    if (deliveryFailureType == std::string_view("TIMED_OUT")) {
+        return DeliveryFailureType::TIMED_OUT;
+    }
+    if (deliveryFailureType == std::string_view("REJECTED")) {
+        return DeliveryFailureType::REJECTED;
+    }
+    return DeliveryFailureType::UNKNOWN;
+}
+
 bool isFrameFlagSet(const uint8_t flags, const FrameFlagType frameFlagType)
 {
     // expose whether the bit of the flag is set
