@@ -134,6 +134,7 @@ With the default `moderate` profile about two lines in three arrive intact (66.3
 on the wire in both directions as it happens, and the bytes that were not part of a
 frame, text as escaped text in quotes and other bytes in hex. Each program shows its
 own view: the bytes it sent before the noise and the bytes it received after the noise.
+The fields are explained in [HARDWARE.md](../docs/HARDWARE.md).
 
 1. Start the link in the first terminal: `tools/noisy_link.sh --profile clean`
 2. Start the simulator with its trace in the second terminal: `build/sercom_device_sim /tmp/ttyV2 --trace`
