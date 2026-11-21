@@ -107,6 +107,7 @@ public:
 private:
     /*
      * Process the buffered bytes until more bytes are needed.
+     * A call from inside a handler returns at once and leaves the new bytes to the running call.
      */
     void processBuffer();
 
@@ -138,6 +139,7 @@ private:
     size_t bufferEnd;                                         // index after the last buffered byte
     std::chrono::milliseconds lastByteTimestamp;              // arrival time of the newest byte
     DecoderStatistics statistics;                             // decoder statistics
+    bool processing;                                          // buffered bytes are processed
 };
 
 } // namespace sercom::FrameDecoder
