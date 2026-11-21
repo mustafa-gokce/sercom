@@ -29,7 +29,7 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 9. `mkdir build; cd build`
 10. `cmake -S .. -B . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=C:/Qt/5.12.12/mingw73_64`
 11. `cmake --build .`
-12. The build runs `windeployqt` on `sercom_cli.exe`: the Qt and MinGW DLLs land next to the programs, which then start from any prompt. Qt is linked dynamically under the LGPL.
+12. The build runs `windeployqt` on `sercom_cli.exe`: the Qt Core, Qt Serial Port and MinGW DLLs that it needs land next to the programs, and every program but `sercom_test.exe` then starts from any prompt. `sercom_test.exe` also needs Qt Test, which `windeployqt` does not deploy, and starts only with the Qt `bin` directory of step 7 on the path. Qt is linked dynamically under the LGPL.
 
 ### ESP32
 1. Open a terminal, on Windows PowerShell 7.
