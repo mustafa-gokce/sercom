@@ -145,6 +145,7 @@ add_library(${PROJECT_NAME}_host_lib
 
     host/include/CliApplication.h host/src/CliApplication.cpp
     host/include/SimulatedPlatform.h host/src/SimulatedPlatform.cpp
+    host/include/DumpHandler.h host/src/DumpHandler.cpp
     host/include/DeviceSimulator.h host/src/DeviceSimulator.cpp
 )
 target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
