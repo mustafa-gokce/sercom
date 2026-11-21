@@ -48,10 +48,11 @@ when it finds another version. `core/`, `app/` and `firmware/common/` never see 
 because they also run on the microcontrollers. The same `CMakeLists.txt` builds on
 Linux and on Windows; its only platform check runs `windeployqt` after the Windows
 build, which copies the Qt and MinGW DLLs next to the programs (dynamic Qt under the
-LGPL). The serial port names are `/dev/ttyUSB0` or a pseudo terminal such as
-`/tmp/ttyV1` on Linux and `COM3` on Windows; `QSerialPort` takes both. On Linux a
-name without a leading `/` or `./` names a device in `/dev`, so `ttyUSB0` works and a
-pseudo terminal link in the current directory needs `./`.
+LGPL). The serial port names are `/dev/ttyUSB0`, the `/dev/ttyACM0` of a Nucleo board
+or a pseudo terminal such as `/tmp/ttyV1` on Linux and `COM3` on Windows;
+`QSerialPort` takes both. On Linux a name without a leading `/` or `./` names a
+device in `/dev`, so `ttyUSB0` works and a pseudo terminal link in the current
+directory, such as the `usart2` of `tools/run_emulator.sh`, needs `./`.
 
 ## Build values
 
@@ -66,7 +67,7 @@ and the limits must match on both peers. Both builds take the build number from
 
 | Command | What it checks |
 |---|---|
-| `build/sercom_test` | Every Catch2 test case in declaration order |
+| `build/sercom_test` | Every Catch2 test case in declaration order, on Windows as `build/sercom_test.exe` |
 | `tools/run_small_limit_test.sh` | The same tests built with a 64 byte payload limit |
 | `python3 tools/sercom_frame.py self-test` | The Python reference implementation |
 | `tests/e2e/noisy_link_test.sh build/sercom_cli build/sercom_device_sim` | The tools against the device simulator over a noisy virtual link |
@@ -79,7 +80,7 @@ and the limits must match on both peers. Both builds take the build number from
 | `tools/run_static_analysis.sh build` | Layout, comments, countable idioms, cppcheck 2.22 with its Qt library (`tools/analysis/install_cppcheck.sh`) and clang-tidy 18 |
 | `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller` | The ESP32 environments with the same core, app and common firmware libraries |
 | `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller` | The STM32F4 environments with the same libraries and the house warnings with `-Werror` |
-| `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build` | Both targets in QEMU against the tools, the ESP32 controller against the STM32F4 device on a clean and a noisy link, and the STM32F4 controller against the ESP32 device |
+| `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build` | Both targets in QEMU on Linux against the Qt `sercom_cli`, whose port stays free when it is killed, the ESP32 controller against the STM32F4 device on a clean and a noisy link, and the STM32F4 controller against the ESP32 device |
 
 All of them run in GitHub Actions, see [ci.yml](../.github/workflows/ci.yml). The Linux
 jobs install Qt 5.12.12 for GCC and Clang; the `windows` job builds Debug and Release
