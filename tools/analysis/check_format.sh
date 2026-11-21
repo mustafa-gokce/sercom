@@ -50,7 +50,8 @@ fi
 
 # list the own C++ files
 cd "${SOURCE_DIRECTORY}"
-mapfile -t FILES < <(find core app host firmware/esp32/include firmware/esp32/src tests examples fuzz \
+mapfile -t FILES < <(find core app host firmware/common/include firmware/common/src firmware/esp32/include \
+    firmware/esp32/src firmware/stm32f4/include firmware/stm32f4/src tests examples fuzz \
     -name '.*' -prune -o -type f \( -name '*.h' -o -name '*.cpp' \) -print | sort)
 readonly FILES
 
