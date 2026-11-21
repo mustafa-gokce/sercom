@@ -31,6 +31,13 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 11. `cmake --build .`
 12. The build runs `windeployqt` on `sercom_cli.exe`: the Qt Core, Qt Serial Port and MinGW DLLs that it needs land next to the programs, and every program but `sercom_test.exe` then starts from any prompt. `sercom_test.exe` also needs Qt Test, which `windeployqt` does not deploy, and starts only with the Qt `bin` directory of step 7 on the path. Qt is linked dynamically under the LGPL.
 
+### ESP32
+1. Open a terminal, on Windows PowerShell 7.
+2. Install PlatformIO: `pip install platformio`
+3. Check that PlatformIO runs: `pio --version`; when PowerShell does not find `pio` on Windows, put the `Scripts` directory that pip names in its warning on the path or call `python -m platformio` in place of `pio`
+4. Go to the source directory.
+5. `pio run -d firmware/esp32`
+
 ## Run tests
 ### Linux
 1. Open a terminal.
@@ -41,6 +48,9 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 1. Open PowerShell 7 with the path of the build steps.
 2. Go to the build directory.
 3. `./sercom_test.exe --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
+
+### ESP32
+1. Build the firmware as above, the protocol code is tested on Linux and Windows.
 
 ## Run application
 ### Linux
