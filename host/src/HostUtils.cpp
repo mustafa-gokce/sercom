@@ -1,13 +1,13 @@
 #include "../include/HostUtils.h"
 
 #include <algorithm>
-#include <charconv>
 #include <csignal>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <sstream>
-#include <system_error>
+
+#include <QString>
 
 #include "../../app/include/Messages.h"
 #include "../../core/include/Settings.h"
@@ -213,14 +213,19 @@ bool parseUint32(const std::string_view text, const uint32_t maximum, uint32_t &
     const std::string_view digits = hexadecimal ? text.substr(2) : text;
     const int base = hexadecimal ? 16 : 10;
 
-    // digits must form one number
-    uint64_t textAsNumber = 0;
-    const char *digitsEnd = digits.data() + digits.size();
-    const std::from_chars_result fromCharsResult = std::from_chars(digits.data(),
-                                                                   digitsEnd,
-                                                                   textAsNumber,
-                                                                   base);
-    if (fromCharsResult.ec != std::errc() || fromCharsResult.ptr != digitsEnd) {
+    // digits must be digits of the base only
+    static constexpr std::string_view decimalDigits = "0123456789";
+    static constexpr std::string_view hexadecimalDigits = "0123456789ABCDEFabcdef";
+    const std::string_view baseDigits = hexadecimal ? hexadecimalDigits : decimalDigits;
+    if (digits.empty() || digits.find_first_not_of(baseDigits) != std::string_view::npos) {
+        return false;
+    }
+
+    // digits must form one number of 64 bits
+    bool converted = false;
+    const uint64_t textAsNumber = QString::fromUtf8(digits.data(), static_cast<int>(digits.size()))
+                                      .toULongLong(&converted, base);
+    if (!converted) {
         return false;
     }
 
