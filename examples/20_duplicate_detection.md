@@ -120,7 +120,7 @@ got its acknowledgement.
 
 - `core/src/Link.cpp`: `Link::onReceivedFrame()` with the duplicate check,
   `getReceivedMessageWithMessageCounter()` and `rememberReceivedMessage()`.
-- `core/include/Settings.h`: `DefaultDuplicateHistorySize`.
+- `core/include/Settings.h`: `DefaultDuplicateHistorySize` and `MAXIMUM_ACKNOWLEDGED_SPREAD`.
 - `tests/test_Link.cpp`: the lost ACK and peer restart tests.
 - Lectures: L72 "Duplicate suppression and restarted peers", L73 "The spread limit: a bug found by
   the end-to-end test" and L75 "Testing the link layer in memory".
