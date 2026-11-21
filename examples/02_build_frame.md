@@ -11,7 +11,7 @@ Then it checks the CRC32 of the frame the way a receiver does.
 
 ## Before you start
 
-1. Watch lectures L27 "Anatomy of a frame" and L42 "Example: a frame field by field" first. L41 "Golden vectors and encoder tests" uses the same frame.
+1. Watch lectures L30 "Anatomy of a frame" and L45 "Example: a frame field by field" first. L44 "Reading a frame back: getters, checks and the golden frame" uses the same frame.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -116,5 +116,5 @@ exits with 1 when they differ. Print the exit code with `echo $?` and you see `0
 - `core/include/Definitions.h` holds the sync bytes, the field sizes and the frame flags.
 - `core/src/CRC32.cpp` calculates the CRC32.
 - `docs/PROTOCOL.md` describes the same frame in section 2.2, and `tools/sercom_frame.py` builds it in Python.
-- Lectures: L27 "Anatomy of a frame", L41 "Golden vectors and encoder tests" and L42 "Example: a frame field by
-  field".
+- Lectures: L30 "Anatomy of a frame", L44 "Reading a frame back: getters, checks and the golden frame" and L45
+  "Example: a frame field by field".
