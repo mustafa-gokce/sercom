@@ -7,6 +7,7 @@
 #
 # The build directory must hold the compile database of a CMake configuration with the binaries.
 # cppcheck runs at its most thorough level, an argument stored in the member of its name is the accepted shadowMember.
+# cppcheck reads the Qt macros of the host code, signals, slots and Q_OBJECT, through its qt library.
 # The gates need clang-format 18, cppcheck 2.22 and clang-tidy 18, tools/analysis/install_cppcheck.sh builds cppcheck.
 # Every gate runs, the exit code is 1 when one of them has a finding.
 #
@@ -103,7 +104,7 @@ python3 tools/analysis/check_style.py || failed_gates+=("comments and idioms")
 echo "== cppcheck"
 mkdir -p "${BUILD_DIRECTORY}/cppcheck"
 cppcheck_status=0
-"${CPPCHECK}" --enable=all --inconclusive --check-level=exhaustive --std=c++17 \
+"${CPPCHECK}" --enable=all --inconclusive --check-level=exhaustive --std=c++17 --library=qt \
     --inline-suppr --suppress=missingIncludeSystem --suppress=missingInclude \
     --suppress=unmatchedSuppression --suppress=checkersReport --suppress=unusedFunction \
     --quiet -j "${JOBS}" --cppcheck-build-dir="${BUILD_DIRECTORY}/cppcheck" \
