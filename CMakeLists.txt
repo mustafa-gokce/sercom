@@ -64,6 +64,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # let the options of the dependencies honor the set() lines
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
+# handle Qt targets
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+
 # disable file prefix check
 set(CATCH_ENABLE_REPRODUCIBLE_BUILD OFF)
 
@@ -71,6 +75,10 @@ set(CATCH_ENABLE_REPRODUCIBLE_BUILD OFF)
 set(CATCH_DEVELOPMENT_BUILD OFF)
 set(CATCH_INSTALL_DOCS OFF)
 set(CATCH_INSTALL_EXTRAS OFF)
+
+# find Qt packages of the host targets
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core SerialPort Test)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core SerialPort Test)
 
 # include external library dependencies
 if (SERCOM_BUILD_TESTS)
@@ -144,6 +152,8 @@ target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
     ${PROJECT_NAME}_settings
     ${PROJECT_NAME}_core_lib
     ${PROJECT_NAME}_app_lib
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::SerialPort
 )
 
 # create tool executables
@@ -157,6 +167,8 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
     )
 
     # create device simulator executable
@@ -168,6 +180,8 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
     )
 
     # create capture dump executable
@@ -179,6 +193,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 endif()
 
@@ -192,6 +207,8 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
     )
 
     # create frame building example executable
@@ -203,6 +220,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create noisy stream decoding example executable
@@ -214,6 +232,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create byte order example executable
@@ -225,6 +244,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create field writing and reading example executable
@@ -235,6 +255,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create text CRC32 example executable
@@ -245,6 +266,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create piecewise CRC32 example executable
@@ -256,6 +278,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create frame reading example executable
@@ -267,6 +290,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create frame flags example executable
@@ -278,6 +302,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create byte by byte decoding example executable
@@ -289,6 +314,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create resynchronization after garbage example executable
@@ -300,6 +326,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create CRC error detection example executable
@@ -311,6 +338,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create inter-byte timeout example executable
@@ -322,6 +350,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create two frames in one read example executable
@@ -333,6 +362,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create ping messages example executable
@@ -344,6 +374,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create device info message example executable
@@ -355,6 +386,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create telemetry message example executable
@@ -366,6 +398,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create link loopback example executable
@@ -377,6 +410,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create retransmission example executable
@@ -388,6 +422,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create duplicate detection example executable
@@ -399,6 +434,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create device in one process example executable
@@ -410,6 +446,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create conversation trace example executable
@@ -421,6 +458,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create custom message example executable
@@ -432,6 +470,7 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
     )
 
     # create serial ping example executable
@@ -443,6 +482,8 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
     )
 
     # create message dispatching example executable
@@ -454,6 +495,17 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
+endif()
+
+# copy the Qt libraries and the MinGW runtime next to the Windows executables on a Windows build host
+if (WIN32 AND CMAKE_HOST_WIN32 AND SERCOM_BUILD_BINARIES)
+    get_target_property(QT_QMAKE_EXECUTABLE Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
+    get_filename_component(QT_BINARY_DIRECTORY ${QT_QMAKE_EXECUTABLE} DIRECTORY)
+    add_custom_command(TARGET ${PROJECT_NAME}_cli POST_BUILD
+        COMMAND ${QT_BINARY_DIRECTORY}/windeployqt.exe --no-translations --compiler-runtime
+                $<TARGET_FILE:${PROJECT_NAME}_cli>
     )
 endif()
 
@@ -504,6 +556,9 @@ if (SERCOM_BUILD_TESTS)
         ${PROJECT_NAME}_app_lib
         ${PROJECT_NAME}_host_lib
         Catch2::Catch2
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
+        Qt${QT_VERSION_MAJOR}::Test
     )
 endif()
 
@@ -593,6 +648,13 @@ if (CMAKE_CXX_FLAGS MATCHES "fuzzer-no-link" AND NOT CMAKE_CXX_COMPILER_ID MATCH
     message(FATAL_ERROR "The fuzz executables need Clang")
 endif()
 
+# check the Qt version of the host targets
+if (NOT Qt${QT_VERSION_MAJOR}_VERSION VERSION_EQUAL 5.12.12)
+    message(FATAL_ERROR "The host targets need Qt 5.12.12 but found Qt ${Qt${QT_VERSION_MAJOR}_VERSION}, "
+                        "point CMAKE_PREFIX_PATH at a Qt 5.12.12 install such as "
+                        "-DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64 or -DCMAKE_PREFIX_PATH=C:/Qt/5.12.12/mingw73_64")
+endif()
+
 # debug the project
 string(SUBSTRING ${APP_GIT_HASH} 0 10 APP_GIT_HASH_SHORT)
 message(STATUS "###################################################")
@@ -603,4 +665,5 @@ else()
 endif()
 message(STATUS ">>> APP_VERSION_STRING  : ${APP_VERSION_STRING}    ")
 message(STATUS ">>> APP_GIT_HASH        : ${APP_GIT_HASH_SHORT}    ")
+message(STATUS ">>> QT_VERSION          : ${Qt${QT_VERSION_MAJOR}_VERSION}    ")
 message(STATUS "###################################################")
