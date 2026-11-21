@@ -54,6 +54,16 @@ void logDebug(const std::string &debugMessage);
  */
 void logWarning(const std::string &warningMessage);
 
+/*
+ * Install the interrupt and terminate handlers that clear the running flag.
+ */
+void installStopHandlers();
+
+/*
+ * Get whether no stop signal has arrived yet.
+ */
+[[nodiscard]] bool getRunning();
+
 class SteadyClock final : public Clock::Clock
 {
 public:

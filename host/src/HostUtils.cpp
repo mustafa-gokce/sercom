@@ -1,6 +1,7 @@
 #include "../include/HostUtils.h"
 
 #include <algorithm>
+#include <csignal>
 #include <cstdio>
 #include <iomanip>
 #include <sstream>
@@ -12,6 +13,20 @@
 namespace sercom::HostUtils {
 
 namespace {
+
+/*
+ * Running flag that the stop handler clears.
+ */
+volatile std::sig_atomic_t running = 1;
+
+/*
+ * Clear the running flag, which is the only work a signal handler may do here.
+ */
+void handleStopSignal([[maybe_unused]] const int signalNumber)
+{
+    // clear the running flag
+    running = 0;
+}
 
 /*
  * Get the time since the first log line as timestamp text.
@@ -101,6 +116,25 @@ void logWarning(const std::string &warningMessage)
     const QString warningLine = QString::fromStdString(getTimestampText() + " WARNING "
                                                        + warningMessage);
     qWarning().noquote() << warningLine;
+}
+
+void installStopHandlers()
+{
+    // install the interrupt handler
+    if (std::signal(SIGINT, handleStopSignal) == SIG_ERR) {
+        logWarning("Can not install the interrupt handler");
+    }
+
+    // NOTE: no other process can send the terminate signal on Windows
+    if (std::signal(SIGTERM, handleStopSignal) == SIG_ERR) {
+        logWarning("Can not install the terminate handler");
+    }
+}
+
+bool getRunning()
+{
+    // expose whether no stop signal has arrived
+    return running != 0;
 }
 
 SteadyClock::SteadyClock()
