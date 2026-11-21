@@ -140,4 +140,123 @@ uint8_t *ByteWriter::reserve(const size_t size)
     return destination;
 }
 
+ByteReader::ByteReader(const uint8_t *buffer, const size_t size)
+    : buffer(buffer)
+    , bufferSize(buffer == nullptr ? static_cast<size_t>(0) : size)
+    , position(0)
+    , valid(true)
+{}
+
+ByteReader::~ByteReader() {}
+
+bool ByteReader::readUint8(uint8_t &value)
+{
+    // value must be available
+    const uint8_t *source = this->consume(sizeof(value));
+    if (source == nullptr) {
+        return false;
+    }
+
+    // load the value
+    value = source[0];
+
+    // value read successfully
+    return true;
+}
+
+bool ByteReader::readUint16(uint16_t &value)
+{
+    // value must be available
+    const uint8_t *source = this->consume(sizeof(value));
+    if (source == nullptr) {
+        return false;
+    }
+
+    // load the value
+    value = loadUint16(source);
+
+    // value read successfully
+    return true;
+}
+
+bool ByteReader::readUint32(uint32_t &value)
+{
+    // value must be available
+    const uint8_t *source = this->consume(sizeof(value));
+    if (source == nullptr) {
+        return false;
+    }
+
+    // load the value
+    value = loadUint32(source);
+
+    // value read successfully
+    return true;
+}
+
+bool ByteReader::readBytes(uint8_t *data, const size_t size)
+{
+    // check for an empty read
+    if (size == 0) {
+        return this->valid;
+    }
+
+    // data must exist
+    if (data == nullptr) {
+        this->valid = false;
+        return false;
+    }
+
+    // bytes must be available
+    const uint8_t *source = this->consume(size);
+    if (source == nullptr) {
+        return false;
+    }
+
+    // copy the bytes
+    std::memcpy(data, source, size);
+
+    // bytes read successfully
+    return true;
+}
+
+size_t ByteReader::getPosition() const
+{
+    // expose the number of read bytes
+    return this->position;
+}
+
+size_t ByteReader::getRemainingSize() const
+{
+    // expose the number of unread bytes
+    return this->bufferSize - this->position;
+}
+
+bool ByteReader::getValid() const
+{
+    // expose whether every read found enough bytes
+    return this->valid;
+}
+
+const uint8_t *ByteReader::consume(const size_t size)
+{
+    // reader must be valid
+    if (!this->valid) {
+        return nullptr;
+    }
+
+    // bytes must be available completely
+    if (size > this->bufferSize - this->position) {
+        this->valid = false;
+        return nullptr;
+    }
+
+    // consume the bytes
+    const uint8_t *source = this->buffer + this->position;
+    this->position += size;
+
+    // expose the consumed bytes
+    return source;
+}
+
 } // namespace sercom::ByteCodec
