@@ -141,6 +141,7 @@ add_library(${PROJECT_NAME}_firmware_lib
     firmware/common/include/CommonSettings.h firmware/common/src/CommonSettings.cpp
 
     firmware/common/include/ConsoleOutput.h firmware/common/src/ConsoleOutput.cpp
+    firmware/common/include/FirmwarePlatform.h firmware/common/src/FirmwarePlatform.cpp
 )
 target_link_libraries(${PROJECT_NAME}_firmware_lib PRIVATE
     ${PROJECT_NAME}_settings
