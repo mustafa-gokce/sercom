@@ -1,8 +1,9 @@
-"""Pass the build values of CMakeLists.txt to the firmware build and mark the framework headers as system headers.
+"""Pass the build values of CMakeLists.txt to a firmware build and mark the framework headers as system headers.
 
     pio run -d firmware/esp32
 
-platformio.ini runs this script before the build, so the firmware and the host tools share one set of build values.
+The platformio.ini of every firmware project runs this script before the build, so every firmware and the host tools
+share one set of build values.
 The protocol limits and the version numbers are the set() lines at the top of CMakeLists.txt.
 The build number is GITHUB_RUN_NUMBER when it is set and the value of CMakeLists.txt otherwise, as in the CMake build.
 The git hash is GITHUB_SHA when it is set, then the hash of git rev-parse HEAD and unknown otherwise, as in CMake.
