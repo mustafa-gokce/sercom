@@ -7,6 +7,7 @@
 #
 # The STM32F4 device of netduinoplus2-qemu and the ESP32 device of esp32dev must answer info, ping, LED, telemetry and
 # an echo stress test, the stress test must verify every echo without a CRC mismatch and without a retransmission.
+# A command line tool killed while it holds the port must leave the port free for the next one, as on a board.
 # The ESP32 controller of esp32dev-controller must pass every step against the emulated STM32F4 device, once over a
 # clean link and once through tools/noise.py with the realistic profile of tools/noisy_link.sh.
 # The STM32F4 controller of netduinoplus2-qemu-controller must pass every step against the ESP32 device of
@@ -21,6 +22,7 @@ set -euo pipefail
 # settings with overridable defaults
 readonly SEED="${SEED:-1000}"
 readonly CONTROLLER_TIMEOUT_SECONDS="${CONTROLLER_TIMEOUT_SECONDS:-90}"
+readonly KILLED_TIMEOUT_SECONDS="${KILLED_TIMEOUT_SECONDS:-10}"
 readonly KEPT_WORK_DIRECTORY="${WORK_DIRECTORY:-}"
 SOURCE_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly SOURCE_DIRECTORY
@@ -33,8 +35,9 @@ print_usage() {
     echo "  STM32F4 build directory  firmware/stm32f4/.pio/build with netduinoplus2-qemu and"
     echo "                           netduinoplus2-qemu-controller"
     echo "  SEED sets the noise seed (default ${SEED}), CONTROLLER_TIMEOUT_SECONDS the longest controller run"
-    echo "  (default ${CONTROLLER_TIMEOUT_SECONDS}), WORK_DIRECTORY keeps the logs in that directory, ESP32_QEMU and"
-    echo "  ARM_QEMU select the emulators of tools/run_emulator.sh"
+    echo "  (default ${CONTROLLER_TIMEOUT_SECONDS}), KILLED_TIMEOUT_SECONDS the longest wait for the first answer of the"
+    echo "  killed tool (default ${KILLED_TIMEOUT_SECONDS}), WORK_DIRECTORY keeps the logs in that directory, ESP32_QEMU"
+    echo "  and ARM_QEMU select the emulators of tools/run_emulator.sh"
 }
 
 # check the arguments
@@ -111,6 +114,7 @@ check_device() {
     local port="$2"
     local device_name="$3"
     local output="${WORK_DIRECTORY}/${name}.out"
+    local killed_output="${WORK_DIRECTORY}/${name}-killed.out"
     : > "${output}"
 
     # run the commands, any failure stops the test
@@ -121,6 +125,21 @@ check_device() {
         read -r -a command_arguments <<< "${command}"
         "${CLI}" "${port}" "${command_arguments[@]}" >> "${output}" 2>&1
     done
+
+    # kill a tool after its first answer, the next tool must open the port the killed one held
+    echo "+ sercom_cli ${name} ping 100, killed after the first answer" | tee -a "${output}"
+    "${CLI}" "${port}" ping 100 > "${killed_output}" 2>&1 &
+    local killed_process_id=$!
+    local attempt
+    for ((attempt = 0; attempt < KILLED_TIMEOUT_SECONDS * 10; ++attempt)); do
+        grep -aqE '^ping response: ' "${killed_output}" && break
+        sleep 0.1
+    done
+    kill -KILL "${killed_process_id}"
+    wait "${killed_process_id}" 2>/dev/null || true
+    require_line "${killed_output}" '^ping response: '
+    echo "+ sercom_cli ${name} ping 1" | tee -a "${output}"
+    "${CLI}" "${port}" ping 1 >> "${output}" 2>&1
 
     # check the answers of the device
     require_line "${output}" "^device: ${device_name}$"
