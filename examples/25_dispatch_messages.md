@@ -13,7 +13,7 @@ of a frame tells it how to read the payload and what to do.
 
 ## Before you start
 
-1. Watch lecture L62 "Dispatching messages" (section S10), and run examples 10 and 15 first.
+1. Watch lecture L65 "Dispatching messages" (section S10), and run examples 10 and 15 first.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -45,7 +45,7 @@ The last group names every other message type, so a reader sees that each one wa
 about. The compiler does not check that list: with a `default:` it accepts a missing name too.
 
 `DeviceApplication`, the program of the real device, does the same dispatch in its
-`onReceivedMessage()` (lecture L74). Its functions also send a response. For a message type
+`onReceivedMessage()` (lecture L77). Its functions also send a response. For a message type
 without a function it returns the status `UNSUPPORTED_MESSAGE_TYPE`, and the link layer of
 section S11 sends that status back to the host when the host asked for an acknowledgement.
 
@@ -62,7 +62,7 @@ that starts with its own name and counts the message.
   know which fields the payload holds.
 
 The functions count into `handledMessageCounter` and `unsupportedMessageCounter`. They do not
-check the payload yet; lecture L63 "Validating payloads" adds that check.
+check the payload yet; lecture L66 "Validating payloads" adds that check.
 
 ## Step 3: Read how the frames are made
 
@@ -133,6 +133,6 @@ The exit code `0` means three messages went to their own function and one went t
   responses of the device.
 - `app/include/Messages.h` and `app/src/Messages.cpp`: `MessageType` and `toMessageType()`.
 - `core/include/FrameDecoder.h`: the handler interface `FrameDecoderHandler`.
-- Lectures: L62 "Dispatching messages", L59 "Message types and enum converters" and L50 "Handler
-  interface and decoder statistics"; the dispatch of the device is L74 "A single-threaded event
-  loop" and the host side L75 "DeviceClient: requests and replies".
+- Lectures: L65 "Dispatching messages", L62 "Message types and enum converters" and L53 "Handler
+  interface and decoder statistics"; the dispatch of the device is L77 "The Qt event loop: one
+  thread, signals and a timer" and the host side L78 "DeviceClient: requests and replies".
