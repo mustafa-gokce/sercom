@@ -421,6 +421,16 @@ if (CMAKE_CXX_FLAGS MATCHES "fuzzer-no-link")
         ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
     )
+
+    # create link fuzz executable
+    add_executable(${PROJECT_NAME}_fuzz_link
+        fuzz/fuzz_Link.cpp
+    )
+    target_link_options(${PROJECT_NAME}_fuzz_link PRIVATE -fsanitize=fuzzer)
+    target_link_libraries(${PROJECT_NAME}_fuzz_link PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+    )
 endif()
 
 # create test executable for auto tests
