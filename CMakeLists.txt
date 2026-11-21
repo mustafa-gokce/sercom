@@ -153,6 +153,22 @@ target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
     Qt${QT_VERSION_MAJOR}::SerialPort
 )
 
+# create tool executables
+if (SERCOM_BUILD_BINARIES)
+    # create device simulator executable
+    add_executable(${PROJECT_NAME}_device_sim
+        host/apps/sercom_device_sim.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_device_sim PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
+    )
+endif()
+
 # create example executables
 if (SERCOM_BUILD_BINARIES)
     # create raw serial example executable
