@@ -12,6 +12,18 @@ std::string_view fromCommandType(const CommandType commandType)
     case CommandType::PING: {
         return {"ping"};
     }
+    case CommandType::INFO: {
+        return {"info"};
+    }
+    case CommandType::LED: {
+        return {"led"};
+    }
+    case CommandType::TELEMETRY: {
+        return {"telemetry"};
+    }
+    case CommandType::MONITOR: {
+        return {"monitor"};
+    }
     case CommandType::UNKNOWN:
     default: {
         return {};
@@ -24,6 +36,18 @@ CommandType toCommandType(const std::string_view commandType)
     if (commandType == std::string_view("ping")) {
         return CommandType::PING;
     }
+    if (commandType == std::string_view("info")) {
+        return CommandType::INFO;
+    }
+    if (commandType == std::string_view("led")) {
+        return CommandType::LED;
+    }
+    if (commandType == std::string_view("telemetry")) {
+        return CommandType::TELEMETRY;
+    }
+    if (commandType == std::string_view("monitor")) {
+        return CommandType::MONITOR;
+    }
     return CommandType::UNKNOWN;
 }
 
@@ -34,6 +58,7 @@ CliApplication::CliApplication(const CommandLine &commandLine)
     , finished(false)
     , exitCode(0)
     , waitingForResponse(false)
+    , monitoring(false)
     , startTimestamp(0)
     , lastRequestTimestamp(0)
     , lastReconnectTimestamp(0)
@@ -124,6 +149,103 @@ void CliApplication::onReceivedPingResponse(const Messages::PingResponse &pingRe
     // keep track of ping responses
     ++this->incomingPingResponseCounter;
     this->waitingForResponse = false;
+}
+
+void CliApplication::onReceivedDeviceInfoResponse(
+    const Messages::DeviceInfoResponse &deviceInfoResponse)
+{
+    // keep track of messages
+    this->lastDeviceMessageTimestamp = this->clock.getTime();
+
+    // print the device information
+    const std::string line = "device: " + std::string(deviceInfoResponse.getDeviceName())
+                             + "\nfirmware: "
+                             + std::to_string(deviceInfoResponse.getFirmwareVersionMajor()) + "."
+                             + std::to_string(deviceInfoResponse.getFirmwareVersionMinor())
+                             + "\nuptime: " + std::to_string(deviceInfoResponse.getUptime().count())
+                             + " ms\nfree heap: "
+                             + std::to_string(deviceInfoResponse.getFreeHeapSize()) + " bytes";
+    HostUtils::printLine(line);
+
+    // device info response must answer the info command
+    if (this->commandLine.commandType != CommandType::INFO) {
+        return;
+    }
+
+    // finish the info command
+    this->finish(0);
+}
+
+void CliApplication::onReceivedSetLedResponse(const Messages::SetLedResponse &setLedResponse)
+{
+    // keep track of messages
+    this->lastDeviceMessageTimestamp = this->clock.getTime();
+
+    // print the LED state
+    const std::string line = std::string("led: ") + (setLedResponse.getLedOn() ? "on" : "off");
+    HostUtils::printLine(line);
+
+    // set LED response must answer the LED command
+    if (this->commandLine.commandType != CommandType::LED) {
+        return;
+    }
+
+    // finish the LED command with its result
+    this->finish(setLedResponse.getLedOn() == this->commandLine.ledOn ? 0 : 1);
+}
+
+void CliApplication::onReceivedTelemetryReportResponse(
+    const Messages::TelemetryReportResponse &telemetryReportResponse)
+{
+    // keep track of messages
+    this->lastDeviceMessageTimestamp = this->clock.getTime();
+
+    // telemetry must be monitored
+    if (!this->monitoring) {
+        return;
+    }
+
+    // print the telemetry
+    const std::string line = "telemetry #" + std::to_string(telemetryReportResponse.getSequence())
+                             + ": uptime "
+                             + std::to_string(telemetryReportResponse.getUptime().count())
+                             + " ms, free heap "
+                             + std::to_string(telemetryReportResponse.getFreeHeapSize())
+                             + " bytes, temperature "
+                             + HostUtils::getTemperatureText(
+                                 telemetryReportResponse.getTemperature());
+    HostUtils::printLine(line);
+}
+
+void CliApplication::onReceivedLogReportResponse(const Messages::LogReportResponse &logReportResponse)
+{
+    // keep track of messages
+    this->lastDeviceMessageTimestamp = this->clock.getTime();
+
+    // device logs must be monitored
+    if (!this->monitoring) {
+        return;
+    }
+
+    // get the log level as text
+    const Messages::LogLevelType logLevelType = logReportResponse.getLogLevelType();
+    const std::string logLevelTypeAsText(Messages::getLogLevelTypeText(logLevelType));
+
+    // device log must not be a warning
+    if (logLevelType == Messages::LogLevelType::WARNING) {
+        // warn the user
+        const std::string warningMessage = "Device log " + logLevelTypeAsText + ": "
+                                           + std::string(logReportResponse.getText());
+        HostUtils::logWarning(warningMessage);
+
+        // do not proceed further
+        return;
+    }
+
+    // notify the user
+    const std::string debugMessage = "Device log " + logLevelTypeAsText + ": "
+                                     + std::string(logReportResponse.getText());
+    HostUtils::logDebug(debugMessage);
 }
 
 void CliApplication::onRequestConfirmed([[maybe_unused]] const uint16_t messageCounter,

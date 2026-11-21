@@ -24,8 +24,12 @@ namespace sercom::CliApplication {
  * Command type.
  */
 enum class CommandType : uint8_t {
-    UNKNOWN = 0, // unknown command
-    PING = 1,    // measure the round trip time
+    UNKNOWN = 0,   // unknown command
+    PING = 1,      // measure the round trip time
+    INFO = 2,      // print the device information
+    LED = 3,       // switch the device LED
+    TELEMETRY = 4, // set the telemetry period and print telemetry
+    MONITOR = 5,   // print telemetry and device logs
 };
 
 /*
@@ -47,6 +51,7 @@ struct CommandLine
     uint32_t baudRate = HostSettings::DEFAULT_BAUD_RATE; // baud rate in bits per second
     CommandType commandType = CommandType::UNKNOWN;      // command to run
     uint32_t requestCount = 1;                           // ping requests to send
+    bool ledOn = false;                                  // LED is switched on
 };
 
 class CliApplication final : public QObject, public DeviceClient::DeviceClientHandler
@@ -81,6 +86,27 @@ private:
      */
     void onReceivedPingResponse(const Messages::PingResponse &pingResponse,
                                 std::chrono::milliseconds roundTripTime) final;
+
+    /*
+     * Listen for a device info response.
+     */
+    void onReceivedDeviceInfoResponse(const Messages::DeviceInfoResponse &deviceInfoResponse) final;
+
+    /*
+     * Listen for a set LED response.
+     */
+    void onReceivedSetLedResponse(const Messages::SetLedResponse &setLedResponse) final;
+
+    /*
+     * Listen for a telemetry report response.
+     */
+    void onReceivedTelemetryReportResponse(
+        const Messages::TelemetryReportResponse &telemetryReportResponse) final;
+
+    /*
+     * Listen for a log report response.
+     */
+    void onReceivedLogReportResponse(const Messages::LogReportResponse &logReportResponse) final;
 
     /*
      * Listen for a request the device acknowledged.
@@ -169,6 +195,7 @@ private:
     bool finished;                                          // command is finished
     int exitCode;                                           // exit code of the process
     bool waitingForResponse;                                // response of a request is awaited
+    bool monitoring;                                        // device reports are printed
     std::chrono::milliseconds startTimestamp;               // time the command started
     std::chrono::milliseconds lastRequestTimestamp;         // time of the last request
     std::chrono::milliseconds lastReconnectTimestamp;       // time of the last reconnect attempt
