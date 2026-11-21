@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include <QMetaType>
 #include <QSerialPort>
 #include <QSignalSpy>
 
@@ -179,8 +180,15 @@ TEST_CASE_METHOD(TestSerialPort,
                  "A missing serial port and an unsupported baud rate do not open",
                  "[SerialPort][testOpen]")
 {
+    // check that the status type of the error signal is known by its name
+    REQUIRE_FALSE(QMetaType::type("sercom::SerialPort::SerialPortStatusType")
+                  == QMetaType::UnknownType);
+
+    // check that the spy listens for the error signal
+    QSignalSpy errorHappenedSpy(serialPort.get(), &SerialPort::SerialPort::errorHappened);
+    REQUIRE(errorHappenedSpy.isValid());
+
     // check a port name that names no device on any system
-    const QSignalSpy errorHappenedSpy(serialPort.get(), &SerialPort::SerialPort::errorHappened);
     const std::string missingPortName = "sercom-missing-port";
     REQUIRE(serialPort->open(missingPortName, HostSettings::DEFAULT_BAUD_RATE)
             == SerialPort::SerialPortStatusType::OPEN_FAILED);
@@ -195,4 +203,10 @@ TEST_CASE_METHOD(TestSerialPort,
     REQUIRE(serialPort->open(missingPortName, unsupportedBaudRate)
             == SerialPort::SerialPortStatusType::UNSUPPORTED_BAUD_RATE);
     REQUIRE_FALSE(serialPort->getOpened());
+
+    // check that the spy records an error signal with its status type
+    emit serialPort->errorHappened(SerialPort::SerialPortStatusType::DISCONNECTED);
+    REQUIRE(errorHappenedSpy.count() == 1);
+    REQUIRE(errorHappenedSpy.at(0).at(0).value<SerialPort::SerialPortStatusType>()
+            == SerialPort::SerialPortStatusType::DISCONNECTED);
 }
