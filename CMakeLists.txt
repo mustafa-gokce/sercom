@@ -134,6 +134,7 @@ add_library(${PROJECT_NAME}_firmware_lib
 
     firmware/common/include/RingBuffer.h firmware/common/src/RingBuffer.cpp
     firmware/common/include/ConsoleOutput.h firmware/common/src/ConsoleOutput.cpp
+    firmware/common/include/Console.h firmware/common/src/Console.cpp
     firmware/common/include/FirmwarePlatform.h firmware/common/src/FirmwarePlatform.cpp
 
     firmware/common/include/FirmwareRole.h firmware/common/src/FirmwareRole.cpp
