@@ -5,6 +5,7 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 ## Building the project
 1. Clone the project with: `git clone https://github.com/mustafa-gokce/sercom.git`
 2. Go to the source directory.
+3. Populate dependencies: `git submodule update --init --recursive`
 
 ### Linux
 1. Open a terminal.
@@ -28,6 +29,17 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 9. `mkdir build; cd build`
 10. `cmake -S .. -B . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=C:/Qt/5.12.12/mingw73_64`
 11. `cmake --build .`
+
+## Run tests
+### Linux
+1. Open a terminal.
+2. Go to the build directory.
+3. `./sercom_test --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
+
+### Windows
+1. Open PowerShell 7 with the path of the build steps.
+2. Go to the build directory.
+3. `./sercom_test.exe --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
 
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
