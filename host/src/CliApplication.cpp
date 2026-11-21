@@ -249,10 +249,30 @@ void CliApplication::onReceivedLogReportResponse(const Messages::LogReportRespon
 }
 
 void CliApplication::onRequestConfirmed([[maybe_unused]] const uint16_t messageCounter,
-                                        [[maybe_unused]] const Messages::MessageType messageType)
+                                        const Messages::MessageType messageType)
 {
     // keep track of messages
     this->lastDeviceMessageTimestamp = this->clock.getTime();
+
+    // request must set the telemetry period of the telemetry command
+    if (messageType != Messages::MessageType::SET_TELEMETRY_PERIOD_REQUEST
+        || this->commandLine.commandType != CommandType::TELEMETRY) {
+        return;
+    }
+
+    // telemetry must not be stopped
+    if (this->commandLine.telemetryPeriod == 0ms) {
+        // finish the telemetry command
+        HostUtils::printLine("telemetry stopped");
+        this->finish(0);
+
+        // do not proceed further
+        return;
+    }
+
+    // print the telemetry until the duration has passed
+    this->monitoring = true;
+    this->startTimestamp = this->clock.getTime();
 }
 
 void CliApplication::onRequestFailed([[maybe_unused]] const uint16_t messageCounter,
@@ -277,6 +297,11 @@ void CliApplication::onRequestFailed([[maybe_unused]] const uint16_t messageCoun
     if (this->commandLine.commandType == CommandType::PING) {
         ++this->failedPingRequestCounter;
         this->waitingForResponse = false;
+    }
+
+    // finish every other command
+    else {
+        this->finish(1);
     }
 }
 
@@ -436,8 +461,17 @@ void CliApplication::startCommand()
 {
     // start the command
     switch (this->commandLine.commandType) {
-    // leave the requests of the ping command to the loop
-    case CommandType::PING: {
+    // print the device reports right away
+    case CommandType::MONITOR: {
+        this->monitoring = true;
+        break;
+    }
+
+    // leave the requests of these commands to the loop
+    case CommandType::PING:
+    case CommandType::INFO:
+    case CommandType::LED:
+    case CommandType::TELEMETRY: {
         return;
     }
 
@@ -472,6 +506,20 @@ void CliApplication::progressCommand()
     // advance the ping command
     case CommandType::PING: {
         this->progressPingCommand();
+        break;
+    }
+
+    // advance the commands that wait for one response
+    case CommandType::INFO:
+    case CommandType::LED: {
+        this->progressRequestCommand();
+        break;
+    }
+
+    // advance the commands that print the device reports
+    case CommandType::TELEMETRY:
+    case CommandType::MONITOR: {
+        this->progressListenCommand();
         break;
     }
 
@@ -530,6 +578,112 @@ void CliApplication::progressPingCommand()
     ++this->outgoingPingRequestCounter;
     this->waitingForResponse = true;
     this->lastRequestTimestamp = currentTime;
+}
+
+void CliApplication::progressRequestCommand()
+{
+    // request must be sent
+    if (!this->waitingForResponse) {
+        this->sendCommandRequest();
+        return;
+    }
+
+    // response timeout must have passed
+    if (this->clock.getTime() - this->lastRequestTimestamp <= HostSettings::RESPONSE_TIMEOUT_MSEC) {
+        return;
+    }
+
+    // warn the user
+    HostUtils::logWarning("No response from the device");
+
+    // finish the command with its failure
+    this->finish(1);
+}
+
+void CliApplication::progressListenCommand()
+{
+    // device reports must be printed
+    if (!this->monitoring) {
+        // advance the request that switches the device reports on
+        this->progressRequestCommand();
+
+        // do not proceed further
+        return;
+    }
+
+    // duration must have passed
+    if (this->clock.getTime() - this->startTimestamp < this->commandLine.duration) {
+        return;
+    }
+
+    // serial port must still be open
+    if (!this->serialPort.getOpened()) {
+        // warn the user
+        const std::string warningMessage = "CliApplication is not connected to the device on "
+                                           + this->getSerialPortText();
+        HostUtils::logWarning(warningMessage);
+
+        // finish the command with its failure
+        this->finish(1);
+
+        // do not proceed further
+        return;
+    }
+
+    // finish the command
+    this->finish(0);
+}
+
+void CliApplication::sendCommandRequest()
+{
+    // send the request of the command
+    uint16_t messageCounter = 0;
+    switch (this->commandLine.commandType) {
+    // send the device info request
+    case CommandType::INFO: {
+        const Definitions::SendStatusType sendStatusType = this->deviceClient.sendDeviceInfoRequest(
+            messageCounter);
+        this->waitingForResponse = this->checkSendStatus(Messages::MessageType::DEVICE_INFO_REQUEST,
+                                                         sendStatusType);
+        break;
+    }
+
+    // send the set LED request
+    case CommandType::LED: {
+        const Definitions::SendStatusType sendStatusType
+            = this->deviceClient.sendSetLedRequest(this->commandLine.ledOn, messageCounter);
+        this->waitingForResponse = this->checkSendStatus(Messages::MessageType::SET_LED_REQUEST,
+                                                         sendStatusType);
+        break;
+    }
+
+    // send the set telemetry period request
+    case CommandType::TELEMETRY: {
+        const Definitions::SendStatusType sendStatusType
+            = this->deviceClient.sendSetTelemetryPeriodRequest(this->commandLine.telemetryPeriod,
+                                                               messageCounter);
+        this->waitingForResponse
+            = this->checkSendStatus(Messages::MessageType::SET_TELEMETRY_PERIOD_REQUEST,
+                                    sendStatusType);
+        break;
+    }
+
+    // send no request for the other commands
+    case CommandType::PING:
+    case CommandType::MONITOR:
+    case CommandType::UNKNOWN:
+    default: {
+        return;
+    }
+    }
+
+    // request must be sent
+    if (!this->waitingForResponse) {
+        return;
+    }
+
+    // keep track of the request
+    this->lastRequestTimestamp = this->clock.getTime();
 }
 
 bool CliApplication::checkSendStatus(const Messages::MessageType messageType,

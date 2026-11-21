@@ -52,6 +52,10 @@ struct CommandLine
     CommandType commandType = CommandType::UNKNOWN;      // command to run
     uint32_t requestCount = 1;                           // ping requests to send
     bool ledOn = false;                                  // LED is switched on
+    std::chrono::milliseconds telemetryPeriod
+        = std::chrono::milliseconds::zero(); // telemetry period in milliseconds
+    std::chrono::milliseconds duration
+        = HostSettings::DEFAULT_COMMAND_DURATION_MSEC; // command duration in milliseconds
 };
 
 class CliApplication final : public QObject, public DeviceClient::DeviceClientHandler
@@ -168,6 +172,21 @@ private:
      * Advance the ping command.
      */
     void progressPingCommand();
+
+    /*
+     * Advance a command that waits for one response.
+     */
+    void progressRequestCommand();
+
+    /*
+     * Advance a command that prints the device reports until its duration has passed.
+     */
+    void progressListenCommand();
+
+    /*
+     * Send the request of a command that waits for one response.
+     */
+    void sendCommandRequest();
 
     /*
      * Check the send status of a request, warn the user and finish the command on a lasting error.
