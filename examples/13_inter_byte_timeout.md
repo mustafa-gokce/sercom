@@ -12,7 +12,7 @@ that stopped in the middle would swallow the frames that come after it.
 
 ## Before you start
 
-1. Watch lecture L48 "Inter-byte timeouts and wrap-safe time" (section S08).
+1. Watch lecture L51 "Inter-byte timeouts and time beyond 32 bits" (section S08).
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -102,5 +102,5 @@ frame`).
 - `core/include/Settings.h`: `DEFAULT_INTER_BYTE_TIMEOUT_MSEC`.
 - `core/src/Link.cpp`: `maintain()` calls `checkTimeout()` with the time of its clock.
 - `core/include/Clock.h`: the clock interface that the mock clock implements.
-- Lectures: L48 "Inter-byte timeouts and wrap-safe time"; the injected clock is L71 "Injecting
-  the clock".
+- Lectures: L51 "Inter-byte timeouts and time beyond 32 bits"; the injected clock is L74
+  "Injecting the clock".
