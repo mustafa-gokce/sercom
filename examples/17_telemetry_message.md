@@ -12,7 +12,7 @@ this message on its own, again and again, so the host can draw how the device is
 
 ## Before you start
 
-1. Watch lecture L60 "Message structs with serialize and deserialize" (section S10). In the code a message class writes its bytes in its field constructor and reads them in its frame constructor (`Messages::TelemetryReportResponse`), there is no `serialize()` function.
+1. Watch lecture L63 "Message classes on GenericMessage" (section S10). In the code a message class writes its bytes in its field constructor and reads them in its frame constructor (`Messages::TelemetryReportResponse`), there is no `serialize()` function.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -107,6 +107,6 @@ Then run `echo $?` to see the exit code. It prints `0`.
 - `app/src/DeviceApplication.cpp`: the device sends the report once per telemetry period.
 - `host/src/CliApplication.cpp`: the `telemetry` command of `sercom_cli` prints the reports.
 - `docs/PROTOCOL.md`: the message table with `TELEMETRY_REPORT_RESPONSE`.
-- Lectures: L60 "Message structs with serialize and deserialize" and L63 "Validating payloads";
-  the byte order is L22 "Endianness and byte-wise serialization"; the ESP32 measures the heap and
-  the temperature in L82 "Hardware adapters: transport, clock and platform".
+- Lectures: L63 "Message classes on GenericMessage" and L66 "Validating payloads"; the byte order
+  is L25 "Endianness and byte-wise serialization"; the ESP32 measures the heap and the
+  temperature in L85 "Hardware adapters: transport, clock and platform".
