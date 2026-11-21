@@ -17,8 +17,6 @@ constexpr uint32_t DEFAULT_BAUD_RATE = 115200;       // default baud rate in bit
 constexpr size_t READ_BUFFER_SIZE = 1 * 1024;        // serial port read buffer size in bytes
 constexpr size_t CAPTURE_READ_CHUNK_SIZE = 4 * 1024; // capture read chunk size in bytes
 
-constexpr std::chrono::milliseconds READ_TIMEOUT_MSEC
-    = 2ms; // serial port read timeout in milliseconds
 constexpr std::chrono::milliseconds MAINTAIN_PERIOD_MSEC
     = 2ms; // maintenance period of the event loop in milliseconds
 constexpr std::chrono::milliseconds WRITE_TIMEOUT_MSEC
