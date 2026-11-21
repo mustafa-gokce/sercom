@@ -77,6 +77,12 @@ namespace sercom::HostUtils {
                                  uint32_t &value);
 
 /*
+ * Get message status type as text.
+ */
+[[nodiscard]] std::string_view getMessageStatusTypeText(
+    Definitions::MessageStatusType messageStatusType);
+
+/*
  * Get the names of the set flags of a FLAGS field as text.
  */
 [[nodiscard]] std::string getFrameFlagsText(uint8_t flags);
