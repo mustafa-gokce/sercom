@@ -123,6 +123,8 @@ target_link_libraries(${PROJECT_NAME}_core_lib PRIVATE
 
 # create application library
 add_library(${PROJECT_NAME}_app_lib
+    app/include/AppSettings.h app/src/AppSettings.cpp
+
     app/include/Messages.h app/src/Messages.cpp
 )
 target_link_libraries(${PROJECT_NAME}_app_lib PRIVATE
