@@ -13,7 +13,7 @@ application on both ends.
 
 ## Before you start
 
-1. Watch lectures L59 "Message types and enum converters" and L62 "Dispatching messages" (section S10), and run example 18 first.
+1. Watch lectures L62 "Message types and enum converters" and L65 "Dispatching messages" (section S10), and run example 18 first.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -141,5 +141,5 @@ The exit code `0` means the host received the right sum.
 - `docs/PROTOCOL.md`: section 6, the message type ranges.
 - In your own project, write `AddNumbersRequest` and `AddNumbersResponse` classes like the ones in
   `app/include/Messages.h` and `app/src/Messages.cpp`.
-- Lectures: L59 "Message types and enum converters", L61 "Evolving messages without breaking
-  peers", L62 "Dispatching messages" and L63 "Validating payloads".
+- Lectures: L62 "Message types and enum converters", L64 "Evolving messages without breaking
+  peers", L65 "Dispatching messages" and L66 "Validating payloads".
