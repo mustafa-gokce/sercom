@@ -7,7 +7,6 @@
 #include <string_view>
 
 #include "../../../app/include/Messages.h"
-#include "../../../core/include/Settings.h"
 
 namespace sercom::FirmwareSettings {
 
@@ -27,18 +26,12 @@ constexpr std::string_view UART2_PORT_NAME = "UART2"; // name of the second seri
 constexpr int8_t UART2_RECEIVE_PIN = 16;              // GPIO of the UART2 receive pin
 constexpr int8_t UART2_TRANSMIT_PIN = 17;             // GPIO of the UART2 transmit pin
 
-constexpr uint32_t SERIAL_BAUD_RATE = 115200;            // baud rate of the protocol serial port
 constexpr size_t SERIAL_RECEIVE_BUFFER_SIZE = 1 * 1024;  // driver receive buffer size in bytes
 constexpr size_t SERIAL_TRANSMIT_BUFFER_SIZE = 1 * 1024; // driver transmit buffer size in bytes
 
-constexpr uint32_t CONSOLE_BAUD_RATE = 115200;            // baud rate of the console serial port
 constexpr size_t CONSOLE_TRANSMIT_BUFFER_SIZE = 4 * 1024; // console transmit buffer size in bytes
 constexpr size_t CONSOLE_STREAM_TRIGGER_SIZE = 1;         // console stream trigger size in bytes
 constexpr size_t CONSOLE_CHUNK_SIZE = 128;                // console chunk size in bytes
-constexpr size_t CONSOLE_LINE_SIZE = 400;                 // console line size in characters
-constexpr size_t CONSOLE_FIELD_SIZE = 64;                 // console field size in characters
-constexpr size_t CONSOLE_MAXIMUM_ESCAPE_LENGTH = 2; // longest escape of one text byte in characters
-constexpr size_t CONSOLE_HEX_BYTE_LENGTH = 3;       // characters of one byte in hex with its space
 
 constexpr uint8_t LED_PIN = 2;                           // GPIO of the on board LED
 constexpr std::string_view DEVICE_NAME = "sercom-esp32"; // reported device name
@@ -56,22 +49,14 @@ constexpr int APPLICATION_CORE = 1;                         // processor core of
 constexpr size_t RECEIVE_STREAM_BUFFER_SIZE = 2 * 1024; // receive stream buffer size in bytes
 constexpr size_t RECEIVE_STREAM_TRIGGER_SIZE = 1;       // receive stream trigger size in bytes
 constexpr size_t RECEIVE_CHUNK_SIZE = 64;               // receive chunk size in bytes
-constexpr size_t PROTOCOL_CHUNK_SIZE = 128;             // protocol chunk size in bytes
 constexpr uint32_t LOG_QUEUE_LENGTH = 8;                // log queue length in log lines
-constexpr size_t LOG_LINE_SIZE = 96;                    // log line size in characters
 
 constexpr std::chrono::milliseconds UART_IDLE_DELAY_MSEC = 1ms; // idle receive delay in milliseconds
 constexpr std::chrono::milliseconds PROTOCOL_TICK_PERIOD_MSEC
     = 5ms; // protocol tick period in milliseconds
-constexpr std::chrono::milliseconds HEARTBEAT_PERIOD_MSEC
-    = 5 * 1000ms; // heartbeat period in milliseconds
 constexpr std::chrono::milliseconds LOG_QUEUE_TIMEOUT_MSEC = 0ms; // log queue timeout in milliseconds
 constexpr std::chrono::milliseconds CONSOLE_STREAM_TIMEOUT_MSEC
     = 0ms; // console stream timeout in milliseconds
-constexpr std::chrono::milliseconds ACTIVITY_BLINK_DURATION_MSEC
-    = 30ms; // time the LED shows an activity blink in milliseconds
-constexpr std::chrono::milliseconds ACTIVITY_BLINK_PERIOD_MSEC
-    = 100ms; // shortest time from one activity blink to the next in milliseconds
 
 } // namespace sercom::FirmwareSettings
 
@@ -79,21 +64,5 @@ constexpr std::chrono::milliseconds ACTIVITY_BLINK_PERIOD_MSEC
 static_assert(sercom::FirmwareSettings::DEVICE_NAME.size()
                   <= sercom::Messages::MAXIMUM_DEVICE_NAME_LENGTH,
               "Device name must be at most 31 characters");
-static_assert(sercom::FirmwareSettings::LOG_LINE_SIZE <= sercom::Messages::MAXIMUM_LOG_TEXT_LENGTH,
-              "Log line size must be at most 127 characters");
-static_assert(sercom::FirmwareSettings::CONSOLE_LINE_SIZE
-                  > sercom::FirmwareSettings::CONSOLE_MAXIMUM_ESCAPE_LENGTH
-                            * sercom::Settings::MAXIMUM_UNFRAMED_DATA_SIZE
-                        + sercom::FirmwareSettings::CONSOLE_FIELD_SIZE,
-              "Console line size must hold the escaped unframed text and the line prefix");
-static_assert(sercom::FirmwareSettings::CONSOLE_LINE_SIZE
-                  > sercom::FirmwareSettings::CONSOLE_HEX_BYTE_LENGTH
-                            * sercom::Settings::MAXIMUM_UNFRAMED_DATA_SIZE
-                        + sercom::FirmwareSettings::CONSOLE_FIELD_SIZE,
-              "Console line size must hold the unframed bytes in hex and the line prefix");
-static_assert(sercom::FirmwareSettings::CONSOLE_FIELD_SIZE
-                  > sercom::FirmwareSettings::CONSOLE_HEX_BYTE_LENGTH
-                        * sercom::Settings::MAXIMUM_TRACED_PAYLOAD_SIZE,
-              "Console field size must hold the traced payload in hex");
 
 #endif // SERCOM_FIRMWARE_SETTINGS_H
