@@ -13,7 +13,7 @@ print, so after this example you can read those lines.
 
 ## Before you start
 
-1. Watch lecture L76 "The sercom_cli tool" (section S12) and run example 21 first.
+1. Watch lecture L79 "The sercom_cli tool on Linux and Windows" (section S12) and run example 21 first.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -142,5 +142,5 @@ Take the first line:
 - `host/src/HostUtils.cpp`: `getTracedFrameLine()` and `getUnframedDataLine()`.
 - `host/src/CliApplication.cpp` and `host/src/DeviceSimulator.cpp`: the `--trace` option.
 - `docs/HARDWARE.md`: "What a trace line means", and `tools/SOCAT.md`: "Tracing the frames".
-- Lectures: L76 "The sercom_cli tool", L79 "Decoding captured traffic with sercom_dump" and L88
-  "Debugging protocol problems on the device".
+- Lectures: L79 "The sercom_cli tool on Linux and Windows", L82 "Decoding captured traffic with
+  sercom_dump" and L91 "Debugging protocol problems on the device".
