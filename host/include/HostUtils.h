@@ -37,6 +37,12 @@ namespace sercom::HostUtils {
 [[nodiscard]] std::string getDecimalText(double value, int decimalCount);
 
 /*
+ * Get a temperature in 0.01 degree steps as degrees Celsius with two decimals.
+ * The temperature without a reading is shown as no reading.
+ */
+[[nodiscard]] std::string getTemperatureText(int16_t temperature);
+
+/*
  * Get the time since the first log line in milliseconds, the time base of every printed time.
  * A call before the first log line starts the time base itself.
  */

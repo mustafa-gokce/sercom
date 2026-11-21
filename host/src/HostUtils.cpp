@@ -11,6 +11,8 @@
 #include <QString>
 #include <QTextStream>
 
+#include "../../app/include/Messages.h"
+
 #include "../include/SerialPort.h"
 
 namespace sercom::HostUtils {
@@ -138,6 +140,21 @@ std::string getDecimalText(const double value, const int decimalCount)
 
     // expose the decimal text
     return valueAsStream.str();
+}
+
+std::string getTemperatureText(const int16_t temperature)
+{
+    // temperature must have a reading
+    if (temperature == Messages::UNAVAILABLE_TEMPERATURE) {
+        return "no reading";
+    }
+
+    // expose the temperature in degrees Celsius with two decimals
+    static constexpr double temperatureStepsPerDegree = 100.0;
+    static constexpr int decimalCount = 2;
+    const double temperatureAsDegrees = static_cast<double>(temperature)
+                                        / temperatureStepsPerDegree;
+    return getDecimalText(temperatureAsDegrees, decimalCount) + " C";
 }
 
 std::chrono::milliseconds getElapsedTime()
