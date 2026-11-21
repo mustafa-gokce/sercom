@@ -12,7 +12,7 @@ invalid when it reads past the end.
 
 ## Before you start
 
-1. Watch lectures L24 "ByteWriter and the sticky error pattern" and L25 "ByteReader: parsing untrusted bytes" first. L26 "Signed values, floats and strings" explains how negative numbers and floats look as bytes.
+1. Watch lectures L27 "ByteWriter and the sticky error pattern" and L28 "ByteReader: parsing untrusted bytes" first. L29 "Signed values, floats and strings" explains how negative numbers and floats look as bytes.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -133,5 +133,5 @@ like this. Print the exit code with `echo $?` and you see `0`.
 - `core/src/Frame.cpp` writes the header of every frame with a `ByteWriter`.
 - `app/src/Messages.cpp` writes the payload of every message with a `ByteWriter`.
 - `host/src/CliApplication.cpp` reads the sequence number of an echo response with a `ByteReader`.
-- Lectures: L24 "ByteWriter and the sticky error pattern", L25 "ByteReader: parsing untrusted bytes" and L26
+- Lectures: L27 "ByteWriter and the sticky error pattern", L28 "ByteReader: parsing untrusted bytes" and L29
   "Signed values, floats and strings".
