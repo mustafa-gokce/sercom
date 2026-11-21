@@ -19,6 +19,8 @@ constexpr size_t CAPTURE_READ_CHUNK_SIZE = 4 * 1024; // capture read chunk size 
 
 constexpr std::chrono::milliseconds READ_TIMEOUT_MSEC
     = 2ms; // serial port read timeout in milliseconds
+constexpr std::chrono::milliseconds MAINTAIN_PERIOD_MSEC
+    = 2ms; // maintenance period of the event loop in milliseconds
 constexpr std::chrono::milliseconds WRITE_TIMEOUT_MSEC
     = 1 * 1000ms; // serial port write timeout in milliseconds
 constexpr std::chrono::milliseconds SERIAL_PORT_RECONNECT_PERIOD_MSEC
