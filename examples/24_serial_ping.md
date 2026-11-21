@@ -104,16 +104,19 @@ the changes under "Try it yourself".
 ## Step 6: Run it against an ESP32
 
 You need a board with the sercom firmware. Flash the `esp32dev` environment, which puts the
-protocol on the USB port: `pio run -d firmware/esp32 -e esp32dev -t upload`.
+protocol on the USB port: `pio run -d firmware/esp32 -e esp32dev -t upload`. With
+`esp32dev-console`, the protocol runs on UART2: use the port of the USB-serial adapter instead.
 Close every serial monitor first: only one program may use the port.
 
 1. Plug the board in and find its port, usually `/dev/ttyUSB0`, on Windows `COM3` or the number
-   the Device Manager shows.
+   the Device Manager shows (see `docs/HARDWARE.md`).
 2. Run `build/sercom_example_24_serial_ping /dev/ttyUSB0`.
+3. If the port does not open (`OPEN_FAILED`), see the `dialout` entry in `docs/HARDWARE.md`,
+   section 9, and section 10 for Windows.
 
 On Linux opening the port restarts the board. Its boot text arrives first; the decoder skips it,
-because it is no frame. On Windows the board usually keeps running.
-Either way the device answers within the boot wait and the program prints the
+because it is no frame. On Windows the board usually keeps running (section 10 of
+`docs/HARDWARE.md`). Either way the device answers within the boot wait and the program prints the
 same three lines as above, with a round trip of a few milliseconds over the USB serial adapter.
 
 ## Try it yourself
