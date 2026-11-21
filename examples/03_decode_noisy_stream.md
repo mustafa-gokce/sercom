@@ -11,7 +11,7 @@ This example builds a stream of 1000 frames, damages it with a seeded random gen
 
 ## Before you start
 
-1. Watch lectures L47 "Resynchronization: drop one byte, rescan the rest", L50 "Handler interface and decoder statistics" and L55 "Soak tests with seeded random damage" first. L18 "noise.py: modelling a bad cable" explains the kinds of noise.
+1. Watch lectures L50 "Resynchronization: drop one byte, rescan the rest", L53 "Handler interface and decoder statistics" and L58 "Soak tests with seeded random damage" first. L21 "noise.py: modelling a bad cable" explains the kinds of noise.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -78,7 +78,7 @@ bytes 45000 -> 45267, discarded 27267, CRC errors 553, length errors 0, version 
 - `CRC errors` counts frame candidates whose CRC32 did not match. A *candidate* is a byte sequence that starts with
   the sync word and looks like a frame until the decoder checks it.
 - `length errors` stays 0 in this build: the limit is 255 bytes, so every payload length byte is allowed (lecture
-  L45).
+  L48).
 - `version errors` counts candidates whose version byte was not 1.
 
 The numbers come from GCC's standard library. The C++ standard fixes the generator `std::mt19937` but not the
@@ -124,5 +124,5 @@ the same seed. The program always exits with 0: it reports the numbers and does 
 - `tools/noise.py` and `tools/NOISE.md` put the same kinds of noise on a virtual serial link.
 - `tests/test_FrameDecoder.cpp` checks with seeded random damage that a damaged stream only yields frames that were
   sent intact.
-- Lectures: L47 "Resynchronization: drop one byte, rescan the rest", L50 "Handler interface and decoder statistics",
-  L55 "Soak tests with seeded random damage" and L18 "noise.py: modelling a bad cable".
+- Lectures: L50 "Resynchronization: drop one byte, rescan the rest", L53 "Handler interface and decoder statistics",
+  L58 "Soak tests with seeded random damage" and L21 "noise.py: modelling a bad cable".
