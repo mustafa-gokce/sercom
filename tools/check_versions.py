@@ -3,8 +3,8 @@
     python3 tools/check_versions.py [--source-directory DIRECTORY]
 
 A release changes APP_VERSION_MAJOR and APP_VERSION_MINOR in CMakeLists.txt and the version MAJOR.MINOR.0 of
-core/library.json and app/library.json together. The firmware build reads CMakeLists.txt, version flags written into
-firmware/esp32/platformio.ini must match it too.
+core/library.json, app/library.json and firmware/common/library.json together. The firmware build reads
+CMakeLists.txt, version flags written into firmware/esp32/platformio.ini must match it too.
 Each version is printed, the exit code is 1 when one of them differs from CMakeLists.txt.
 """
 
@@ -15,7 +15,7 @@ import re
 import sys
 
 # library manifests that carry the version
-LIBRARY_FILES = ('core/library.json', 'app/library.json')
+LIBRARY_FILES = ('core/library.json', 'app/library.json', 'firmware/common/library.json')
 
 # firmware build file that may pass the version
 FIRMWARE_FILE = 'firmware/esp32/platformio.ini'
