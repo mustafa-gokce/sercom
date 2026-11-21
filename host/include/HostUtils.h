@@ -6,11 +6,13 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <QElapsedTimer>
 
 #include "../../core/include/Clock.h"
 #include "../../core/include/Definitions.h"
+#include "../../core/include/Link.h"
 
 namespace sercom::HostUtils {
 
@@ -75,6 +77,12 @@ namespace sercom::HostUtils {
                                  uint32_t minimum,
                                  uint32_t maximum,
                                  uint32_t &value);
+
+/*
+ * Get the link and decoder statistics as report lines.
+ */
+[[nodiscard]] std::vector<std::string> getLinkStatisticsLines(
+    const Link::LinkStatistics &linkStatistics);
 
 /*
  * Get message status type as text.
