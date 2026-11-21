@@ -10,7 +10,9 @@
 # Every serial port becomes a link to its pseudo terminal in the run directory: uart0 and uart2, or usart1 and usart2.
 # QEMU serves each port on a unix socket and tools/uart_bridge.py gives it a pseudo terminal like a USB bridge.
 # Both run inside the run directory and name the socket relative to it, because a socket path holds at most 107 bytes.
-# The port named by --log writes into <port>.log of the run directory instead, so no early output is lost.
+# QEMU also writes the output of every port into <port>.log of the run directory, from the first byte of the chip on.
+# The port named by --log writes only into its log file and gets no pseudo terminal.
+# start returns once a port log holds the start line of the firmware, so the first command finds a running chip.
 # The emulated ESP32 watchdogs are off, because the emulation is slower than the chip and would trip them.
 # QEMU and every bridge write their process ids into the run directory and stop ends only those processes.
 #
@@ -28,6 +30,8 @@ readonly ARM_QEMU="${ARM_QEMU:-qemu-system-arm}"
 readonly PLATFORMIO_PACKAGES="${PLATFORMIO_PACKAGES:-${HOME}/.platformio/packages}"
 readonly PYTHON="${PYTHON:-python3}"
 readonly START_TIMEOUT_SECONDS="${START_TIMEOUT_SECONDS:-10}"
+readonly BOOT_TIMEOUT_SECONDS="${BOOT_TIMEOUT_SECONDS:-60}"
+readonly STARTED_TEXT="${STARTED_TEXT:-Started the }"
 
 # print the usage text
 print_usage() {
@@ -35,20 +39,24 @@ print_usage() {
     echo "       tools/run_emulator.sh stop <run directory>"
     echo "  build directory  firmware/esp32/.pio/build/<environment> or firmware/stm32f4/.pio/build/<environment>"
     echo "  run directory    directory of the port links, the log files, the flash image and the process ids"
-    echo "  --log PORT       write the port uart0, uart2, usart1 or usart2 into <run directory>/PORT.log"
+    echo "  --log PORT       give the port uart0, uart2, usart1 or usart2 no pseudo terminal, only <run directory>/PORT.log"
     echo "  ESP32_QEMU selects qemu-system-xtensa (default ${ESP32_QEMU}), ARM_QEMU qemu-system-arm"
     echo "  (default ${ARM_QEMU}), PLATFORMIO_PACKAGES the PlatformIO packages (default ${PLATFORMIO_PACKAGES})"
+    echo "  BOOT_TIMEOUT_SECONDS sets the longest wait for the start line of the firmware, 0 skips the wait"
+    echo "  (default ${BOOT_TIMEOUT_SECONDS})"
 }
 
-# append the QEMU options of a serial port to serial_options, a socket for its bridge or the log file
+# append the QEMU options of a serial port to serial_options, a socket for its bridge or the log file alone
 add_serial_options() {
     local port="$1"
+    rm -f "${RUN_DIRECTORY:?}/${port:?}.log"
+    port_logs+=("${RUN_DIRECTORY}/${port}.log")
     if [[ "${port}" == "${LOG_PORT}" ]]; then
         serial_options+=(-serial "file:${port}.log")
         return
     fi
     rm -f "${RUN_DIRECTORY}/${port}.sock"
-    serial_options+=(-chardev "socket,id=${port},path=${port}.sock,server=on,wait=off")
+    serial_options+=(-chardev "socket,id=${port},path=${port}.sock,server=on,wait=off,logfile=${port}.log")
     serial_options+=(-serial "chardev:${port}")
     bridged_ports+=("${port}")
 }
@@ -79,6 +87,24 @@ start_bridges() {
         done
         echo "${port}: $(readlink "${RUN_DIRECTORY}/${port}")"
     done
+}
+
+# wait until a port log holds the start line of the firmware, as long as QEMU runs
+wait_for_firmware() {
+    local attempt
+    if [[ "${BOOT_TIMEOUT_SECONDS}" -eq 0 ]]; then
+        return
+    fi
+    for ((attempt = 0; attempt < BOOT_TIMEOUT_SECONDS * 10; ++attempt)); do
+        grep -aqF -- "${STARTED_TEXT}" "${port_logs[@]}" 2>/dev/null && return
+        if ! kill -0 "$(cat "${RUN_DIRECTORY}/qemu.pid" 2>/dev/null)" 2>/dev/null; then
+            echo "QEMU stopped before the firmware started, see ${RUN_DIRECTORY}/qemu.log" >&2
+            exit 1
+        fi
+        sleep 0.1
+    done
+    echo "no port log in ${RUN_DIRECTORY} holds the start line of the firmware after ${BOOT_TIMEOUT_SECONDS} seconds" >&2
+    exit 1
 }
 
 # boot an ESP32 build directory on Espressif's QEMU
@@ -164,12 +190,14 @@ fi
 # boot the firmware of the target
 serial_options=()
 bridged_ports=()
+port_logs=()
 case "${TARGET}" in
     esp32) start_esp32 ;;
     stm32f4) start_stm32f4 ;;
     *) echo "unknown target: ${TARGET}" >&2; print_usage >&2; exit 64 ;;
 esac
 
-# give the ports their pseudo terminals
+# give the ports their pseudo terminals and wait for the firmware
 start_bridges
+wait_for_firmware
 echo "QEMU runs ${TARGET} with process id $(cat "${RUN_DIRECTORY}/qemu.pid") in ${RUN_DIRECTORY}"
