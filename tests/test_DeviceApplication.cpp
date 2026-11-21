@@ -414,6 +414,15 @@ public:
     }
 
     /*
+     * Listen for an echo response and record it.
+     */
+    void onReceivedEchoResponse(const Messages::EchoResponse &echoResponse) final
+    {
+        // record the echo response
+        this->echoResponses.push_back(echoResponse);
+    }
+
+    /*
      * Listen for a confirmed request and record its message type.
      */
     void onRequestConfirmed([[maybe_unused]] const uint16_t messageCounter,
@@ -450,6 +459,7 @@ public:
         this->setLedResponses.clear();
         this->telemetryReportResponses.clear();
         this->logReportResponses.clear();
+        this->echoResponses.clear();
         this->confirmedMessageTypes.clear();
         this->failedRequests.clear();
     }
@@ -534,8 +544,9 @@ private:
     std::vector<Messages::SetLedResponse> setLedResponses;         // received LED states
     std::vector<Messages::TelemetryReportResponse> telemetryReportResponses; // received telemetry
     std::vector<Messages::LogReportResponse> logReportResponses;             // received log texts
-    std::vector<Messages::MessageType> confirmedMessageTypes;                // confirmed requests
-    std::vector<FailedRequest> failedRequests;                               // failed requests
+    std::vector<Messages::EchoResponse> echoResponses;        // received echo responses
+    std::vector<Messages::MessageType> confirmedMessageTypes; // confirmed requests
+    std::vector<FailedRequest> failedRequests;                // failed requests
 };
 
 } // namespace

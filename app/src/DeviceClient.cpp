@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "../../core/include/Settings.h"
+
 namespace sercom::DeviceClient {
 
 DeviceClientHandler::~DeviceClientHandler() {}
@@ -84,6 +86,30 @@ Definitions::SendStatusType DeviceClient::sendSetTelemetryPeriodRequest(
                              messageCounter);
 }
 
+Definitions::SendStatusType DeviceClient::sendEchoRequest(const uint8_t *data,
+                                                          const size_t size,
+                                                          uint16_t &messageCounter)
+{
+    // data must fit into a payload of this build
+    if (size > Settings::MaximumPayloadSize) {
+        return Definitions::SendStatusType::PAYLOAD_TOO_LONG;
+    }
+
+    // data must exist when it is not empty
+    if (size > 0 && data == nullptr) {
+        return Definitions::SendStatusType::INVALID_ARGUMENT;
+    }
+
+    // create echo request
+    const Messages::EchoRequest echoRequest(data, size);
+
+    // send the echo request
+    return this->sendRequest(Messages::MessageType::ECHO_REQUEST,
+                             echoRequest.getPayload(),
+                             echoRequest.getPayloadLength(),
+                             messageCounter);
+}
+
 void DeviceClient::onReceivedData(const uint8_t *data, const size_t size)
 {
     // hand the data to the link
@@ -147,6 +173,11 @@ Definitions::MessageStatusType DeviceClient::onReceivedMessage(const Frame::Fram
     // handle a log report response
     case Messages::MessageType::LOG_REPORT_RESPONSE: {
         return this->handleLogReportResponse(frame);
+    }
+
+    // handle an echo response
+    case Messages::MessageType::ECHO_RESPONSE: {
+        return this->handleEchoResponse(frame);
     }
 
     // do not handle requests and unknown messages
@@ -274,6 +305,18 @@ Definitions::MessageStatusType DeviceClient::handleLogReportResponse(const Frame
     this->handler.onReceivedLogReportResponse(logReportResponse);
 
     // log report response handled successfully
+    return Definitions::MessageStatusType::ACCEPTED;
+}
+
+Definitions::MessageStatusType DeviceClient::handleEchoResponse(const Frame::Frame &frame)
+{
+    // get echo response arguments
+    const Messages::EchoResponse echoResponse(frame);
+
+    // notify listeners about the echo response
+    this->handler.onReceivedEchoResponse(echoResponse);
+
+    // echo response handled successfully
     return Definitions::MessageStatusType::ACCEPTED;
 }
 

@@ -1,6 +1,10 @@
 #include "../include/CliApplication.h"
 
+#include <algorithm>
+
 #include <QCoreApplication>
+
+#include "../../core/include/ByteCodec.h"
 
 namespace sercom::CliApplication {
 
@@ -67,6 +71,11 @@ CliApplication::CliApplication(const CommandLine &commandLine)
     , outgoingPingRequestCounter(0)
     , incomingPingResponseCounter(0)
     , failedPingRequestCounter(0)
+    , verifiedEchoResponseCounter(0)
+    , corruptedEchoResponseCounter(0)
+    , unexpectedEchoResponseCounter(0)
+    , echoRoundTripTimeSum(0)
+    , maximumEchoRoundTripTime(0)
 {
     // connect serial port signals and slots
     QObject::connect(&this->serialPort,
@@ -246,6 +255,53 @@ void CliApplication::onReceivedLogReportResponse(const Messages::LogReportRespon
     const std::string debugMessage = "Device log " + logLevelTypeAsText + ": "
                                      + std::string(logReportResponse.getText());
     HostUtils::logDebug(debugMessage);
+}
+
+void CliApplication::onReceivedEchoResponse(const Messages::EchoResponse &echoResponse)
+{
+    // keep track of messages
+    this->lastDeviceMessageTimestamp = this->clock.getTime();
+
+    // echo response must carry a sequence number
+    const uint8_t *data = echoResponse.getPayload();
+    const size_t size = echoResponse.getPayloadLength();
+    ByteCodec::ByteReader byteReader(data, size);
+    uint32_t sequenceNumber = 0;
+    if (!byteReader.readUint32(sequenceNumber)) {
+        // keep track of corrupted echo responses
+        ++this->corruptedEchoResponseCounter;
+
+        // do not proceed further
+        return;
+    }
+
+    // echo request must be pending
+    const std::map<uint32_t, PendingEcho>::const_iterator &pendingEchoIterator
+        = this->pendingEchoes.find(sequenceNumber);
+    if (pendingEchoIterator == this->pendingEchoes.cend()) {
+        // keep track of unexpected echo responses
+        ++this->unexpectedEchoResponseCounter;
+
+        // do not proceed further
+        return;
+    }
+
+    // keep track of the echo responses by their payload
+    const std::vector<uint8_t> echoPayload(data, data + size);
+    if (echoPayload == this->getEchoPayload(sequenceNumber)) {
+        ++this->verifiedEchoResponseCounter;
+    } else {
+        ++this->corruptedEchoResponseCounter;
+    }
+
+    // keep track of the round trip time
+    const std::chrono::milliseconds roundTripTime = this->clock.getTime()
+                                                    - pendingEchoIterator->second.requestTimestamp;
+    this->echoRoundTripTimeSum += roundTripTime;
+    this->maximumEchoRoundTripTime = std::max(this->maximumEchoRoundTripTime, roundTripTime);
+
+    // forget the answered echo request
+    this->pendingEchoes.erase(pendingEchoIterator);
 }
 
 void CliApplication::onRequestConfirmed([[maybe_unused]] const uint16_t messageCounter,
@@ -727,6 +783,26 @@ std::string CliApplication::getSerialPortText() const
 {
     // expose the serial port name and the baud rate
     return HostUtils::getSerialPortText(this->commandLine.portName, this->commandLine.baudRate);
+}
+
+std::vector<uint8_t> CliApplication::getEchoPayload(const uint32_t sequenceNumber) const
+{
+    // echo payload must hold the sequence number
+    if (this->commandLine.echoPayloadSize < HostSettings::ECHO_HEADER_SIZE) {
+        return {};
+    }
+
+    // store the sequence number first
+    std::vector<uint8_t> echoPayload(this->commandLine.echoPayloadSize, 0);
+    ByteCodec::storeUint32(echoPayload.data(), sequenceNumber);
+
+    // fill the rest with a pattern of the sequence number
+    for (size_t index = HostSettings::ECHO_HEADER_SIZE; index < echoPayload.size(); ++index) {
+        echoPayload[index] = static_cast<uint8_t>((sequenceNumber + index) & 0xFF);
+    }
+
+    // expose the echo payload
+    return echoPayload;
 }
 
 } // namespace sercom::CliApplication

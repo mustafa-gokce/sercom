@@ -3,8 +3,10 @@
 
 #include <chrono>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <QByteArray>
 #include <QObject>
@@ -54,8 +56,19 @@ struct CommandLine
     bool ledOn = false;                                  // LED is switched on
     std::chrono::milliseconds telemetryPeriod
         = std::chrono::milliseconds::zero(); // telemetry period in milliseconds
+    uint32_t echoPayloadSize = HostSettings::DEFAULT_ECHO_PAYLOAD_SIZE; // echo payload size in bytes
     std::chrono::milliseconds duration
         = HostSettings::DEFAULT_COMMAND_DURATION_MSEC; // command duration in milliseconds
+};
+
+/*
+ * Echo request that waits for its echo response.
+ */
+struct PendingEcho
+{
+    std::chrono::milliseconds requestTimestamp
+        = std::chrono::milliseconds::zero(); // time the echo request was sent first
+    uint16_t messageCounter = 0;             // message counter of the latest echo request
 };
 
 class CliApplication final : public QObject, public DeviceClient::DeviceClientHandler
@@ -111,6 +124,11 @@ private:
      * Listen for a log report response.
      */
     void onReceivedLogReportResponse(const Messages::LogReportResponse &logReportResponse) final;
+
+    /*
+     * Listen for an echo response.
+     */
+    void onReceivedEchoResponse(const Messages::EchoResponse &echoResponse) final;
 
     /*
      * Listen for a request the device acknowledged.
@@ -205,6 +223,11 @@ private:
      */
     [[nodiscard]] std::string getSerialPortText() const;
 
+    /*
+     * Get the echo payload of a sequence number.
+     */
+    [[nodiscard]] std::vector<uint8_t> getEchoPayload(uint32_t sequenceNumber) const;
+
 private:
     const CommandLine commandLine;                          // command line arguments
     SerialPort::SerialPort serialPort;                      // serial port to the device
@@ -223,6 +246,12 @@ private:
     uint64_t outgoingPingRequestCounter;                    // ping requests of the ping command
     uint64_t incomingPingResponseCounter;                   // ping responses of the ping command
     uint64_t failedPingRequestCounter;                      // ping requests without ping response
+    uint64_t verifiedEchoResponseCounter;                   // echo responses with the echo payload
+    uint64_t corruptedEchoResponseCounter;                  // echo responses with another payload
+    uint64_t unexpectedEchoResponseCounter;                 // echo responses without echo request
+    std::chrono::milliseconds echoRoundTripTimeSum;         // sum of the echo round trip times
+    std::chrono::milliseconds maximumEchoRoundTripTime;     // longest echo round trip time
+    std::map<uint32_t, PendingEcho> pendingEchoes;          // pending echoes by sequence number
 };
 
 } // namespace sercom::CliApplication
