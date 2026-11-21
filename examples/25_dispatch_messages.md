@@ -69,8 +69,8 @@ message type.
 
 The fourth block,
 `// receive a message without payload of a message type that the device does not know`, sends
-`0x0200`, a value that the demo protocol does not use.
-`Messages::GenericMessage()` is a message without payload.
+`0x0200`, a value that the demo protocol does not use (example 23 takes it for a message of its
+own). `Messages::GenericMessage()` is a message without payload.
 
 Find `// handler must handle the three requests and find the unknown message type unsupported`.
 The program checks both counters of the handler.
