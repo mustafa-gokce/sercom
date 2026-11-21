@@ -142,7 +142,10 @@ void printUsage(const std::string_view programName)
     const std::string usage
         = std::string("Usage: ") + std::string(programName)
           + " <port> [--baud N] [--name NAME] [--log-period MILLISECONDS] [--trace]\n"
-            "Simulates the demo device on a serial port or pseudo terminal.\n"
+            "Simulates the demo device on a serial port, a pseudo terminal or a virtual COM port.\n"
+            "Port:\n"
+            "  <port>                               device path such as /dev/ttyUSB0 on Linux,\n"
+            "                                       COM port such as COM3 on Windows\n"
             "Options:\n"
             "  --baud N                             baud rate of the serial port\n"
             "  --name NAME                          device name of the simulated device\n"
