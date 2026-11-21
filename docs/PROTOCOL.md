@@ -2,7 +2,8 @@
 
 This document specifies the sercom packet-based binary serial protocol. It is
 normative for the frame layer and the link layer, and describes the demo
-message set used by the course device.
+message set used by the course device. The C++ library in `core/` and the
+Python reference in `tools/sercom_frame.py` implement it.
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
