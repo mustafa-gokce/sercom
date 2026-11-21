@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 
 #include "../include/Definitions.h"
 
@@ -18,6 +19,10 @@ constexpr size_t MAXIMUM_FRAME_SIZE = Definitions::FRAME_OVERHEAD
 
 constexpr std::chrono::milliseconds DEFAULT_INTER_BYTE_TIMEOUT_MSEC
     = 50ms; // default silence that drops a partial frame in milliseconds
+constexpr std::chrono::milliseconds DEFAULT_RETRANSMIT_TIMEOUT_MSEC
+    = 250ms; // default wait for an answer in milliseconds
+
+constexpr uint8_t DEFAULT_MAXIMUM_RETRANSMISSIONS = 5; // default retransmissions of a message
 
 } // namespace sercom::Settings
 
