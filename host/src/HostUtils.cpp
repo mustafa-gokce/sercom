@@ -505,7 +505,7 @@ void installStopHandlers()
         logWarning("Can not install the interrupt handler");
     }
 
-    // install the terminate handler
+    // NOTE: no other process can send the terminate signal on Windows
     if (std::signal(SIGTERM, handleStopSignal) == SIG_ERR) {
         logWarning("Can not install the terminate handler");
     }
