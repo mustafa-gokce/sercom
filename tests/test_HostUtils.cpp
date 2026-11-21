@@ -1,7 +1,10 @@
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -234,4 +237,41 @@ TEST_CASE_METHOD(TestHostUtils,
     // check the size of one byte
     CAPTURE(line);
     REQUIRE(line == "[     0.000] << unframed data, 1 byte: 00");
+}
+
+TEST_CASE_METHOD(TestHostUtils,
+                 "Decimal and hexadecimal numbers are parsed up to the maximum",
+                 "[HostUtils][parseUint32]")
+{
+    // check numbers within the maximum
+    static constexpr uint32_t maximum = std::numeric_limits<uint32_t>::max();
+    static constexpr uint32_t answer = 42;
+    uint32_t value = 0;
+    REQUIRE(HostUtils::parseUint32("42", maximum, value));
+    REQUIRE(value == answer);
+    REQUIRE(HostUtils::parseUint32("0x2A", maximum, value));
+    REQUIRE(value == answer);
+    REQUIRE(HostUtils::parseUint32("0X2a", maximum, value));
+    REQUIRE(value == answer);
+    REQUIRE(HostUtils::parseUint32("4294967295", maximum, value));
+    REQUIRE(value == maximum);
+
+    // check numbers above the maximum (the last one above 64 bits)
+    static constexpr uint32_t smallMaximum = 100;
+    REQUIRE_FALSE(HostUtils::parseUint32("101", smallMaximum, value));
+    REQUIRE_FALSE(HostUtils::parseUint32("4294967296", maximum, value));
+    REQUIRE_FALSE(HostUtils::parseUint32("18446744073709551616", maximum, value));
+    REQUIRE(value == maximum);
+
+    // check texts that are no number of their base
+    static const std::vector<std::string_view> invalidTexts
+        = {"", "0x", " 1", "1 ", "+1", "-1", "1a", "0x1G", "1.5"};
+    std::for_each(invalidTexts.cbegin(),
+                  invalidTexts.cend(),
+                  [](const std::string_view invalidText) {
+                      // check the rejection of the text
+                      CAPTURE(invalidText);
+                      uint32_t invalidTextValue = 0;
+                      REQUIRE_FALSE(HostUtils::parseUint32(invalidText, maximum, invalidTextValue));
+                  });
 }
