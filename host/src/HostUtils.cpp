@@ -2,12 +2,14 @@
 
 #include <algorithm>
 #include <csignal>
+#include <cstdio>
 #include <iomanip>
-#include <iostream>
 #include <limits>
 #include <sstream>
 
+#include <QDebug>
 #include <QString>
+#include <QTextStream>
 
 #include "../../app/include/Messages.h"
 #include "../../core/include/Settings.h"
@@ -477,19 +479,22 @@ std::string getUnframedDataLine(const FrameTracer::TraceDirectionType traceDirec
 void printLine(const std::string &line)
 {
     // print the line at once
-    std::cout << line << '\n' << std::flush;
+    QTextStream(stdout) << QString::fromStdString(line) << endl;
 }
 
 void logDebug(const std::string &debugMessage)
 {
     // print the debug message with its timestamp
-    std::clog << getTimestampText() << ' ' << debugMessage << '\n';
+    const QString debugLine = QString::fromStdString(getTimestampText() + " " + debugMessage);
+    qDebug().noquote() << debugLine;
 }
 
 void logWarning(const std::string &warningMessage)
 {
     // print the warning message with its timestamp
-    std::clog << getTimestampText() << " WARNING " << warningMessage << '\n';
+    const QString warningLine = QString::fromStdString(getTimestampText() + " WARNING "
+                                                       + warningMessage);
+    qWarning().noquote() << warningLine;
 }
 
 void installStopHandlers()
