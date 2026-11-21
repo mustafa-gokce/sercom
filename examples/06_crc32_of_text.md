@@ -11,7 +11,7 @@ This example calculates the CRC32 of the text `123456789` and compares it with t
 
 ## Before you start
 
-1. Watch lectures L37 "Verifying a CRC implementation" and L38 "What CRC32 guarantees and what it does not" first.
+1. Watch lectures L40 "Verifying a CRC implementation" and L41 "What CRC32 guarantees and what it does not" first.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -116,5 +116,5 @@ see `0`.
   `CRC32_FINAL_XOR_VALUE`.
 - `tests/test_CRC32.cpp` checks the same check value and every single bit flip of a buffer.
 - `tools/sercom_frame.py` calculates the same CRC32 in Python.
-- Lectures: L37 "Verifying a CRC implementation" and L38 "What CRC32 guarantees and what it does not". L35 "A
+- Lectures: L40 "Verifying a CRC implementation" and L41 "What CRC32 guarantees and what it does not". L38 "A
   bitwise CRC-32 implementation" shows how the number is calculated.
