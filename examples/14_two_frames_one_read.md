@@ -88,5 +88,7 @@ The exit code `0` means the decoder found all three frames and discarded no byte
 
 - `core/src/FrameDecoder.cpp`: `onReceivedData()`, `appendByte()` and the loop in
   `processBuffer()`.
+- `host/src/CliApplication.cpp` and `host/src/DeviceSimulator.cpp`: hand every serial port read,
+  whatever its size, to the link layer, which passes it on to its decoder.
 - Lectures: L52 "Buffer management and reentrancy" and L46 "Decoder design options"; the read
   loop of the host is L77 "The Qt event loop: one thread, signals and a timer".
