@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../app/include/Messages.h"
 #include "../core/include/Definitions.h"
 #include "../core/include/Frame.h"
 #include "../core/include/FrameDecoder.h"
@@ -90,7 +91,7 @@ int main(int argc, char *argv[])
 
     // build the clean stream of numbered frames
     static constexpr uint16_t frameCount = 1000;
-    static constexpr uint16_t messageType = 0x0006;
+    const uint16_t messageType = Messages::fromMessageType(Messages::MessageType::ECHO_REQUEST);
     static constexpr size_t payloadLength = 32;
     std::vector<uint8_t> stream;
     for (uint16_t messageCounter = 0; messageCounter < frameCount; ++messageCounter) {
