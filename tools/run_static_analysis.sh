@@ -109,7 +109,8 @@ cppcheck_status=0
     --quiet -j "${JOBS}" --cppcheck-build-dir="${BUILD_DIRECTORY}/cppcheck" \
     --template='{file}:{line}:{column}: {severity}{inconclusive:,inconclusive}: {id}: {message}' \
     --output-file="${BUILD_DIRECTORY}/cppcheck.log" \
-    core/src app/src host/src host/apps examples fuzz firmware/esp32/src || cppcheck_status=$?
+    core/src app/src host/src host/apps examples fuzz firmware/common/src firmware/esp32/src \
+    firmware/stm32f4/src || cppcheck_status=$?
 
 # print the cppcheck findings without the accepted ones
 cppcheck_finding_count=0
@@ -127,7 +128,8 @@ fi
 # check the sources of the compile database with clang-tidy, without the counts of suppressed warnings
 echo "== clang-tidy"
 clang_tidy_status=0
-printf '%s\n' core/src/*.cpp app/src/*.cpp host/src/*.cpp host/apps/*.cpp examples/*.cpp \
+printf '%s\n' core/src/*.cpp app/src/*.cpp firmware/common/src/*.cpp host/src/*.cpp host/apps/*.cpp \
+    examples/*.cpp \
     | xargs -P "${JOBS}" -n 1 "${CLANG_TIDY}" -p "${BUILD_DIRECTORY}" \
         --config-file=tools/analysis/clang-tidy.yaml --quiet --warnings-as-errors='*' \
         --extra-arg=-Wno-unknown-warning-option > "${BUILD_DIRECTORY}/clang-tidy.log" 2>&1 \
