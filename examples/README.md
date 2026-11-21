@@ -34,7 +34,10 @@ because its messages travel over the link layer of example 18.
 | S08 | L51 (also L74) | 13 | Inter Byte Timeout | A mock clock moves past the inter byte timeout, the decoder drops a half frame and accepts the next one | [guide](13_inter_byte_timeout.md), [source](13_inter_byte_timeout.cpp) |
 | S08 | L52 (also L46, L77) | 14 | Two Frames in One Read | Two frames arrive in one read, then one frame arrives split over two reads | [guide](14_two_frames_one_read.md), [source](14_two_frames_one_read.cpp) |
 | S09 | L58 (also L21, L50, L53) | 03 | Decode a Noisy Stream | Damages 1000 frames with seeded random noise and decodes the frames that arrived intact | [guide](03_decode_noisy_stream.md), [source](03_decode_noisy_stream.cpp) |
+| S10 | L63, L62 (also L66, L78) | 15 | Ping Messages | Prints the ping request and response payloads field by field and calculates the round trip time | [guide](15_ping_messages.md), [source](15_ping_messages.cpp) |
 | S10 | L65 (also L53, L62, L77) | 25 | Dispatch Messages | Switches on the message type of four decoded frames and calls one function per type, an unknown type included | [guide](25_dispatch_messages.md), [source](25_dispatch_messages.cpp) |
+| S10 | L63, L66 (also L64, L79) | 16 | Device Info Message | Prints a device info response field by field, the length-prefixed name included, and reads it back | [guide](16_device_info_message.md), [source](16_device_info_message.cpp) |
+| S10 | L63, L66 (also L25, L85) | 17 | Telemetry Message | Prints a telemetry report field by field and scales the received values to seconds, KiB and degrees Celsius | [guide](17_telemetry_message.md), [source](17_telemetry_message.cpp) |
 
 ## Building the examples
 1. Open a terminal, on Windows PowerShell 7 with the path of the README.
