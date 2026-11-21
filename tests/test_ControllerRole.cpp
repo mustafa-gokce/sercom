@@ -551,7 +551,7 @@ TEST_CASE_METHOD(TestControllerRole,
     // drop every fiftieth frame of both roles
     static constexpr size_t droppedSendPeriod = 50;
     const DataFilter dropFilter = [](const size_t sendCount,
-                                     [[maybe_unused]] const std::vector<uint8_t> &data) {
+                                     [[maybe_unused]] const std::vector<uint8_t> &data) noexcept {
         return sendCount % droppedSendPeriod != 0;
     };
     controllerTransport.setFilter(dropFilter);
@@ -612,7 +612,7 @@ TEST_CASE_METHOD(TestControllerRole,
     // drop every frame of the controller
     controllerTransport.setFilter(
         []([[maybe_unused]] const size_t sendCount,
-           [[maybe_unused]] const std::vector<uint8_t> &data) { return false; });
+           [[maybe_unused]] const std::vector<uint8_t> &data) noexcept { return false; });
 
     // run both roles until the controller is finished
     runUntilFinished();
