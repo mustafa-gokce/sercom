@@ -21,10 +21,18 @@ because its messages travel over the link layer of example 18.
 | Section | Watch first | No. | Title | What it shows | Guide and source |
 |---|---|---|---|---|---|
 | S01 | L10, L13, L18, L19, L20 | 01 | Raw Serial | Prints every byte of a serial port and sends a text once per second: a byte stream without frames | [guide](01_raw_serial.md), [source](01_raw_serial.cpp) |
+| S04 | L25 (also L24, L30) | 04 | Byte Order | Stores the type and the timestamp of a ping request little-endian and reads them back in both byte orders | [guide](04_byte_order.md), [source](04_byte_order.cpp) |
 | S04 | L27, L28, L29 | 05 | Write and Read Fields | Writes and reads integer and float fields with `ByteWriter` and `ByteReader`, then the sticky error of a record cut short | [guide](05_write_and_read_fields.md), [source](05_write_and_read_fields.cpp) |
 | S05 | L30, L32 (also L49) | 08 | Read a Frame | Builds a frame from its 17 bytes, prints every getter and shows which check finds a flipped bit and a lost byte | [guide](08_read_a_frame.md), [source](08_read_a_frame.cpp) |
+| S05 | L32 (also L30, L70, L71) | 09 | Frame Flags | Prints the FLAGS byte of five flag combinations in hex and binary and tests each flag | [guide](09_frame_flags.md), [source](09_frame_flags.cpp) |
 | S06 | L40, L41 (also L38) | 06 | CRC32 of a Text | The CRC32 of `123456789` equals the check value `0xCBF43926`, and every flipped bit changes it | [guide](06_crc32_of_text.md), [source](06_crc32_of_text.cpp) |
+| S06 | L39 (also L40, L49) | 07 | CRC32 in Pieces | `updateCRC32` over a frame in three pieces gives the same CRC32 as one call over the whole buffer | [guide](07_crc32_in_pieces.md), [source](07_crc32_in_pieces.cpp) |
+| S07 | L45 (also L30, L44) | 02 | Build a Frame | Builds a ping request frame from its fields, prints every field with offset and size and checks the CRC32 | [guide](02_build_frame.md), [source](02_build_frame.cpp) |
+| S08 | L46, L53 (also L49) | 10 | Decode Byte by Byte | Feeds one frame to the decoder one byte at a time and shows the field and the buffered size of each byte | [guide](10_decode_byte_by_byte.md), [source](10_decode_byte_by_byte.cpp) |
 | S08 | L47, L50 (also L53) | 11 | Resync After Garbage | Finds two frames between garbage bytes, the `A5 A5 C3` trap included, and prints the decoder statistics | [guide](11_resync_after_garbage.md), [source](11_resync_after_garbage.cpp) |
+| S08 | L49, L50 (also L41) | 12 | CRC Error Detected | One flipped payload bit gives a CRC mismatch, the damaged frame is dropped and the next one decodes | [guide](12_crc_error_detected.md), [source](12_crc_error_detected.cpp) |
+| S08 | L51 (also L74) | 13 | Inter Byte Timeout | A mock clock moves past the inter byte timeout, the decoder drops a half frame and accepts the next one | [guide](13_inter_byte_timeout.md), [source](13_inter_byte_timeout.cpp) |
+| S08 | L52 (also L46, L77) | 14 | Two Frames in One Read | Two frames arrive in one read, then one frame arrives split over two reads | [guide](14_two_frames_one_read.md), [source](14_two_frames_one_read.cpp) |
 | S09 | L58 (also L21, L50, L53) | 03 | Decode a Noisy Stream | Damages 1000 frames with seeded random noise and decodes the frames that arrived intact | [guide](03_decode_noisy_stream.md), [source](03_decode_noisy_stream.cpp) |
 
 ## Building the examples
