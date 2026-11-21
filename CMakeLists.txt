@@ -136,6 +136,16 @@ target_link_libraries(${PROJECT_NAME}_app_lib PRIVATE
     ${PROJECT_NAME}_core_lib
 )
 
+# create firmware library
+add_library(${PROJECT_NAME}_firmware_lib
+    firmware/common/include/CommonSettings.h firmware/common/src/CommonSettings.cpp
+)
+target_link_libraries(${PROJECT_NAME}_firmware_lib PRIVATE
+    ${PROJECT_NAME}_settings
+    ${PROJECT_NAME}_core_lib
+    ${PROJECT_NAME}_app_lib
+)
+
 # create host library
 add_library(${PROJECT_NAME}_host_lib
     host/include/HostSettings.h host/src/HostSettings.cpp
@@ -554,6 +564,7 @@ if (SERCOM_BUILD_TESTS)
         ${PROJECT_NAME}_settings
         ${PROJECT_NAME}_core_lib
         ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_firmware_lib
         ${PROJECT_NAME}_host_lib
         Catch2::Catch2
         Qt${QT_VERSION_MAJOR}::Core
