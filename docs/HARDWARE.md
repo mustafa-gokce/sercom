@@ -27,7 +27,8 @@ UART and the console differ. The switch is `-DLET_PRINT_CONSOLE` in the environm
 - For `esp32dev-console`: a USB-serial adapter set to 3.3 V (CP2102, CH340 or FT232)
   and three jumper wires.
 - A Linux or Windows host with the build of `README.md` (`build/sercom_cli`) and
-  PlatformIO (`pip install platformio`).
+  PlatformIO (`pip install platformio`); check it with `pio --version`, and on Windows
+  see section 10 when PowerShell does not find `pio`.
 - On Linux your user in the `dialout` group (section 9), on Windows the driver of the
   USB bridge (section 10).
 
@@ -313,6 +314,11 @@ Linux host.
    above need in front of a name that starts with `COM`; `\\.\COM10` works as well.
 4. A COM port opens only once: a second program, a serial monitor or a PlatformIO
    upload that holds the port makes the tools fail with `OPEN_FAILED`.
+5. Check that PlatformIO runs after `pip install platformio`: `pio --version`. When
+   PowerShell does not find `pio`, pip put it into a `Scripts` directory that is not on
+   the path and names that directory in its warning; put the directory on the path
+   (`$env:PATH = "<Scripts directory>;$env:PATH"`) or call `python -m platformio` in
+   place of `pio`.
 
 `QSerialPort` switches RTS off when it opens a port on Windows and leaves DTR as the
 driver had it, while Linux raises both. On most DevKit boards RTS drives EN, so the
