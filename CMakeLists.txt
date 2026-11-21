@@ -148,6 +148,7 @@ add_library(${PROJECT_NAME}_firmware_lib
 
     firmware/common/include/FirmwareRole.h firmware/common/src/FirmwareRole.cpp
     firmware/common/include/DeviceRole.h firmware/common/src/DeviceRole.cpp
+    firmware/common/include/ControllerRole.h firmware/common/src/ControllerRole.cpp
 )
 target_link_libraries(${PROJECT_NAME}_firmware_lib PRIVATE
     ${PROJECT_NAME}_settings
