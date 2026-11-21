@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include <QCoreApplication>
+
 #include "../../app/include/Messages.h"
 
 #include "../include/DeviceSimulator.h"
@@ -83,6 +85,9 @@ int main(int argc, char *argv[])
 
     // install the stop handlers
     HostUtils::installStopHandlers();
+
+    // initialize the Qt application of the event loop
+    const QCoreApplication application(argc, argv);
 
     // run the device simulator
     DeviceSimulator::DeviceSimulator deviceSimulator(commandLine);
