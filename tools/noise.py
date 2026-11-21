@@ -2,16 +2,21 @@
 
     python3 tools/noise.py [INPUT] [OUTPUT] [--drop P] [--flip P] [--maximum-bit-flips N] [--insert P]
                            [--duplicate P] [--delay S] [--burst P] [--burst-length N] [--seed N]
+                           [--duplex] [--baud N]
 
 INPUT and OUTPUT are serial ports or pseudo terminals, - or an omitted argument stands for standard input or output.
+A Windows COM port name such as COM11 opens the port through pyserial (python -m pip install pyserial).
+With --duplex one process forwards both directions, which Windows needs because a COM port opens only once.
 Every probability is evaluated per byte, tools/NOISE.md describes the noise types and the recommended profiles.
 """
 
 import argparse
 import os
 import random
+import re
 import select
 import sys
+import threading
 import time
 
 # number of bytes read from the input at once
@@ -30,6 +35,12 @@ MAXIMUM_BYTE_VALUE = 255
 BURST_MULTIPLIER = 10.0
 BURST_DUPLICATE_MULTIPLIER = 5.0
 
+# baud rate of a COM port, a pseudo terminal has none
+DEFAULT_BAUD_RATE = 115200
+
+# name of a Windows COM port, with or without the device path prefix
+COM_PORT_NAME = re.compile(r'^(\\\\\.\\)?COM[0-9]+$', re.IGNORECASE)
+
 
 def parse_arguments():
     """Parse the command line."""
@@ -47,28 +58,79 @@ def parse_arguments():
     parser.add_argument('--burst-length', type=int, default=10,
                         help='number of bytes affected by a corruption burst')
     parser.add_argument('--seed', type=int, default=None, help='seed of the random generator for reproducible runs')
+    parser.add_argument('--duplex', action='store_true',
+                        help='forward OUTPUT back to INPUT too, the return direction takes the seed plus one')
+    parser.add_argument('--baud', type=int, default=DEFAULT_BAUD_RATE,
+                        help='baud rate of a COM port (default %d)' % DEFAULT_BAUD_RATE)
     return parser.parse_args()
 
 
-def open_port(path, standard_descriptor):
-    """Open a port for reading and writing, - gives the standard descriptor."""
+class DescriptorPort:
+    """A pseudo terminal, a serial device or a standard stream as a file descriptor."""
+
+    def __init__(self, descriptor):
+        self.descriptor = descriptor
+
+    def read(self):
+        """Return the next chunk, an empty chunk at the end of the stream and None after a quiet wait."""
+        readable, _, _ = select.select([self.descriptor], [], [], POLL_TIMEOUT)
+        if self.descriptor not in readable:
+            return None
+        return os.read(self.descriptor, CHUNK_SIZE)
+
+    def write(self, data):
+        """Write a chunk."""
+        os.write(self.descriptor, data)
+
+
+class ComPort:
+    """A Windows COM port opened through pyserial, for example one end of a com0com pair."""
+
+    def __init__(self, name, baud_rate):
+        try:
+            import serial
+        except ImportError:
+            sys.exit('COM ports need pyserial: python -m pip install pyserial')
+        self.serial = serial
+        self.port = serial.Serial(name, baud_rate, timeout=POLL_TIMEOUT)
+
+    def read(self):
+        """Return the waiting bytes, an empty chunk when the port fails and None after a quiet wait."""
+        try:
+            data = self.port.read(1)
+            if not data:
+                return None
+            return data + self.port.read(self.port.in_waiting)
+        except self.serial.SerialException:
+            return b''
+
+    def write(self, data):
+        """Write a chunk."""
+        self.port.write(data)
+
+
+def open_port(path, standard_descriptor, baud_rate):
+    """Open a port for reading and writing, - gives the standard descriptor and a COM port name pyserial."""
     if path == '-':
-        return standard_descriptor
-    return os.open(path, os.O_RDWR | os.O_NOCTTY)
+        return DescriptorPort(standard_descriptor)
+    if COM_PORT_NAME.match(path):
+        return ComPort(path, baud_rate)
+    return DescriptorPort(os.open(path, os.O_RDWR | os.O_NOCTTY))
 
 
-def corrupt_byte(byte, bit_flips):
+def corrupt_byte(generator, byte, bit_flips):
     """Flip the given number of random bits of one byte."""
     for _ in range(bit_flips):
-        byte ^= 1 << random.randint(0, BYTE_SIZE - 1)
+        byte ^= 1 << generator.randint(0, BYTE_SIZE - 1)
     return byte
 
 
 class NoiseInjector:
-    """Noise of one direction, a burst lasts across chunks."""
+    """Noise of one direction with its own random generator, a burst lasts across chunks."""
 
-    def __init__(self, arguments):
+    def __init__(self, arguments, seed):
         self.arguments = arguments
+        self.generator = random.Random(seed)
         self.burst_remaining = 0
 
     def process_chunk(self, data):
@@ -76,7 +138,7 @@ class NoiseInjector:
         output = bytearray()
         for byte in data:
             # start a burst or count the running one down
-            if self.burst_remaining == 0 and random.random() < self.arguments.burst:
+            if self.burst_remaining == 0 and self.generator.random() < self.arguments.burst:
                 self.burst_remaining = self.arguments.burst_length
             in_burst = self.burst_remaining > 0
             if in_burst:
@@ -94,50 +156,58 @@ class NoiseInjector:
                 duplicate = min(1.0, duplicate * BURST_DUPLICATE_MULTIPLIER)
 
             # drop the byte
-            if random.random() < drop:
+            if self.generator.random() < drop:
                 continue
 
             # flip bits of the byte
-            if random.random() < flip:
-                byte = corrupt_byte(byte, random.randint(1, self.arguments.maximum_bit_flips))
+            if self.generator.random() < flip:
+                byte = corrupt_byte(self.generator, byte,
+                                    self.generator.randint(1, self.arguments.maximum_bit_flips))
             output.append(byte)
 
             # duplicate the byte
-            if random.random() < duplicate:
+            if self.generator.random() < duplicate:
                 output.append(byte)
 
             # insert a garbage byte
-            if random.random() < insert:
-                output.append(random.randint(0, MAXIMUM_BYTE_VALUE))
+            if self.generator.random() < insert:
+                output.append(self.generator.randint(0, MAXIMUM_BYTE_VALUE))
         return output
 
 
-def main():
-    """Forward the input to the output until the input closes."""
-    arguments = parse_arguments()
-
-    # seed the noise, each direction takes its own seed
-    if arguments.seed is not None:
-        random.seed(arguments.seed)
-
-    # open the ports
-    input_descriptor = open_port(arguments.input, sys.stdin.fileno())
-    output_descriptor = open_port(arguments.output, sys.stdout.fileno())
-
-    # forward every chunk until the input closes
-    injector = NoiseInjector(arguments)
+def forward(input_port, output_port, injector, delay):
+    """Forward every chunk of the input port to the output port until the input closes."""
     while True:
-        readable, _, _ = select.select([input_descriptor], [], [], POLL_TIMEOUT)
-        if input_descriptor not in readable:
+        data = input_port.read()
+        if data is None:
             continue
-        data = os.read(input_descriptor, CHUNK_SIZE)
         if not data:
             break
         output = injector.process_chunk(data)
-        if arguments.delay > 0:
-            time.sleep(arguments.delay)
+        if delay > 0:
+            time.sleep(delay)
         if output:
-            os.write(output_descriptor, output)
+            output_port.write(output)
+
+
+def main():
+    """Forward the input to the output until the input closes, in both directions with --duplex."""
+    arguments = parse_arguments()
+
+    # open the ports
+    input_port = open_port(arguments.input, sys.stdin.fileno(), arguments.baud)
+    output_port = open_port(arguments.output, sys.stdout.fileno(), arguments.baud)
+
+    # forward the return direction with the next seed on its own thread
+    if arguments.duplex:
+        return_seed = None if arguments.seed is None else arguments.seed + 1
+        return_injector = NoiseInjector(arguments, return_seed)
+        return_thread = threading.Thread(target=forward, args=(output_port, input_port, return_injector,
+                                                               arguments.delay), daemon=True)
+        return_thread.start()
+
+    # forward every chunk until the input closes
+    forward(input_port, output_port, NoiseInjector(arguments, arguments.seed), arguments.delay)
     return 0
 
 
