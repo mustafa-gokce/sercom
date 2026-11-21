@@ -1,5 +1,7 @@
 #define CATCH_CONFIG_RUNNER
 
+#include <QCoreApplication>
+
 #include <catch2/catch_all.hpp>
 
 /*
@@ -9,6 +11,9 @@ int main(int argc, char *argv[]);
 
 int main(int argc, char *argv[])
 {
+    // initialize the Qt application of the host tests
+    const QCoreApplication application(argc, argv);
+
     // initialize new session
     Catch::Session session;
 
