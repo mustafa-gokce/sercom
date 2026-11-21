@@ -39,4 +39,4 @@ Checks: >
   readability-duplicate-include,
   -clang-diagnostic-*
 WarningsAsErrors: ''
-HeaderFilterRegex: '.*/(core|app|host)/include/.*'
+HeaderFilterRegex: '.*/(core|app|firmware/common|host)/include/.*'
