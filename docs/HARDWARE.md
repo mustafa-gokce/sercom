@@ -292,14 +292,18 @@ lines go to standard error. `2>/dev/null` keeps only the frames and the results.
 ## 10. Windows
 
 The host tools take the COM port name of the board instead of a device path, for
-example `build/sercom_cli.exe COM3 --trace ping 3`. Every step above works the same
-way with that name; `pio run ... --upload-port COM3` and `pio device monitor ... -p COM3`
-take it too.
+example `build/sercom_cli.exe COM3 --trace ping 3`. Every step above and the Nucleo
+boards of section 11 work the same way with that name; `pio run ... --upload-port COM3`
+and `pio device monitor ... -p COM3` take it too. The QEMU steps of section 13 need a
+Linux host.
 
 1. Install the driver of the USB bridge once: Windows 10 and 11 install the CP2102
    driver of Silicon Labs (`CP210x Universal Windows Driver`) and the CH340 driver of
    WCH (`CH341SER.EXE`) by themselves through Windows Update on most machines; install
-   the driver of the vendor when the board shows up without a COM port.
+   the driver of the vendor when the board shows up without a COM port. A Nucleo board
+   needs the ST-LINK driver of STMicroelectronics (`STSW-LINK009`), PlatformIO flashes
+   through it and its virtual COM port shows up as
+   `STMicroelectronics STLink Virtual COM Port (COM5)`.
 2. Plug the board in and find its port: the Device Manager lists it under
    `Ports (COM & LPT)` as `Silicon Labs CP210x USB to UART Bridge (COM3)` or
    `USB-SERIAL CH340 (COM3)`, and `[System.IO.Ports.SerialPort]::GetPortNames()` in
@@ -328,25 +332,26 @@ section 4 only shows after a press of EN; the boot wait of the tools covers both
 code of `ststm32@19.7.1`, no HAL, no RTOS, no heap and no exceptions. It runs the same
 device role of `firmware/common` as the ESP32 in a superloop. Its environments:
 
-| Environment | Board | Protocol | Console |
-|---|---|---|---|
-| `nucleo_f401re` | Nucleo-F401RE | USART2, the ST-LINK virtual COM port | none |
-| `nucleo_f411re` | Nucleo-F411RE | USART2, the ST-LINK virtual COM port | none |
-| `nucleo_f401re-console` | Nucleo-F401RE | USART1, PA9 transmits (D8), PA10 receives (D2) | USART2, the virtual COM port |
-| `nucleo_f401re-controller` | Nucleo-F401RE | controller of a device on USART1 | USART2, the virtual COM port |
-| `netduinoplus2-qemu` | STM32F405 of the QEMU machine `netduinoplus2` | USART2 | none |
-| `netduinoplus2-qemu-controller` | STM32F405 of the QEMU machine `netduinoplus2` | controller on USART1 | USART2 |
+| Environment | Board | Protocol | Console | Host tools open |
+|---|---|---|---|---|
+| `nucleo_f401re` | Nucleo-F401RE | USART2, the ST-LINK virtual COM port | none | the virtual COM port, for example `/dev/ttyACM0` or `COM5` on Windows |
+| `nucleo_f411re` | Nucleo-F411RE | USART2, the ST-LINK virtual COM port | none | the virtual COM port, for example `/dev/ttyACM0` or `COM5` on Windows |
+| `nucleo_f401re-console` | Nucleo-F401RE | USART1, PA9 transmits (D8), PA10 receives (D2) | USART2, the virtual COM port | a 3.3 V USB-serial adapter on PA9 and PA10, for example `/dev/ttyUSB0` or `COM4` on Windows |
+| `nucleo_f401re-controller` | Nucleo-F401RE | controller of a device on USART1 | USART2, the virtual COM port | none, the controller talks to a device (section 12) |
+| `netduinoplus2-qemu` | STM32F405 of the QEMU machine `netduinoplus2` | USART2 | none | the link `usart2` of `tools/run_emulator.sh` on Linux (section 13) |
+| `netduinoplus2-qemu-controller` | STM32F405 of the QEMU machine `netduinoplus2` | controller on USART1 | USART2 | none, the controller talks to a device (section 13) |
 
 The ST-LINK of a Nucleo-64 board carries USART2 (PA2 transmits, PA3 receives) to the
-host as a virtual COM port, `/dev/ttyACM0` on Linux. Opening it does not reset the
-chip and the chip prints no boot text, so the first frame of the host is answered at
-once. The user LED LD2 is PA5 (`LED_PIN` in `firmware/stm32f4/include/FirmwareSettings.h`).
+host as a virtual COM port, `/dev/ttyACM0` on Linux and a COM port such as `COM5` on
+Windows (section 10). Opening it does not reset the chip and the chip prints no boot
+text, so the first frame of the host is answered at once. The user LED LD2 is PA5
+(`LED_PIN` in `firmware/stm32f4/include/FirmwareSettings.h`).
 
 1. Build every environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller`.
 2. Connect the ST-LINK USB connector of the board.
 3. Flash the device firmware through the ST-LINK: `pio run -d firmware/stm32f4 -e nucleo_f401re -t upload`.
-4. Print the device information with every frame: `build/sercom_cli /dev/ttyACM0 --trace info`.
-5. Run the other commands of section 7 on `/dev/ttyACM0`.
+4. Print the device information with every frame: `build/sercom_cli /dev/ttyACM0 --trace info`, on Windows `build/sercom_cli.exe COM5 --trace info`.
+5. Run the other commands of section 7 on `/dev/ttyACM0` or `COM5`.
 
 How the firmware uses the chip:
 
@@ -403,8 +408,8 @@ or the other way round:
   PA2 and PA3 of `nucleo_f401re` are wired to the ST-LINK by the solder bridges SB13
   and SB14.
 - Watch the controller on its console: the USB port of the ESP32 at 115200 baud, or
-  `/dev/ttyACM0` of the Nucleo controller. Each start runs the steps once; press reset
-  to run them again.
+  the virtual COM port of the Nucleo controller, `/dev/ttyACM0` or `COM5` on Windows.
+  Each start runs the steps once; press reset to run them again.
 
 A gateway, where the host talks to one board that forwards to the other, is not part
 of version 1 of the protocol; [GATEWAY.md](GATEWAY.md) explains why and how it could be
@@ -413,31 +418,38 @@ added.
 ## 13. Both targets in QEMU without a board
 
 Both targets also run in QEMU: the ESP32 on Espressif's QEMU, the STM32F4 on the
-`netduinoplus2` machine of the xPack QEMU for Arm, which models an STM32F405.
+`netduinoplus2` machine of the xPack QEMU for Arm, which models an STM32F405. The
+emulator tools need a Linux host: `tools/run_emulator.sh` is a Bash script and
+`tools/uart_bridge.py` creates pseudo terminals.
 
-1. Install socat and the libraries of Espressif's QEMU: `sudo apt install socat libgcrypt20 libglib2.0-0t64 libpixman-1-0 libsdl2-2.0-0 libslirp0`
-2. Download and unpack [xPack QEMU Arm 9.2.4-1](https://github.com/xpack-dev-tools/qemu-arm-xpack/releases/tag/v9.2.4-1) and [Espressif QEMU esp-develop-9.2.2-20260417](https://github.com/espressif/qemu/releases/tag/esp-develop-9.2.2-20260417), the versions of the CI.
-3. Name both emulators: `export ARM_QEMU=<xpack directory>/bin/qemu-system-arm ESP32_QEMU=<espressif directory>/qemu/bin/qemu-system-xtensa`
-4. Build the emulated firmware: `pio run -d firmware/stm32f4 -e netduinoplus2-qemu -e netduinoplus2-qemu-controller` and `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller`
-5. Start the STM32F4 device: `tools/run_emulator.sh start stm32f4 firmware/stm32f4/.pio/build/netduinoplus2-qemu /tmp/stm32f4 --log usart1`
-6. Talk to it like to a board: `build/sercom_cli /tmp/stm32f4/usart2 --trace info`, `build/sercom_cli /tmp/stm32f4/usart2 stress 300 32 2`
-7. Stop it: `tools/run_emulator.sh stop /tmp/stm32f4`
-8. Start the ESP32 device the same way and use `/tmp/esp32/uart0`: `tools/run_emulator.sh start esp32 firmware/esp32/.pio/build/esp32dev /tmp/esp32 --log uart2`
-9. Wire an emulated controller to an emulated device and run every check of the CI: `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
+1. Build `build/sercom_cli` with Qt 5.12.12 as the Linux steps of `README.md` show.
+2. Install socat and the libraries of Espressif's QEMU: `sudo apt install socat libgcrypt20 libglib2.0-0t64 libpixman-1-0 libsdl2-2.0-0 libslirp0`
+3. Download and unpack [xPack QEMU Arm 9.2.4-1](https://github.com/xpack-dev-tools/qemu-arm-xpack/releases/tag/v9.2.4-1) and [Espressif QEMU esp-develop-9.2.2-20260417](https://github.com/espressif/qemu/releases/tag/esp-develop-9.2.2-20260417), the versions of the CI.
+4. Name both emulators: `export ARM_QEMU=<xpack directory>/bin/qemu-system-arm ESP32_QEMU=<espressif directory>/qemu/bin/qemu-system-xtensa`
+5. Build the emulated firmware: `pio run -d firmware/stm32f4 -e netduinoplus2-qemu -e netduinoplus2-qemu-controller` and `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller`
+6. Start the STM32F4 device: `tools/run_emulator.sh start stm32f4 firmware/stm32f4/.pio/build/netduinoplus2-qemu /tmp/stm32f4 --log usart1`
+7. Talk to it like to a board: `build/sercom_cli /tmp/stm32f4/usart2 --trace info`, `build/sercom_cli /tmp/stm32f4/usart2 stress 300 32 2`; give the link with its directory, `QSerialPort` reads a bare `usart2` as `/dev/usart2`
+8. Stop it: `tools/run_emulator.sh stop /tmp/stm32f4`
+9. Start the ESP32 device the same way and use `/tmp/esp32/uart0`: `tools/run_emulator.sh start esp32 firmware/esp32/.pio/build/esp32dev /tmp/esp32 --log uart2`
+10. Wire an emulated controller to an emulated device and run every check of the CI: `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
 
 `tools/run_emulator.sh` serves each serial port of QEMU on a unix socket and starts
 `tools/uart_bridge.py` for it, which links a pseudo terminal of its own into the run
 directory. QEMU's own `-serial pty` notices a program that opens the pseudo terminal
 only about once a second and holds the bytes of that second back: every command then
 showed its first ping request sent again, `Device answered after 928 ms` and 3
-retransmissions per stress test. Through the bridge the STM32F4 answered after 5 ms and
-the stress test `stress 300 32 2` ran without a retransmission, 1.5 ms average and 5 ms
-maximum latency. Like a USB bridge, it drops the output of the chip while no program
-holds the port open.
+retransmissions per stress test. Through the bridge the Qt `sercom_cli` had the first
+answer of the STM32F4 after 4 to 7 ms in 8 runs, and `stress 300 32 2` ran without a
+retransmission at 1.5 to 2.1 ms average and 5 to 15 ms maximum latency. Like a USB
+bridge, it drops the output of the chip while no program holds the port open.
+`QSerialPort` opens a port in exclusive mode and ends the mode when it closes the port;
+when a tool is killed before that, the bridge links a new pseudo terminal in place of
+the refused one, as the port of a board is free again once the program is gone.
 
 Two emulated chips are wired with socat between their pseudo terminals:
 `socat /tmp/esp32/uart2,raw,echo=0 /tmp/stm32f4/usart2,raw,echo=0`; two
-`tools/noise.py` processes in its place add the noise of `tools/noisy_link.sh`.
+`tools/noise.py` processes in its place, or one with `--duplex`, add the noise of
+`tools/noisy_link.sh`.
 
 What differs from a board:
 
