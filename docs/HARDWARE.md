@@ -459,5 +459,5 @@ What differs from a board:
 | STM32F4 clock | the machine runs SysTick from a fixed 168 MHz clock, `LET_RUN_ON_QEMU` selects it; the RCC registers read 0 and ignore writes | HSI at 16 MHz after reset |
 | STM32F4 serial ports | the baud rate register is ignored, bytes move at the speed of the host | 115108 baud from BRR 139 |
 | STM32F4 LED | GPIO is not modelled, the LED state is only remembered | LD2 lights |
-| STM32F4 temperature | the ADC conversion never ends, `sercom_cli` shows the temperature as `no reading` and a controller as `-327.68 C` | calibrated internal sensor |
+| STM32F4 temperature | the ADC conversion never ends, `sercom_cli` and a controller show the temperature as `no reading` | calibrated internal sensor |
 | ESP32 | watchdogs off, the temperature reads `-17.78 C`, opening a port does not reset the chip | DTR and RTS reset the chip when a port opens on Linux, on Windows the chip keeps running (section 10) |
