@@ -110,6 +110,16 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_host_lib
         Qt${QT_VERSION_MAJOR}::Core
     )
+
+    # create text CRC32 example executable
+    add_executable(${PROJECT_NAME}_example_06_crc32_of_text
+        examples/06_crc32_of_text.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_06_crc32_of_text PRIVATE
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
 endif()
 
 # compiler flag add macro
