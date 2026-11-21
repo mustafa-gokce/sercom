@@ -141,5 +141,6 @@ Take the first line:
 - `core/include/TraceTransport.h`: the transport that traces what it sends.
 - `host/src/HostUtils.cpp`: `getTracedFrameLine()` and `getUnframedDataLine()`.
 - `host/src/CliApplication.cpp` and `host/src/DeviceSimulator.cpp`: the `--trace` option.
+- `docs/HARDWARE.md`: "What a trace line means", and `tools/SOCAT.md`: "Tracing the frames".
 - Lectures: L79 "The sercom_cli tool on Linux and Windows", L82 "Decoding captured traffic with
   sercom_dump" and L91 "Debugging protocol problems on the device".
