@@ -10,6 +10,7 @@
 
 #include "../../app/include/AppSettings.h"
 #include "../../app/include/Messages.h"
+#include "../../core/include/Settings.h"
 
 #include "../include/CliApplication.h"
 #include "../include/HostSettings.h"
@@ -101,6 +102,12 @@ void printUsage(std::string_view programName);
  */
 [[nodiscard]] bool parseMonitorArguments(const std::vector<std::string> &parameters,
                                          sercom::CliApplication::CommandLine &commandLine);
+
+/*
+ * Parse the arguments of the stress command.
+ */
+[[nodiscard]] bool parseStressArguments(const std::vector<std::string> &parameters,
+                                        sercom::CliApplication::CommandLine &commandLine);
 
 /*
  * Main entry point of the executable.
@@ -207,7 +214,8 @@ void printUsage(const std::string_view programName)
             "  info                                 print device information\n"
             "  led on|off                           switch the device LED\n"
             "  telemetry <milliseconds> [seconds]   set the period and print telemetry\n"
-            "  monitor [seconds]                    print telemetry and device logs";
+            "  monitor [seconds]                    print telemetry and device logs\n"
+            "  stress <count> [payload] [window]    echo test, exit code 1 on any loss";
     HostUtils::printLine(usage);
 }
 
@@ -273,6 +281,11 @@ bool parseCommandLine(const int argc, char *argv[], sercom::CliApplication::Comm
     // parse the arguments of the monitor command
     case CliApplication::CommandType::MONITOR: {
         return parseMonitorArguments(parameters, commandLine);
+    }
+
+    // parse the arguments of the stress command
+    case CliApplication::CommandType::STRESS: {
+        return parseStressArguments(parameters, commandLine);
     }
 
     // reject an unknown command
@@ -447,6 +460,67 @@ bool parseMonitorArguments(const std::vector<std::string> &parameters,
                                              HostSettings::DURATION_ARGUMENT_UNIT_MSEC,
                                              HostSettings::MAXIMUM_COMMAND_DURATION_MSEC,
                                              commandLine.duration)) {
+        return false;
+    }
+
+    // arguments parsed successfully
+    return true;
+}
+
+bool parseStressArguments(const std::vector<std::string> &parameters,
+                          sercom::CliApplication::CommandLine &commandLine)
+{
+    using namespace sercom;
+
+    // stress command must have one to three arguments
+    static constexpr size_t maximumParameterCount = 3;
+    if (!checkParameterCount(parameters,
+                             1,
+                             maximumParameterCount,
+                             CliApplication::CommandType::STRESS)) {
+        return false;
+    }
+
+    // count must be valid
+    if (!HostUtils::parseArgument(parameters.at(0),
+                                  "echo count",
+                                  1,
+                                  HostSettings::MAXIMUM_ECHO_COUNT,
+                                  commandLine.requestCount)) {
+        return false;
+    }
+
+    // payload size must be valid when given
+    if (parameters.size() > 1
+        && !HostUtils::parseArgument(parameters.at(1),
+                                     "payload size",
+                                     static_cast<uint32_t>(HostSettings::ECHO_HEADER_SIZE),
+                                     static_cast<uint32_t>(Settings::MaximumPayloadSize),
+                                     commandLine.echoPayloadSize)) {
+        return false;
+    }
+
+    // default payload size must fit into a payload of this build
+    if (parameters.size() <= 1 && commandLine.echoPayloadSize > Settings::MaximumPayloadSize) {
+        // warn the user
+        const std::string warningMessage = "Invalid default payload size "
+                                           + std::to_string(commandLine.echoPayloadSize)
+                                           + ", expected a number from "
+                                           + std::to_string(HostSettings::ECHO_HEADER_SIZE) + " to "
+                                           + std::to_string(Settings::MaximumPayloadSize);
+        HostUtils::logWarning(warningMessage);
+
+        // do not proceed further
+        return false;
+    }
+
+    // window size must be valid when given
+    if (parameters.size() > 2
+        && !HostUtils::parseArgument(parameters.at(2),
+                                     "window size",
+                                     1,
+                                     static_cast<uint32_t>(Settings::MaximumPendingFrames),
+                                     commandLine.echoWindowSize)) {
         return false;
     }
 
