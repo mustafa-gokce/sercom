@@ -128,6 +128,78 @@ With the default `moderate` profile about two lines in three arrive intact (66.3
 2 and 3); the others show a mangled, missing, duplicated, or extra character. Swap
 `/tmp/ttyV1` and `/tmp/ttyV2` in steps 2 and 3 to exercise the other direction.
 
+## Tracing the frames
+
+`sercom_cli` and `sercom_device_sim` take `--trace`, which prints one line per frame
+on the wire in both directions as it happens, and the bytes that were not part of a
+frame, text as escaped text in quotes and other bytes in hex. Each program shows its
+own view: the bytes it sent before the noise and the bytes it received after the noise.
+
+1. Start the link in the first terminal: `tools/noisy_link.sh --profile clean`
+2. Start the simulator with its trace in the second terminal: `build/sercom_device_sim /tmp/ttyV2 --trace`
+3. Ping with the trace in the third terminal: `build/sercom_cli /tmp/ttyV1 --trace ping 1`
+
+Captured with these steps (Release build), the third terminal shows:
+
+```text
+[     0.000] Starting the CliApplication on /tmp/ttyV1, 115200
+[     0.000] CliApplication trying to connect to the serial port
+[     0.000] CliApplication connected to serial port from /tmp/ttyV1, 115200
+[     0.000] Started the CliApplication on /tmp/ttyV1, 115200
+[     0.000] Waiting for the device on /tmp/ttyV1, 115200 for at most 3000 ms
+[     0.000] >> #0     PING_REQUEST                 ACK_REQUEST                len   4  00 00 00 00  CRC ok
+[     0.001] << #0     PING_RESPONSE                ACK_REQUEST                len   8  00 00 00 00 EA 03 00 00  CRC ok
+[     0.001] << #0     PING_REQUEST                 ACK                        len   0  CRC ok
+[     0.001] >> #0     PING_RESPONSE                ACK                        len   0  CRC ok
+[     0.001] Device answered after 1 ms
+[     0.003] >> #1     PING_REQUEST                 ACK_REQUEST                len   4  03 00 00 00  CRC ok
+[     0.004] << #1     PING_RESPONSE                ACK_REQUEST                len   8  03 00 00 00 ED 03 00 00  CRC ok
+[     0.004] << #1     PING_REQUEST                 ACK                        len   0  CRC ok
+ping response: round trip 1 ms, device uptime 1005 ms
+[     0.004] >> #1     PING_RESPONSE                ACK                        len   0  CRC ok
+[     0.004] Closing the CliApplication on /tmp/ttyV1, 115200
+[     0.004] Closed the CliApplication on /tmp/ttyV1, 115200
+```
+
+The ping request `#0` comes from the boot wait: after opening the port the tool waits
+for the first frame of the device, and the device simulator answers at once. The
+simulator in the second terminal shows the same frames with the same arrows, because
+`>>` always means host to device and `<<` device to host:
+
+```text
+...
+[     1.002] >> #0     PING_REQUEST                 ACK_REQUEST                len   4  00 00 00 00  CRC ok
+[     1.002] << #0     PING_RESPONSE                ACK_REQUEST                len   8  00 00 00 00 EA 03 00 00  CRC ok
+[     1.002] << #0     PING_REQUEST                 ACK                        len   0  CRC ok
+[     1.002] >> #0     PING_RESPONSE                ACK                        len   0  CRC ok
+[     1.005] >> #1     PING_REQUEST                 ACK_REQUEST                len   4  03 00 00 00  CRC ok
+[     1.005] << #1     PING_RESPONSE                ACK_REQUEST                len   8  03 00 00 00 ED 03 00 00  CRC ok
+[     1.005] << #1     PING_REQUEST                 ACK                        len   0  CRC ok
+[     1.006] >> #1     PING_RESPONSE                ACK                        len   0  CRC ok
+...
+```
+
+On the noisy profiles the trace shows what the link layer does about the noise.
+Captured with `tools/noisy_link.sh --profile moderate --seed 1`, the simulator of step 2
+and `build/sercom_cli /tmp/ttyV1 --trace stress 30 16 2 2>/dev/null`:
+
+```text
+...
+[     0.513] << #2     ECHO_RESPONSE                ACK_REQUEST                len  16  02 00 00 00 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11  CRC ok
+[     0.513] >> #2     ECHO_RESPONSE                ACK                        len   0  CRC ok
+[     0.513] >> #4     ECHO_REQUEST                 ACK_REQUEST                len  16  03 00 00 00 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12  CRC ok
+[     0.569] << unframed data, 54 bytes: A5 C3 01 02 00 06 00 00 A3 73 FE 35 A5 C3 01 01 03 00 07 00 10 03 00 00 00 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 0A 1D 63 2B A5 C3 01 02 04 00 06 00 00 B3 AF DE 87
+[     0.758] >> #1     ECHO_REQUEST                 ACK_REQUEST|RETRANSMISSION len  16  00 00 00 00 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  CRC ok
+[     0.760] >> #3     ECHO_REQUEST                 ACK_REQUEST|RETRANSMISSION len  16  02 00 00 00 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11  CRC ok
+[     0.762] << #4     ECHO_RESPONSE                ACK_REQUEST                len  16  00 00 00 00 04 05 06 07 09 C2 0A 0B 0C 0D 0E 0F  CRC bad
+...
+```
+
+The unframed data holds frames that the noise damaged beyond a valid frame (`A5 C3`
+starts each of them), the `CRC bad` line is a frame whose bytes the noise damaged, and
+the retransmission of echo request `#1` carries the `RETRANSMISSION` flag. `2>/dev/null`
+hides the log lines and keeps the trace and the results.
+
 ## Watching the wire
 
 To hex-dump the traffic live from another terminal, start one of the bridge `socat`
