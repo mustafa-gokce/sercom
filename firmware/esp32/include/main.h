@@ -26,9 +26,8 @@ void queueLog(sercom::Messages::LogLevelType logLevelType, std::string_view text
 [[noreturn]] void uartReceiveTask(void *parameter);
 
 /*
- * Feed the received bytes to the device application and to the frame tracer of a printed console.
- * Print the queued log lines on the console, send them to the host and maintain the protocol.
- * Start an activity blink of the LED after a valid received frame.
+ * Feed the received bytes to the firmware role, report the queued log lines through it and maintain it.
+ * The firmware role traces the frames on a printed console and blinks the LED after a valid frame.
  */
 [[noreturn]] void protocolTask(void *parameter);
 

@@ -15,15 +15,14 @@
 #include <freertos/task.h>
 
 #include "../../../app/include/AppSettings.h"
-#include "../../../app/include/DeviceApplication.h"
 #include "../../../app/include/Messages.h"
-#include "../../../core/include/FrameTracer.h"
-#include "../../../core/include/TraceTransport.h"
-#include "../../../core/include/Transport.h"
+#include "../../common/include/CommonSettings.h"
+#include "../../common/include/Console.h"
+#include "../../common/include/DeviceRole.h"
+#include "../../common/include/FirmwareRole.h"
 
-#include "../include/ActivityLed.h"
-#include "../include/Console.h"
 #include "../include/Esp32Clock.h"
+#include "../include/Esp32ConsoleOutput.h"
 #include "../include/Esp32Platform.h"
 #include "../include/FirmwareSettings.h"
 #include "../include/LogLine.h"
@@ -42,22 +41,13 @@ static sercom::UartTransport::UartTransport uartTransport(protocolSerial);
 static sercom::Esp32Clock::Esp32Clock esp32Clock;
 static sercom::Esp32Platform::Esp32Platform esp32Platform(sercom::FirmwareSettings::LED_PIN,
                                                           sercom::FirmwareSettings::DEVICE_NAME);
-static sercom::Console::Console console(Serial,
+static sercom::Esp32ConsoleOutput::Esp32ConsoleOutput esp32ConsoleOutput(
+    Serial, sercom::FirmwareSettings::ConsolePrinted);
+static sercom::Console::Console console(esp32ConsoleOutput,
                                         esp32Clock,
                                         sercom::FirmwareSettings::ConsolePrinted);
-static sercom::FrameTracer::FrameTracer frameTracer(
-    console, esp32Clock, sercom::FrameTracer::TraceDirectionType::DEVICE_TO_HOST);
-static sercom::TraceTransport::TraceTransport traceTransport(uartTransport, frameTracer);
-static sercom::Transport::Transport &protocolTransport
-    = sercom::FirmwareSettings::ConsolePrinted
-          ? static_cast<sercom::Transport::Transport &>(traceTransport)
-          : static_cast<sercom::Transport::Transport &>(uartTransport);
-static sercom::DeviceApplication::DeviceApplication deviceApplication(protocolTransport,
-                                                                      esp32Clock,
-                                                                      esp32Platform);
-static sercom::ActivityLed::ActivityLed activityLed(sercom::FirmwareSettings::LED_PIN,
-                                                    esp32Platform,
-                                                    esp32Clock);
+static sercom::DeviceRole::DeviceRole deviceRole(uartTransport, esp32Clock, esp32Platform, console);
+static sercom::FirmwareRole::FirmwareRole &firmwareRole = deviceRole;
 
 void setup()
 {
@@ -69,18 +59,20 @@ void setup()
     logQueue = xQueueCreate(FirmwareSettings::LOG_QUEUE_LENGTH, sizeof(LogLine::LogLine));
 
     // open the console and print the boot banner
-    const bool consoleOpened = console.begin();
+    const bool consoleOpened = esp32ConsoleOutput.begin();
 
     // notify the user
-    std::array<char, FirmwareSettings::LOG_LINE_SIZE> startingDebugMessage
-        = std::array<char, FirmwareSettings::LOG_LINE_SIZE>();
+    std::array<char, CommonSettings::LOG_LINE_SIZE> startingDebugMessage
+        = std::array<char, CommonSettings::LOG_LINE_SIZE>();
     [[maybe_unused]] const int startingDebugMessageLength
         = std::snprintf(startingDebugMessage.data(),
                         startingDebugMessage.size(),
-                        "Starting the DeviceApplication on %.*s, %" PRIu32,
+                        "Starting the %.*s on %.*s, %" PRIu32,
+                        static_cast<int>(FirmwareSettings::ApplicationName.size()),
+                        FirmwareSettings::ApplicationName.data(),
                         static_cast<int>(FirmwareSettings::SerialPortName.size()),
                         FirmwareSettings::SerialPortName.data(),
-                        FirmwareSettings::SERIAL_BAUD_RATE);
+                        CommonSettings::SERIAL_BAUD_RATE);
     queueLog(Messages::LogLevelType::DEBUG, startingDebugMessage.data());
 
     // set the driver buffer sizes before the serial port begins
@@ -88,7 +80,7 @@ void setup()
     protocolSerial.setTxBufferSize(FirmwareSettings::SERIAL_TRANSMIT_BUFFER_SIZE);
 
     // open the serial port 8N1 without flow control on its pins
-    protocolSerial.begin(FirmwareSettings::SERIAL_BAUD_RATE,
+    protocolSerial.begin(CommonSettings::SERIAL_BAUD_RATE,
                          SERIAL_8N1,
                          FirmwareSettings::SerialReceivePin,
                          FirmwareSettings::SerialTransmitPin);
@@ -131,16 +123,17 @@ void setup()
     }
 
     // notify the user
-    std::array<char, FirmwareSettings::LOG_LINE_SIZE> startedDebugMessage
-        = std::array<char, FirmwareSettings::LOG_LINE_SIZE>();
+    std::array<char, CommonSettings::LOG_LINE_SIZE> startedDebugMessage
+        = std::array<char, CommonSettings::LOG_LINE_SIZE>();
     [[maybe_unused]] const int startedDebugMessageLength
         = std::snprintf(startedDebugMessage.data(),
                         startedDebugMessage.size(),
-                        "Started the DeviceApplication on %.*s, %" PRIu32
-                        " for the device %.*s version %.*s",
+                        "Started the %.*s on %.*s, %" PRIu32 " for the device %.*s version %.*s",
+                        static_cast<int>(FirmwareSettings::ApplicationName.size()),
+                        FirmwareSettings::ApplicationName.data(),
                         static_cast<int>(FirmwareSettings::SerialPortName.size()),
                         FirmwareSettings::SerialPortName.data(),
-                        FirmwareSettings::SERIAL_BAUD_RATE,
+                        CommonSettings::SERIAL_BAUD_RATE,
                         static_cast<int>(FirmwareSettings::DEVICE_NAME.size()),
                         FirmwareSettings::DEVICE_NAME.data(),
                         static_cast<int>(AppSettings::AppVersionString.size()),
@@ -204,10 +197,9 @@ void protocolTask([[maybe_unused]] void *parameter)
 {
     using namespace sercom;
 
-    // NOTE: only this task may touch the device application and print on the console
-    std::array<uint8_t, FirmwareSettings::PROTOCOL_CHUNK_SIZE> chunk
-        = std::array<uint8_t, FirmwareSettings::PROTOCOL_CHUNK_SIZE>();
-    uint64_t lastIncomingFrameCounter = 0;
+    // NOTE: only this task may touch the firmware role and print on the console
+    std::array<uint8_t, CommonSettings::PROTOCOL_CHUNK_SIZE> chunk
+        = std::array<uint8_t, CommonSettings::PROTOCOL_CHUNK_SIZE>();
     while (true) {
         // wait for the received bytes up to the protocol tick
         const size_t receivedSize
@@ -217,46 +209,23 @@ void protocolTask([[maybe_unused]] void *parameter)
                                    pdMS_TO_TICKS(
                                        FirmwareSettings::PROTOCOL_TICK_PERIOD_MSEC.count()));
 
-        // trace the received bytes on a printed console
-        if (receivedSize > 0 && FirmwareSettings::ConsolePrinted) {
-            frameTracer.onReceivedData(chunk.data(), receivedSize);
-        }
-
-        // feed the received bytes to the device application
+        // feed the received bytes to the firmware role
         if (receivedSize > 0) {
-            deviceApplication.onReceivedData(chunk.data(), receivedSize);
+            firmwareRole.onReceivedData(chunk.data(), receivedSize);
         }
 
-        // print the queued log lines and send them to the host
+        // report the queued log lines through the firmware role
         LogLine::LogLine logLine;
         while (xQueueReceive(logQueue,
                              &logLine,
                              pdMS_TO_TICKS(FirmwareSettings::LOG_QUEUE_TIMEOUT_MSEC.count()))
                == pdTRUE) {
             const std::string_view logText(logLine.text.data(), logLine.textLength);
-            console.printLog(logLine.logLevelType, logText);
-            [[maybe_unused]] const bool sent
-                = deviceApplication.sendLogReportResponse(logLine.logLevelType, logText);
+            firmwareRole.reportLog(logLine.logLevelType, logText);
         }
 
-        // maintain the device application
-        deviceApplication.maintain();
-
-        // maintain the frame tracer of a printed console
-        if (FirmwareSettings::ConsolePrinted) {
-            frameTracer.maintain();
-        }
-
-        // start an activity blink after a valid received frame
-        const uint64_t currentIncomingFrameCounter = deviceApplication.getLinkStatistics()
-                                                         .incomingFrameCounter;
-        if (currentIncomingFrameCounter != lastIncomingFrameCounter) {
-            lastIncomingFrameCounter = currentIncomingFrameCounter;
-            activityLed.startBlink();
-        }
-
-        // restore the LED state after an activity blink
-        activityLed.processActivityLed();
+        // maintain the firmware role
+        firmwareRole.maintain();
     }
 }
 
@@ -264,7 +233,7 @@ void consoleTask([[maybe_unused]] void *parameter)
 {
     // write the lines of the console buffer as they arrive
     while (true) {
-        console.processConsole();
+        esp32ConsoleOutput.processConsole();
     }
 }
 
@@ -275,11 +244,11 @@ void heartbeatTask([[maybe_unused]] void *parameter)
     // report the health of the device periodically
     while (true) {
         // wait for the next heartbeat
-        vTaskDelay(pdMS_TO_TICKS(FirmwareSettings::HEARTBEAT_PERIOD_MSEC.count()));
+        vTaskDelay(pdMS_TO_TICKS(CommonSettings::HEARTBEAT_PERIOD_MSEC.count()));
 
         // notify the user
-        std::array<char, FirmwareSettings::LOG_LINE_SIZE> debugMessage
-            = std::array<char, FirmwareSettings::LOG_LINE_SIZE>();
+        std::array<char, CommonSettings::LOG_LINE_SIZE> debugMessage
+            = std::array<char, CommonSettings::LOG_LINE_SIZE>();
         [[maybe_unused]] const int debugMessageLength
             = std::snprintf(debugMessage.data(),
                             debugMessage.size(),
