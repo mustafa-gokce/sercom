@@ -186,6 +186,7 @@ if (SERCOM_BUILD_TESTS)
         tests/test_ByteCodec.cpp
         tests/test_Frame.cpp
         tests/test_FrameDecoder.cpp
+        tests/test_NoiseChecklist.cpp
         tests/test_Definitions.cpp
         tests/test_SerialPort.cpp
     )
