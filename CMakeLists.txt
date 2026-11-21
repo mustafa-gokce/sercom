@@ -510,6 +510,7 @@ if (SERCOM_BUILD_TESTS)
         tests/test_SerialPort.cpp
         tests/test_CliApplication.cpp
         tests/test_FrameTracer.cpp
+        tests/test_HostUtils.cpp
     )
     target_link_libraries(${PROJECT_NAME}_test PRIVATE
         ${PROJECT_NAME}_settings
