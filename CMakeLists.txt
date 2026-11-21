@@ -185,6 +185,7 @@ if (SERCOM_BUILD_TESTS)
         tests/test_CRC32.cpp
         tests/test_ByteCodec.cpp
         tests/test_Frame.cpp
+        tests/test_Definitions.cpp
     )
     target_link_libraries(${PROJECT_NAME}_test PRIVATE
         ${PROJECT_NAME}_settings
