@@ -27,6 +27,8 @@ constexpr size_t MAXIMUM_LOG_TEXT_LENGTH = 127;   // maximum log text length in 
 
 constexpr std::chrono::milliseconds MAXIMUM_TELEMETRY_PERIOD_MSEC = std::chrono::milliseconds(
     std::numeric_limits<uint16_t>::max()); // longest telemetry period of the field in milliseconds
+constexpr int16_t UNAVAILABLE_TEMPERATURE
+    = std::numeric_limits<int16_t>::min(); // temperature without a reading in 0.01 degree steps
 
 /*
  * Message type.
