@@ -42,7 +42,7 @@ per bit. At the end of the line `HostUtils::getFrameFlagsText()` names the flags
 Find the comment `// create one frame per flag combination that the link layer sends`. The
 operator `|` (bitwise OR) sets every bit that is set in either number: `0x01 | 0x08` is `0x09`.
 
-These are the combinations that the link layer sends:
+These are the combinations that the link layer in `core/src/Link.cpp` sends:
 
 - a request that wants an answer carries ACK_REQUEST,
 - the same request sent again, because no answer came in time, carries ACK_REQUEST and RETRANSMISSION,
@@ -122,6 +122,7 @@ The exit code `0` means the retransmitted frame kept both of its flags.
 
 - `core/include/Definitions.h`: `FrameFlagType`, `fromFrameFlagType()` and `isFrameFlagSet()`.
 - `core/include/Frame.h`: `Frame::getFlags()` and `Frame::getFlag()`.
+- `core/src/Link.cpp`: sends ACK_REQUEST, RETRANSMISSION, ACK and NACK frames.
 - `host/include/HostUtils.h`: `getFrameFlagsText()`.
 - `docs/PROTOCOL.md`, section "3. Flags".
 - Lectures: L32 "Version, flags, counter and type" and L30 "Anatomy of a frame"; the flags come
