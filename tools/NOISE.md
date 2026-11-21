@@ -18,7 +18,10 @@ Sender ──> INPUT port ──> noise.py ──> OUTPUT port ──> Receiver
 
 Forwarding is **one-directional**: bytes are read from `INPUT` and written to `OUTPUT`.
 For a full-duplex link, run a second instance for the return path — with the same
-options for noise in both directions, or with none for a clean return channel.
+options for noise in both directions, or with none for a clean return channel — or
+pass `--duplex`: one instance then also forwards `OUTPUT` back to `INPUT` with the same
+options and the seed plus one, which is what two instances with `SEED` and `SEED + 1`
+do. Windows needs `--duplex`, because a COM port opens only once.
 
 ## Usage
 
@@ -29,7 +32,9 @@ python3 tools/noise.py [INPUT] [OUTPUT] [options]
 `INPUT` and `OUTPUT` are serial device or PTY paths; `-` or an omitted argument means
 standard input or standard output, so the tool also works as a filter in a pipe. Paths are opened
 `O_RDWR | O_NOCTTY`; data is read in chunks of up to 4096 bytes and processed
-byte by byte.
+byte by byte. A Windows COM port name such as `COM11` or `\\.\COM11` opens the port
+through pyserial (`python -m pip install pyserial`) at `--baud` bits per second;
+`COM0COM.md` shows the com0com pairs that take the place of the PTYs.
 
 The script does not configure the ports (no baud rate, no raw mode). Set the line
 discipline before starting it — with PTYs created by `socat`, use `raw,echo=0`.
@@ -54,6 +59,8 @@ discipline before starting it — with PTYs created by `socat`, use `raw,echo=0`
 | `--burst P` | `0.0` | Probability (per byte) of entering a corruption burst |
 | `--burst-length N` | `10` | Number of bytes affected once a burst starts |
 | `--seed N` | none | Seed the random generator so a run can be replayed exactly |
+| `--duplex` | off | Also forward `OUTPUT` to `INPUT`, the return direction takes the seed plus one |
+| `--baud N` | `115200` | Baud rate of a COM port; PTYs and standard streams ignore it |
 
 All probabilities are evaluated **per byte**, independently of each other. Per byte the
 order is drop → flip → duplicate → insert, so a dropped byte cannot also be flipped,
@@ -224,9 +231,13 @@ python3 tools/noise.py input output \
 
 ## Behaviour notes
 
-- One direction per instance; run two instances for full duplex.
+- One direction per instance, two with `--duplex` on two threads.
 - The input is polled with `select()` (1 s timeout); the tool exits when `read()` on
-  `INPUT` returns end-of-file (e.g. the peer PTY closed).
+  `INPUT` returns end-of-file (e.g. the peer PTY closed). A COM port waits up to 1 s for
+  its first byte and takes every waiting byte with it; the tool exits when pyserial
+  reports a failed port.
+- Each direction has its own random generator, so the same seed gives the same noise
+  with one instance per direction and with `--duplex`.
 - Without `--seed` the RNG is seeded from the system, so runs are not reproducible.
   Pass `--seed N` for repeatable regression tests, and use a different seed for each
   direction so the two directions do not fail in lockstep.
