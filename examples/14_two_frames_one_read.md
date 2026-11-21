@@ -12,7 +12,7 @@ or a frame cut in the middle, and the decoder must handle both.
 
 ## Before you start
 
-1. Watch lecture L49 "Buffer management and reentrancy" (section S08).
+1. Watch lecture L52 "Buffer management and reentrancy" (section S08).
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -90,5 +90,5 @@ The exit code `0` means the decoder found all three frames and discarded no byte
   `processBuffer()`.
 - `host/src/CliApplication.cpp` and `host/src/DeviceSimulator.cpp`: hand every serial port read,
   whatever its size, to the link layer, which passes it on to its decoder.
-- Lectures: L49 "Buffer management and reentrancy" and L43 "Decoder design options"; the read
-  loop of the host is L74 "A single-threaded event loop".
+- Lectures: L52 "Buffer management and reentrancy" and L46 "Decoder design options"; the read
+  loop of the host is L77 "The Qt event loop: one thread, signals and a timer".
