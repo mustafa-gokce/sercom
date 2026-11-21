@@ -13,7 +13,7 @@ field through its getter. Then it damages the bytes in two ways and shows which 
 
 ## Before you start
 
-1. Watch lectures L27 "Anatomy of a frame" and L29 "Version, flags, counter and type" first. Example 02 builds the same frame from its fields; this example goes the other way.
+1. Watch lectures L30 "Anatomy of a frame" and L32 "Version, flags, counter and type" first. Example 02 builds the same frame from its fields; this example goes the other way.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -153,5 +153,5 @@ Print the exit code with `echo $?` and you see `0`.
   before it hands the frame on.
 - `app/src/Messages.cpp` builds every message, for example `Messages::PingRequest`, from a received frame.
 - `docs/PROTOCOL.md` describes the frame format and the same example frame.
-- Lectures: L27 "Anatomy of a frame", L29 "Version, flags, counter and type" and L46 "CRC check and copying the
+- Lectures: L30 "Anatomy of a frame", L32 "Version, flags, counter and type" and L49 "CRC check and copying the
   frame out".
