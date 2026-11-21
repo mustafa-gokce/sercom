@@ -3,7 +3,8 @@
 This document describes the coding and commenting style of sercom. Every C++ file in
 `core/`, `app/`, `host/`, `firmware/esp32/`, `tests/`, `examples/` and `fuzz/` follows
 it, and so does every change. The code is plain C++17 with the standard library; the
-firmware adds the Arduino and FreeRTOS calls it needs and nothing else.
+firmware adds the Arduino and FreeRTOS calls it needs and nothing else, the host adds
+Qt 5.12.12 (section 19).
 
 Three tools check what a program can count:
 
@@ -39,21 +40,21 @@ Format first, then build: the formatter lays out broken code too.
 - A source file opens with its own header alone, followed by a blank line (R-009).
 - Includes form groups in this order, one blank line between them: the standard library,
   the platform (inside its `#if defined(...)` together with the standard headers only that
-  platform needs), third-party code, the other libraries of sercom, the own library. Each
-  group is sorted (R-010, R-011).
+  platform needs), Qt, third-party code, the other libraries of sercom, the own library.
+  Each group is sorted (R-010, R-011). The host code has no platform group, Qt covers the
+  systems.
 - sercom headers are included by a path relative to the including file, across libraries
   too; CMake sets no include directory (R-012).
 
 ```cpp
 #include "../include/SerialPort.h"
 
-#if defined(__linux__)
-#include <cerrno>
-#include <fcntl.h>
-#include <poll.h>
-#include <termios.h>
-#include <unistd.h>
-#endif
+#include <algorithm>
+#include <array>
+
+#include <QIODevice>
+#include <QSignalBlocker>
+#include <QString>
 
 #include "../include/HostSettings.h"
 ```
@@ -422,7 +423,10 @@ std::string_view fromDecodeErrorType(const DecodeErrorType decodeErrorType)
 - A log message with arguments is built into a named `const std::string` under
   `// notify the user` or `// warn the user`, then logged; a constant message is logged in
   one call. There are two levels, debug and warning, and output goes only through the log
-  functions; the core library does not log (R-128, R-129).
+  functions; the core library does not log (R-128, R-129). On the host the log functions
+  build the line with its time first and write it with `qDebug().noquote()` and
+  `qWarning().noquote()` to standard error; result lines go to standard output through
+  `QTextStream`, never through `std::cout`.
 - The object that owns a port logs `Starting the <Class> on <port>, <baud>`,
   `Started ...`, `Closing ...` and `Closed ...`. Its serial connection logs
   `<Class> trying to connect to the serial port`,
@@ -578,6 +582,11 @@ std::for_each(droppedOffsets.cbegin(), droppedOffsets.cend(), [this](const size_
 - Every helper is a one-line command with `--help` and overridable defaults; nothing is
   hard-coded and nothing is deleted. An unknown option is named in the warning (R-220,
   R-132).
+- A Windows twin of a Bash script is `<name>.ps1` next to `<name>.sh`. It starts with the
+  same framed `#` block without the shebang, then `#Requires -Version 7.0`,
+  `Set-StrictMode -Version Latest` and `$ErrorActionPreference = 'Stop'`. It takes the same
+  options as the Bash script and parses `$args` the same way, keeps its functions in
+  snake_case and its settings in UPPER_SNAKE with defaults the environment can override.
 
 ```bash
 #!/bin/bash
@@ -597,9 +606,9 @@ std::for_each(droppedOffsets.cbegin(), droppedOffsets.cend(), [this](const size_
 ## 17. Gates
 
 - `python3 tools/analysis/check_style.py` reports nothing (R-221).
-- cppcheck 2.22 runs at its most thorough level; its findings are fixed in the code. The
-  only accepted finding is `shadowMember` for a parameter stored in the member of its name
-  (R-222).
+- cppcheck 2.22 runs at its most thorough level with its Qt library; its findings are
+  fixed in the code. The only accepted finding is `shadowMember` for a parameter stored in
+  the member of its name (R-222).
 - clang-tidy 18 runs with `tools/analysis/clang-tidy.yaml` on the own headers and reports
   nothing (R-223).
 - The repository root holds no analyzer configuration and no `cmake/` directory; the
@@ -620,3 +629,47 @@ std::for_each(droppedOffsets.cbegin(), droppedOffsets.cend(), [this](const size_
   happens on dated branches through pull requests (R-233 to R-238).
 - Commits and documents carry no tool attribution (R-239).
 - A change is minimal and uses the idioms the code already has (R-240).
+
+## 19. Qt in the host
+
+- `host/`, the examples that use it and the host tests build with Qt 5.12.12 and its
+  modules QtCore, QtSerialPort and QtTest; `core/` and `app/` stay plain C++ without Qt,
+  because the microcontrollers run them.
+- Host code, host examples and host tests hold no platform branch: no termios, no
+  `poll()`, no Win32 call and no `#if defined(_WIN32)`. The same files build with GCC and
+  Clang on Linux and with the MinGW 7.3.0 of Qt 5.12.12 on Windows, so they use no C++17
+  library part that GCC 7 lacks, such as `<charconv>` and `<filesystem>`.
+- `CMakeLists.txt` finds Qt once for the host targets and stops when the version is not
+  5.12.12. A platform check stands in CMake only where a toolchain needs it, under a
+  comment that says why (`windeployqt` after a Windows build).
+- A class with signals or slots derives from `QObject` first and opens its body with
+  `Q_OBJECT`. A base from another namespace is fully qualified
+  (`public sercom::Transport::Transport`), because moc copies the name as it is written.
+  A constructor takes no `QObject` parent; Qt objects are plain members.
+- A signal that hands over received data is `receivedX`, one that reports an event
+  `xHappened`; the slot that listens is `onReceivedX` or `onXHappened`, a slot for a signal
+  of Qt keeps its name (`onReadyRead`, `onErrorOccurred`). Signal parameters are fully
+  qualified, `sercom::SerialPort::SerialPortStatusType`.
+- Connections are made in the constructor under `// connect <thing> signals and slots`
+  with `QObject::connect(&this->member, &Class::signal, this, &Class::slot)`.
+- A program runs on the `QCoreApplication` event loop: `main` creates the application, the
+  class starts a periodic `QTimer` with a `_PERIOD_MSEC` constant and calls
+  `QCoreApplication::exec()`; the timer slot maintains the class and quits the loop when
+  the command finished or a stop signal set the flag of `HostUtils::installStopHandlers`.
+- Text shared with the examples stays `std::string` and is converted at the Qt boundary
+  with `QString::fromStdString` and `toStdString`; a literal `QString` is a `QStringLiteral`.
+- `tests/test_main.cpp` creates the `QCoreApplication` of the test executable; the tests of
+  `core/` and `app/` include no Qt header.
+
+```cpp
+class SerialPort final : public QObject, public sercom::Transport::Transport
+{
+    Q_OBJECT
+
+public:
+    /*
+     * Serial port of the host on QSerialPort in raw 8N1 mode without flow control.
+     */
+    SerialPort();
+    ~SerialPort() final;
+```
