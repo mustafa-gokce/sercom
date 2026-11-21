@@ -13,8 +13,9 @@ using namespace std::chrono_literals;
 constexpr int INVALID_COMMAND_LINE_EXIT_CODE = 64; // exit code of an invalid command line
 constexpr int INTERRUPTED_EXIT_CODE = 130;         // exit code after a stop signal
 
-constexpr uint32_t DEFAULT_BAUD_RATE = 115200; // default baud rate in bits per second
-constexpr size_t READ_BUFFER_SIZE = 1 * 1024;  // serial port read buffer size in bytes
+constexpr uint32_t DEFAULT_BAUD_RATE = 115200;       // default baud rate in bits per second
+constexpr size_t READ_BUFFER_SIZE = 1 * 1024;        // serial port read buffer size in bytes
+constexpr size_t CAPTURE_READ_CHUNK_SIZE = 4 * 1024; // capture read chunk size in bytes
 
 constexpr std::chrono::milliseconds MAINTAIN_PERIOD_MSEC
     = 2ms; // maintenance period of the event loop in milliseconds
