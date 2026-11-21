@@ -6,8 +6,11 @@
 #include <QCoreApplication>
 
 #include "../../app/include/AppSettings.h"
+#include "../../app/include/Messages.h"
 
 namespace sercom::DeviceSimulator {
+
+using namespace std::chrono_literals;
 
 DeviceSimulator::DeviceSimulator(const CommandLine &commandLine)
     : commandLine(commandLine)
@@ -15,6 +18,8 @@ DeviceSimulator::DeviceSimulator(const CommandLine &commandLine)
     , deviceApplication(this->serialPort, this->clock, this->simulatedPlatform)
     , maintainTimer()
     , lastReconnectTimestamp(0)
+    , lastHeartbeatTimestamp(0)
+    , outgoingHeartbeatCounter(0)
 {
     // connect serial port signals and slots
     QObject::connect(&this->serialPort,
@@ -104,6 +109,13 @@ void DeviceSimulator::maintain()
         this->lastReconnectTimestamp = currentTime;
         this->attemptReconnect();
     }
+
+    // send the heartbeat log report response when it is due
+    if (this->commandLine.logPeriod != 0ms
+        && currentTime - this->lastHeartbeatTimestamp >= this->commandLine.logPeriod) {
+        this->lastHeartbeatTimestamp = currentTime;
+        this->sendHeartbeatLogReportResponse();
+    }
 }
 
 void DeviceSimulator::cleanUp()
@@ -161,6 +173,17 @@ void DeviceSimulator::attemptReconnect()
     const std::string debugMessage = "DeviceSimulator connected to serial port from "
                                      + this->getSerialPortText();
     HostUtils::logDebug(debugMessage);
+}
+
+void DeviceSimulator::sendHeartbeatLogReportResponse()
+{
+    // keep track of heartbeats
+    ++this->outgoingHeartbeatCounter;
+
+    // send the heartbeat log report response
+    const std::string text = "heartbeat " + std::to_string(this->outgoingHeartbeatCounter);
+    [[maybe_unused]] const bool logReportResponseSent
+        = this->deviceApplication.sendLogReportResponse(Messages::LogLevelType::DEBUG, text);
 }
 
 std::string DeviceSimulator::getSerialPortText() const

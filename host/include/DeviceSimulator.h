@@ -26,6 +26,8 @@ struct CommandLine
     std::string portName;                                // serial port name
     uint32_t baudRate = HostSettings::DEFAULT_BAUD_RATE; // baud rate in bits per second
     std::string deviceName;                              // device name of the simulated device
+    std::chrono::milliseconds logPeriod
+        = std::chrono::milliseconds::zero(); // heartbeat log period in milliseconds or zero for none
 };
 
 class DeviceSimulator final : public QObject
@@ -66,7 +68,7 @@ private slots:
     void onErrorHappened(sercom::SerialPort::SerialPortStatusType serialPortStatusType);
 
     /*
-     * Maintain the device application and the serial port.
+     * Maintain the device application, the serial port and the heartbeat log.
      * Stop the event loop when a stop signal arrived.
      */
     void maintain();
@@ -83,6 +85,11 @@ private:
     void attemptReconnect();
 
     /*
+     * Send a heartbeat log report response.
+     */
+    void sendHeartbeatLogReportResponse();
+
+    /*
      * Get the serial port name and the baud rate as text.
      */
     [[nodiscard]] std::string getSerialPortText() const;
@@ -95,6 +102,8 @@ private:
     DeviceApplication::DeviceApplication deviceApplication; // device side of the protocol
     QTimer maintainTimer;                                   // timer of the maintenance period
     std::chrono::milliseconds lastReconnectTimestamp;       // time of the last reconnect attempt
+    std::chrono::milliseconds lastHeartbeatTimestamp;       // time of the last heartbeat log
+    uint64_t outgoingHeartbeatCounter;                      // heartbeat log report responses
 };
 
 } // namespace sercom::DeviceSimulator
