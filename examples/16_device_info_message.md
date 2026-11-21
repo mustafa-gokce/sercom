@@ -31,7 +31,7 @@ Open `examples/16_device_info_message.cpp` and find the comment
 - the firmware version 1.2, as a major number 1 and a minor number 2,
 - the uptime, the time since the device started, 90 seconds,
 - the free heap size, the memory the device has left, 180 * 1024 bytes,
-- the device name, `HostSettings::DEFAULT_DEVICE_NAME`.
+- the device name, `HostSettings::DEFAULT_DEVICE_NAME`, the name of the device simulator.
 
 Find `// response must hold every field and the device name`. A name above 31 characters
 (`Messages::MAXIMUM_DEVICE_NAME_LENGTH`) leaves the response empty, and `getLikelyValid()`
@@ -101,6 +101,7 @@ The exit code `0` means every field arrived unchanged.
   `MAXIMUM_DEVICE_NAME_LENGTH`.
 - `core/src/ByteCodec.cpp`: `ByteWriter::writeString()` writes the length byte and the
   characters.
+- `app/src/DeviceApplication.cpp`: the device answers a device info request.
 - `docs/PROTOCOL.md`: the message table with `DEVICE_INFO_RESPONSE`.
 - Lectures: L63 "Message classes on GenericMessage", L64 "Evolving messages without breaking
   peers" and L66 "Validating payloads"; the `info` command is in L79 "The sercom_cli tool on
