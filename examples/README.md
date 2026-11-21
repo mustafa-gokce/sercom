@@ -34,6 +34,7 @@ because its messages travel over the link layer of example 18.
 | S08 | L51 (also L74) | 13 | Inter Byte Timeout | A mock clock moves past the inter byte timeout, the decoder drops a half frame and accepts the next one | [guide](13_inter_byte_timeout.md), [source](13_inter_byte_timeout.cpp) |
 | S08 | L52 (also L46, L77) | 14 | Two Frames in One Read | Two frames arrive in one read, then one frame arrives split over two reads | [guide](14_two_frames_one_read.md), [source](14_two_frames_one_read.cpp) |
 | S09 | L58 (also L21, L50, L53) | 03 | Decode a Noisy Stream | Damages 1000 frames with seeded random noise and decodes the frames that arrived intact | [guide](03_decode_noisy_stream.md), [source](03_decode_noisy_stream.cpp) |
+| S10 | L65 (also L53, L62, L77) | 25 | Dispatch Messages | Switches on the message type of four decoded frames and calls one function per type, an unknown type included | [guide](25_dispatch_messages.md), [source](25_dispatch_messages.cpp) |
 
 ## Building the examples
 1. Open a terminal, on Windows PowerShell 7 with the path of the README.
