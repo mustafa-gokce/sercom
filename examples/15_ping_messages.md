@@ -101,6 +101,9 @@ The exit code `0` means both sides got a valid message of the right type.
 ## Where this is used
 
 - `app/include/Messages.h` and `app/src/Messages.cpp`: `PingRequest` and `PingResponse`.
+- `app/src/DeviceApplication.cpp`: the device answers a ping request with its uptime.
+- `app/src/DeviceClient.cpp`: the host matches the response to its request and calculates the
+  round trip time.
 - `docs/PROTOCOL.md`: the message table with `PING_REQUEST` and `PING_RESPONSE`.
 - Lectures: L62 "Message types and enum converters", L63 "Message classes on GenericMessage"
   and L66 "Validating payloads"; the host side is L78 "DeviceClient: requests and replies".
