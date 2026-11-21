@@ -422,6 +422,18 @@ if (SERCOM_BUILD_BINARIES)
         Qt${QT_VERSION_MAJOR}::Core
     )
 
+    # create device in one process example executable
+    add_executable(${PROJECT_NAME}_example_21_device_in_one_process
+        examples/21_device_in_one_process.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_21_device_in_one_process PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
+
     # create custom message example executable
     add_executable(${PROJECT_NAME}_example_23_custom_message
         examples/23_custom_message.cpp
