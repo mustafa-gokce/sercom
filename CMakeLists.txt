@@ -520,6 +520,7 @@ if (SERCOM_BUILD_TESTS)
         tests/test_RingBuffer.cpp
         tests/test_Console.cpp
         tests/test_ActivityLed.cpp
+        tests/test_ControllerRole.cpp
     )
     target_link_libraries(${PROJECT_NAME}_test PRIVATE
         ${PROJECT_NAME}_settings
