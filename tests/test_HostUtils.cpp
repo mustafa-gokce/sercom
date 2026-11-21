@@ -9,10 +9,10 @@
 
 #include <catch2/catch_all.hpp>
 
+#include "../app/include/Messages.h"
 #include "../core/include/Definitions.h"
 #include "../core/include/Frame.h"
 #include "../core/include/FrameTracer.h"
-#include "../host/include/HostSettings.h"
 #include "../host/include/HostUtils.h"
 
 using namespace std::chrono_literals;
@@ -92,7 +92,7 @@ TEST_CASE_METHOD(TestHostUtils,
     REQUIRE(HostUtils::getTemperatureText(lowestReading) == "-327.67 C");
 
     // check the temperature without a reading
-    REQUIRE(HostUtils::getTemperatureText(HostSettings::UNAVAILABLE_TEMPERATURE) == "no reading");
+    REQUIRE(HostUtils::getTemperatureText(Messages::UNAVAILABLE_TEMPERATURE) == "no reading");
 }
 
 TEST_CASE_METHOD(TestHostUtils,
