@@ -96,6 +96,7 @@ The exit code `0` means the decoder found both frames and discarded exactly the 
 
 - `core/src/FrameDecoder.cpp`: `processBuffer()` (the sync word checks) and `rejectCandidate()`.
 - `core/include/FrameDecoder.h`: `DecoderStatistics`.
+- `host/apps/sercom_dump.cpp`: decodes captured traffic and prints the same statistics.
 - `docs/PROTOCOL.md`, section "4. Receiver rules (frame layer)", rules 1, 2 and 5.
 - Lectures: L47 "Finding the sync word", L50 "Resynchronization: drop one byte, rescan the
   rest" and L53 "Handler interface and decoder statistics".
