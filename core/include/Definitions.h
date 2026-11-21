@@ -47,6 +47,27 @@ uint8_t fromFrameFlagType(FrameFlagType frameFlagType);
 FrameFlagType toFrameFlagType(uint8_t frameFlagType);
 
 /*
+ * Decode error type.
+ */
+enum class DecodeErrorType : uint8_t {
+    UNKNOWN = 0,            // unknown decode error
+    INVALID_VERSION = 1,    // version field is not the protocol version
+    PAYLOAD_TOO_LONG = 2,   // payload length is above the limit of this build
+    CRC_MISMATCH = 3,       // CRC32 does not match the frame
+    INTER_BYTE_TIMEOUT = 4, // line was silent inside a frame
+};
+
+/*
+ * Decode error type to string.
+ */
+std::string_view fromDecodeErrorType(DecodeErrorType decodeErrorType);
+
+/*
+ * String to decode error type.
+ */
+DecodeErrorType toDecodeErrorType(std::string_view decodeErrorType);
+
+/*
  * Check whether a flag is set in the value of a FLAGS field.
  */
 [[nodiscard]] bool isFrameFlagSet(uint8_t flags, FrameFlagType frameFlagType);
