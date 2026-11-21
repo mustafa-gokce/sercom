@@ -329,7 +329,8 @@ section 4 only shows after a press of EN; the boot wait of the tools covers both
 |---|---|---|
 | `can not connect to serial port on COM3, 115200 (OPEN_FAILED)` | the port does not exist or another program holds it | check the number in the Device Manager, close serial monitors, PlatformIO and other tools |
 | The board shows up as `CP2102 USB to UART Bridge Controller` with a yellow mark and no COM port | the driver of the USB bridge is missing | install the driver of Silicon Labs or WCH, then plug the board in again |
-| `sercom_cli.exe` does not start: `Qt5Core.dll was not found` | the program runs outside the build directory without its DLLs | run it from the build directory, where `windeployqt` put the DLLs, or put `C:\Qt\5.12.12\mingw73_64\bin` on the path |
+| `sercom_cli.exe` does not start: `Qt5Cored.dll was not found`, `Qt5SerialPortd.dll was not found` or the same for a MinGW DLL such as `libstdc++-6.dll`; a Release build names `Qt5Core.dll` and `Qt5SerialPort.dll` | the program runs outside the build directory without its DLLs | run it from the build directory, where `windeployqt` put the DLLs, or put `C:\Qt\5.12.12\mingw73_64\bin` on the path |
+| `sercom_test.exe` does not start: `Qt5Testd.dll was not found`, in a Release build `Qt5Test.dll` | `windeployqt` deploys only the DLLs of `sercom_cli.exe`, and Qt Test is not one of them | put `C:\Qt\5.12.12\mingw73_64\bin` on the path, as step 7 of the Windows build in `README.md` does |
 | No log lines in a file, only the results | the program runs without a console window, Qt then logs to the debugger | set `QT_FORCE_STDERR_LOGGING=1`, the PowerShell scripts set it themselves |
 
 ## 11. STM32F4 Nucleo boards
