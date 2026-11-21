@@ -1,11 +1,10 @@
-#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
 
-#include "../core/include/ByteCodec.h"
+#include "../app/include/Messages.h"
 #include "../core/include/CRC32.h"
 #include "../core/include/Definitions.h"
 #include "../core/include/Frame.h"
@@ -26,19 +25,17 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[])
     using namespace sercom;
     using namespace std::chrono_literals;
 
-    // create the payload of a ping request sent at one second
+    // create a ping request sent at one second
     static constexpr std::chrono::milliseconds requestTimestamp = 1 * 1000ms;
-    std::array<uint8_t, sizeof(uint32_t)> payload = std::array<uint8_t, sizeof(uint32_t)>();
-    ByteCodec::storeUint32(payload.data(), static_cast<uint32_t>(requestTimestamp.count()));
+    const Messages::PingRequest pingRequest(requestTimestamp);
 
-    // create a ping request frame of message type 0x0001 that requests an acknowledgement
+    // create a frame that requests an acknowledgement
     static constexpr uint16_t messageCounter = 7;
-    static constexpr uint16_t messageType = 0x0001;
     const Frame::Frame frame(Definitions::fromFrameFlagType(Definitions::FrameFlagType::ACK_REQUEST),
                              messageCounter,
-                             messageType,
-                             payload.data(),
-                             payload.size());
+                             Messages::fromMessageType(Messages::MessageType::PING_REQUEST),
+                             pingRequest.getPayload(),
+                             pingRequest.getPayloadLength());
 
     // frame must be valid
     if (!frame.getLikelyValid()) {
@@ -65,8 +62,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[])
     offset += Definitions::MESSAGE_TYPE_SIZE;
     printField("PAYLOAD_LENGTH", frame.getData(), offset, Definitions::PAYLOAD_LENGTH_SIZE);
     offset += Definitions::PAYLOAD_LENGTH_SIZE;
-    printField("PAYLOAD", frame.getData(), offset, payload.size());
-    offset += payload.size();
+    printField("PAYLOAD", frame.getData(), offset, pingRequest.getPayloadLength());
+    offset += pingRequest.getPayloadLength();
     printField("CRC32", frame.getData(), offset, Definitions::CRC_SIZE);
 
     // calculate the CRC32 like a receiver
