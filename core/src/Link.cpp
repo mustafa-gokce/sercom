@@ -126,6 +126,13 @@ void Link::onReceivedFrame(const Frame::Frame &frame)
     // keep track of frames
     ++this->statistics.incomingFrameCounter;
 
+    // match an answer to its pending message
+    if (frame.getFlag(Definitions::FrameFlagType::ACK)
+        || frame.getFlag(Definitions::FrameFlagType::NACK)) {
+        this->handleAcknowledgement(frame);
+        return;
+    }
+
     // deliver a fire and forget message without an answer
     if (!frame.getFlag(Definitions::FrameFlagType::ACK_REQUEST)) {
         // keep track of messages
@@ -138,6 +145,15 @@ void Link::onReceivedFrame(const Frame::Frame &frame)
         // do not proceed further
         return;
     }
+
+    // keep track of messages
+    ++this->statistics.deliveredMessageCounter;
+
+    // notify listeners about the received message
+    const Definitions::MessageStatusType messageStatusType = this->handler.onReceivedMessage(frame);
+
+    // answer with the message status of the application
+    this->sendAcknowledgement(frame, messageStatusType);
 }
 
 void Link::onDecodeError([[maybe_unused]] const Definitions::DecodeErrorType decodeErrorType) {}
@@ -167,6 +183,95 @@ bool Link::sendFrame(const Frame::Frame &frame)
 
     // frame sent successfully
     return true;
+}
+
+void Link::sendAcknowledgement(const Frame::Frame &frame,
+                               const Definitions::MessageStatusType messageStatusType)
+{
+    // answer an accepted message with an empty ACK
+    if (messageStatusType == Definitions::MessageStatusType::ACCEPTED) {
+        // acknowledgement frame must be sent
+        const Frame::Frame acknowledgementFrame(Definitions::fromFrameFlagType(
+                                                    Definitions::FrameFlagType::ACK),
+                                                frame.getMessageCounter(),
+                                                frame.getMessageType(),
+                                                nullptr,
+                                                0);
+        if (!this->sendFrame(acknowledgementFrame)) {
+            return;
+        }
+
+        // keep track of acknowledgements
+        ++this->statistics.outgoingAcknowledgementCounter;
+
+        // do not proceed further
+        return;
+    }
+
+    // rejection frame with the message status must be sent
+    const uint8_t messageStatusTypeAsInteger = Definitions::fromMessageStatusType(messageStatusType);
+    const Frame::Frame rejectionFrame(Definitions::fromFrameFlagType(
+                                          Definitions::FrameFlagType::NACK),
+                                      frame.getMessageCounter(),
+                                      frame.getMessageType(),
+                                      &messageStatusTypeAsInteger,
+                                      sizeof(messageStatusTypeAsInteger));
+    if (!this->sendFrame(rejectionFrame)) {
+        return;
+    }
+
+    // keep track of rejections
+    ++this->statistics.outgoingRejectionCounter;
+}
+
+void Link::handleAcknowledgement(const Frame::Frame &frame)
+{
+    // pending message of the answer must be found
+    const std::array<PendingMessage, Settings::MaximumPendingFrames>::iterator &iterator
+        = std::find_if(this->pendingMessages.begin(),
+                       this->pendingMessages.end(),
+                       [&frame](const PendingMessage &pendingMessage) {
+                           return pendingMessage.used
+                                  && pendingMessage.messageCounter == frame.getMessageCounter()
+                                  && pendingMessage.messageType == frame.getMessageType();
+                       });
+    if (iterator == this->pendingMessages.end()) {
+        // keep track of unexpected acknowledgements
+        ++this->statistics.unexpectedAcknowledgementCounter;
+
+        // do not proceed further
+        return;
+    }
+
+    // free the slot of the pending message
+    iterator->used = false;
+
+    // confirm the delivery on an ACK frame
+    if (frame.getFlag(Definitions::FrameFlagType::ACK)) {
+        // keep track of acknowledgements
+        ++this->statistics.incomingAcknowledgementCounter;
+
+        // notify listeners about the confirmed delivery
+        this->handler.onDeliveryConfirmed(iterator->messageCounter, iterator->messageType);
+
+        // do not proceed further
+        return;
+    }
+
+    // get the message status of the peer from the payload
+    const Definitions::MessageStatusType remoteMessageStatusType
+        = frame.getPayloadLength() > 0 ? Definitions::toMessageStatusType(frame.getPayload()[0])
+                                       : Definitions::MessageStatusType::UNKNOWN;
+
+    // keep track of rejections and failed deliveries
+    ++this->statistics.incomingRejectionCounter;
+    ++this->statistics.failedDeliveryCounter;
+
+    // notify listeners about the failed delivery
+    this->handler.onDeliveryFailed(iterator->messageCounter,
+                                   iterator->messageType,
+                                   Definitions::DeliveryFailureType::REJECTED,
+                                   remoteMessageStatusType);
 }
 
 } // namespace sercom::Link
