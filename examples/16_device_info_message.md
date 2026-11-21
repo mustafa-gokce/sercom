@@ -12,7 +12,7 @@ asks for this message to learn which device and which firmware is on the other e
 
 ## Before you start
 
-1. Watch lecture L60 "Message structs with serialize and deserialize" (section S10). In the code a message class writes its bytes in its field constructor and reads them in its frame constructor (`Messages::DeviceInfoResponse`), there is no `serialize()` function.
+1. Watch lecture L63 "Message classes on GenericMessage" (section S10). In the code a message class writes its bytes in its field constructor and reads them in its frame constructor (`Messages::DeviceInfoResponse`), there is no `serialize()` function.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -104,6 +104,6 @@ The exit code `0` means every field arrived unchanged.
 - `app/src/DeviceApplication.cpp`: the device answers a device info request.
 - `host/src/CliApplication.cpp`: the `info` command of `sercom_cli` prints the response.
 - `docs/PROTOCOL.md`: the message table with `DEVICE_INFO_RESPONSE`.
-- Lectures: L60 "Message structs with serialize and deserialize", L61 "Evolving messages without
-  breaking peers" and L63 "Validating payloads"; the `info` command is in L76 "The sercom_cli
-  tool".
+- Lectures: L63 "Message classes on GenericMessage", L64 "Evolving messages without breaking
+  peers" and L66 "Validating payloads"; the `info` command is in L79 "The sercom_cli tool on
+  Linux and Windows".
