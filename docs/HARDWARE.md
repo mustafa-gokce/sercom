@@ -5,8 +5,8 @@ the host tools. It covers both firmware environments of `firmware/esp32/platform
 
 | Environment | Protocol | USB port of the board shows | Host tools open |
 |---|---|---|---|
-| `esp32dev` | UART0, the USB bridge of the board, 115200 baud | the binary frames | the USB port of the board, for example `/dev/ttyUSB0` |
-| `esp32dev-console` | UART2, GPIO16 receives and GPIO17 transmits, 115200 baud | a readable console at 115200 baud | a 3.3 V USB-serial adapter on GPIO16 and GPIO17, for example `/dev/ttyUSB1` |
+| `esp32dev` | UART0, the USB bridge of the board, 115200 baud | the binary frames | the USB port of the board, for example `/dev/ttyUSB0` or `COM3` on Windows |
+| `esp32dev-console` | UART2, GPIO16 receives and GPIO17 transmits, 115200 baud | a readable console at 115200 baud | a 3.3 V USB-serial adapter on GPIO16 and GPIO17, for example `/dev/ttyUSB1` or `COM4` on Windows |
 
 `esp32dev` needs nothing but the board. `esp32dev-console` keeps the USB port free
 for text, so the boot messages, the log lines and one line per frame can be read
@@ -23,9 +23,10 @@ UART and the console differ. The switch is `-DLET_PRINT_CONSOLE` in the environm
   resistor from GPIO2 to GND.
 - For `esp32dev-console`: a USB-serial adapter set to 3.3 V (CP2102, CH340 or FT232)
   and three jumper wires.
-- A Linux host with the build of `README.md` (`build/sercom_cli`) and PlatformIO
-  (`pip install platformio`).
-- Your user in the `dialout` group (section 9).
+- A Linux or Windows host with the build of `README.md` (`build/sercom_cli`) and
+  PlatformIO (`pip install platformio`).
+- On Linux your user in the `dialout` group (section 9), on Windows the driver of the
+  USB bridge (section 10).
 
 ## 2. Wiring of the console environment
 
@@ -284,3 +285,36 @@ lines go to standard error. `2>/dev/null` keeps only the frames and the results.
 | `esp32dev-console`: the console stays empty | the console is the USB port of the board, not the adapter | `pio device monitor ... -p` with the board's port at 115200 baud |
 | `Device did not answer within 3000 ms` with the right baud rate | firmware not flashed, board held in reset or in download mode, wrong port | press EN, flash again, try the other `/dev/ttyUSB` device (`ls -l /dev/serial/by-id/` names them) |
 | `N console lines dropped` on the console | the console prints more than 115200 baud carries | expected during a stress test; the protocol keeps its speed |
+
+## 10. Windows
+
+The host tools take the COM port name of the board instead of a device path, for
+example `build/sercom_cli.exe COM3 --trace ping 3`. Every step above works the same
+way with that name; `pio run ... --upload-port COM3` and `pio device monitor ... -p COM3`
+take it too.
+
+1. Install the driver of the USB bridge once: Windows 10 and 11 install the CP2102
+   driver of Silicon Labs (`CP210x Universal Windows Driver`) and the CH340 driver of
+   WCH (`CH341SER.EXE`) by themselves through Windows Update on most machines; install
+   the driver of the vendor when the board shows up without a COM port.
+2. Plug the board in and find its port: the Device Manager lists it under
+   `Ports (COM & LPT)` as `Silicon Labs CP210x USB to UART Bridge (COM3)` or
+   `USB-SERIAL CH340 (COM3)`, and `[System.IO.Ports.SerialPort]::GetPortNames()` in
+   PowerShell prints every COM port. Windows remembers the number it gave a bridge; the
+   advanced port settings of the Device Manager change it.
+3. Write the name in capitals: `QSerialPort` puts the `\\.\` prefix that `COM10` and
+   above need in front of a name that starts with `COM`; `\\.\COM10` works as well.
+4. A COM port opens only once: a second program, a serial monitor or a PlatformIO
+   upload that holds the port makes the tools fail with `OPEN_FAILED`.
+
+`QSerialPort` switches RTS off when it opens a port on Windows and leaves DTR as the
+driver had it, while Linux raises both. On most DevKit boards RTS drives EN, so the
+board keeps running when a tool opens the port on Windows and the boot text of
+section 4 only shows after a press of EN; the boot wait of the tools covers both cases.
+
+| What you see | Cause | Remedy |
+|---|---|---|
+| `can not connect to serial port on COM3, 115200 (OPEN_FAILED)` | the port does not exist or another program holds it | check the number in the Device Manager, close serial monitors, PlatformIO and other tools |
+| The board shows up as `CP2102 USB to UART Bridge Controller` with a yellow mark and no COM port | the driver of the USB bridge is missing | install the driver of Silicon Labs or WCH, then plug the board in again |
+| `sercom_cli.exe` does not start: `Qt5Core.dll was not found` | the program runs outside the build directory without its DLLs | run it from the build directory, where `windeployqt` put the DLLs, or put `C:\Qt\5.12.12\mingw73_64\bin` on the path |
+| No log lines in a file, only the results | the program runs without a console window, Qt then logs to the debugger | set `QT_FORCE_STDERR_LOGGING=1`, the PowerShell scripts set it themselves |
