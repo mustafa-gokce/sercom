@@ -64,6 +64,15 @@ set(CMAKE_AUTORCC ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core SerialPort Test)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core SerialPort Test)
 
+# create host library
+add_library(${PROJECT_NAME}_host_lib
+    host/include/HostSettings.h host/src/HostSettings.cpp
+)
+target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::SerialPort
+)
+
 # compiler flag add macro
 macro(add_compiler_flags)
     foreach (flag ${ARGV})
