@@ -235,18 +235,15 @@ void CliApplication::onReceivedTelemetryReportResponse(
         return;
     }
 
-    // get the temperature in degrees Celsius with two decimals
-    const double temperature = static_cast<double>(telemetryReportResponse.getTemperature())
-                               / 100.0;
-    const std::string temperatureAsText = HostUtils::getDecimalText(temperature, 2);
-
     // print the telemetry
     const std::string line = "telemetry #" + std::to_string(telemetryReportResponse.getSequence())
                              + ": uptime "
                              + std::to_string(telemetryReportResponse.getUptime().count())
                              + " ms, free heap "
                              + std::to_string(telemetryReportResponse.getFreeHeapSize())
-                             + " bytes, temperature " + temperatureAsText + " C";
+                             + " bytes, temperature "
+                             + HostUtils::getTemperatureText(
+                                 telemetryReportResponse.getTemperature());
     HostUtils::printLine(line);
 }
 
