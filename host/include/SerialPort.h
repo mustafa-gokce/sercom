@@ -1,15 +1,19 @@
 #ifndef SERCOM_SERIAL_PORT_H
 #define SERCOM_SERIAL_PORT_H
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
+#include <QByteArray>
 #include <QObject>
 #include <QSerialPort>
 
+#include "../../core/include/Transport.h"
+
 namespace sercom::SerialPort {
 
-class SerialPort final : public QObject
+class SerialPort final : public QObject, public sercom::Transport::Transport
 {
     Q_OBJECT
 
@@ -41,6 +45,11 @@ public:
      */
     void close();
 
+    /*
+     * Hand every byte of the data to the driver, the event loop sends what the driver can not take yet.
+     */
+    [[nodiscard]] bool sendData(const uint8_t *data, size_t size) final;
+
 public:
     /*
      * Get whether the port is open.
@@ -51,6 +60,18 @@ public:
      * Get the name of the open port.
      */
     [[nodiscard]] std::string getPortName() const;
+
+signals:
+    /*
+     * Notify listeners about the received data.
+     */
+    void receivedData(const QByteArray &data);
+
+private slots:
+    /*
+     * Listen for received bytes that are ready to read.
+     */
+    void onReadyRead();
 
 private:
     QSerialPort serialPort; // serial port of Qt

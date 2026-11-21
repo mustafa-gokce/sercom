@@ -10,7 +10,10 @@ namespace sercom::SerialPort {
 
 SerialPort::SerialPort()
     : serialPort()
-{}
+{
+    // connect serial port signals and slots
+    QObject::connect(&this->serialPort, &QSerialPort::readyRead, this, &SerialPort::onReadyRead);
+}
 
 SerialPort::~SerialPort()
 {
@@ -72,6 +75,26 @@ void SerialPort::close()
     this->portName.clear();
 }
 
+bool SerialPort::sendData(const uint8_t *data, const size_t size)
+{
+    // port must be open
+    if (!this->serialPort.isOpen()) {
+        return false;
+    }
+
+    // serial port must take every byte
+    const qint64 dataSize = static_cast<qint64>(size);
+    if (this->serialPort.write(reinterpret_cast<const char *>(data), dataSize) != dataSize) {
+        return false;
+    }
+
+    // hand the bytes to the driver at once
+    [[maybe_unused]] const bool flushed = this->serialPort.flush();
+
+    // data sent successfully
+    return true;
+}
+
 bool SerialPort::getOpened() const
 {
     // expose whether the port is open
@@ -82,6 +105,18 @@ std::string SerialPort::getPortName() const
 {
     // expose the port name
     return this->portName;
+}
+
+void SerialPort::onReadyRead()
+{
+    // bytes must have arrived
+    const QByteArray data = this->serialPort.readAll();
+    if (data.isEmpty()) {
+        return;
+    }
+
+    // notify listeners about the received data
+    emit this->receivedData(data);
 }
 
 } // namespace sercom::SerialPort
