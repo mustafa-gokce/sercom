@@ -32,14 +32,14 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 12. The build runs `windeployqt` on `sercom_cli.exe`: the Qt and MinGW DLLs land next to the programs, which then start from any prompt. Qt is linked dynamically under the LGPL.
 
 ### ESP32
-1. Open a terminal.
+1. Open a terminal, on Windows PowerShell 7.
 2. Install PlatformIO: `pip install platformio`
 3. Go to the source directory.
 4. Build both firmware environments: `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console`
 5. Build the controller firmware: `pio run -d firmware/esp32 -e esp32dev-controller`
 
 ### STM32F4
-1. Open a terminal.
+1. Open a terminal, on Windows PowerShell 7.
 2. Install PlatformIO: `pip install platformio`
 3. Go to the source directory.
 4. Build every firmware environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller`
@@ -77,9 +77,10 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 1. Build the firmware as above, the protocol code and `firmware/common` are tested on Linux and Windows.
 
 ### Both targets in QEMU
-1. Install socat, xPack QEMU Arm and Espressif QEMU as in [docs/HARDWARE.md](docs/HARDWARE.md) section 13.
-2. Name both emulators: `export ARM_QEMU=<path>/qemu-system-arm ESP32_QEMU=<path>/qemu-system-xtensa`
-3. Run both targets against the tools and against each other: `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
+1. Build the host with Qt 5.12.12 as the Linux steps show and the firmware as above, the emulator tools need a Linux host.
+2. Install socat, xPack QEMU Arm and Espressif QEMU as in [docs/HARDWARE.md](docs/HARDWARE.md) section 13.
+3. Name both emulators: `export ARM_QEMU=<path>/qemu-system-arm ESP32_QEMU=<path>/qemu-system-xtensa`
+4. Run both targets against the tools and against each other: `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
 
 ## Run application
 ### Linux
@@ -124,17 +125,17 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 8. Follow [docs/HARDWARE.md](docs/HARDWARE.md) for the wiring, the console firmware `esp32dev-console` with the protocol on UART2, the COM ports of Windows and the troubleshooting list.
 
 ### STM32F4
-1. Connect the ST-LINK USB port of a Nucleo-F401RE board.
+1. Connect the ST-LINK USB port of a Nucleo-F401RE board, on Windows with the ST-LINK driver of [docs/HARDWARE.md](docs/HARDWARE.md) section 10.
 2. Open a terminal.
 3. Go to the source directory.
 4. Flash the firmware with the protocol on the virtual COM port of the ST-LINK: `pio run -d firmware/stm32f4 -e nucleo_f401re -t upload`
-5. Print the device information and every frame on the wire: `build/sercom_cli /dev/ttyACM0 --trace info`
-6. Run the echo stress test: `build/sercom_cli /dev/ttyACM0 stress 300 32 2`
+5. Print the device information and every frame on the wire: `build/sercom_cli /dev/ttyACM0 --trace info`, on Windows with the COM port of the ST-LINK: `build/sercom_cli.exe COM5 --trace info`
+6. Run the echo stress test: `build/sercom_cli /dev/ttyACM0 stress 300 32 2`, on Windows `build/sercom_cli.exe COM5 stress 300 32 2`
 
 ### Device to device
 1. Flash `esp32dev-controller` to an ESP32 and `nucleo_f401re-console` to a Nucleo-F401RE board.
 2. Wire ESP32 GPIO17 to PA10, GPIO16 to PA9 and GND to GND, 3.3 V levels only, as in [docs/HARDWARE.md](docs/HARDWARE.md) section 12.
-3. Open the console of the controller on the USB port of the ESP32: `pio device monitor -d firmware/esp32 -e esp32dev-controller -p /dev/ttyUSB0`
+3. Open the console of the controller on the USB port of the ESP32: `pio device monitor -d firmware/esp32 -e esp32dev-controller -p /dev/ttyUSB0`, on Windows with `-p COM3`
 4. Wait for `Controller passed every step`, the reset button of the ESP32 runs every step again.
 
 ## Contribution guidelines
@@ -147,7 +148,7 @@ Contributions follow the rules below, the layout of the repository and the tools
 6. Every contribution comes with its tests.
 7. A contribution must not break the auto tests.
 8. Codes must be formatted with: `clang-format --style=file:tools/analysis/clang-format.yaml -i <file>`
-9. Host codes use Qt 5.12.12 and contain no platform branches, `core/` and `app/` stay plain C++ without Qt.
+9. Host codes use Qt 5.12.12 and contain no platform branches, `core/`, `app/` and `firmware/common/` stay plain C++ without Qt.
 10. Codes must be checked with `cppcheck` and `clang-tidy` through `tools/run_static_analysis.sh` and must not contain any warnings.
 11. Codes must follow the coding and commenting style of [docs/STYLE.md](docs/STYLE.md), `python3 tools/analysis/check_style.py` checks its countable rules.
 12. Push the branch to the fork.
