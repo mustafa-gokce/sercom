@@ -224,6 +224,18 @@ if (SERCOM_BUILD_BINARIES)
         Qt${QT_VERSION_MAJOR}::Core
     )
 
+    # create frame flags example executable
+    add_executable(${PROJECT_NAME}_example_09_frame_flags
+        examples/09_frame_flags.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_09_frame_flags PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
+
     # create resynchronization after garbage example executable
     add_executable(${PROJECT_NAME}_example_11_resync_after_garbage
         examples/11_resync_after_garbage.cpp
