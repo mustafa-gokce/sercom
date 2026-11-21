@@ -41,7 +41,7 @@ Find `// print the custom message types` in `main()`: the program prints both va
 
 ## Step 2: Read the device
 
-Find the class `MockDevice`. It owns its link, so it can send a
+Find the class `MockDevice`. It owns its link, like `DeviceApplication` does, so it can send a
 response while it handles a request. Its constructor passes `*this` to the link before the device
 is fully built; that is safe, because `Link` only keeps the reference and calls the handler later,
 when data arrives. Read `onReceivedMessage()` from top to bottom. Each check is
@@ -135,6 +135,8 @@ The exit code `0` means the host received the right sum.
 ## Where this is used
 
 - `app/include/Messages.h`: the demo `MessageType` values and `toMessageType()`.
+- `app/src/DeviceApplication.cpp`: the dispatch of the demo device, which answers an unknown type
+  with `UNSUPPORTED_MESSAGE_TYPE`.
 - `core/include/ByteCodec.h`: `ByteWriter` and `ByteReader`.
 - `docs/PROTOCOL.md`: section 6, the message type ranges.
 - In your own project, write `AddNumbersRequest` and `AddNumbersResponse` classes like the ones in
