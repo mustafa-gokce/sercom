@@ -139,6 +139,8 @@ target_link_libraries(${PROJECT_NAME}_app_lib PRIVATE
 # create firmware library
 add_library(${PROJECT_NAME}_firmware_lib
     firmware/common/include/CommonSettings.h firmware/common/src/CommonSettings.cpp
+
+    firmware/common/include/RingBuffer.h firmware/common/src/RingBuffer.cpp
 )
 target_link_libraries(${PROJECT_NAME}_firmware_lib PRIVATE
     ${PROJECT_NAME}_settings
