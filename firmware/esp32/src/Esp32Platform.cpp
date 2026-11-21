@@ -55,4 +55,10 @@ std::string_view Esp32Platform::getDeviceName() const
     return this->deviceName;
 }
 
+void Esp32Platform::showLed(const bool ledLit)
+{
+    // switch the LED without changing its state
+    digitalWrite(this->ledPin, ledLit ? HIGH : LOW);
+}
+
 } // namespace sercom::Esp32Platform
