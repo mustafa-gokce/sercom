@@ -31,6 +31,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y ninja-build socat gdb
       - name: Build Debug
@@ -92,6 +101,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
       - name: Unit tests with AddressSanitizer and UndefinedBehaviorSanitizer
         run: tools/run_sanitizer_test.sh --build-dir build-sanitizers
 
@@ -100,6 +118,15 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y ninja-build clang-format clang-tidy
       - name: Restore cppcheck 2.22.0
@@ -146,12 +173,24 @@ jobs:
           python3 tools/check_versions.py --help
           python3 tools/analysis/check_style.py --help
           python3 fuzz/make_corpus.py --help
+          pwsh -NoProfile -File tools/noisy_link.ps1 --help
+          pwsh -NoProfile -File tools/run_examples.ps1 --help
+          pwsh -NoProfile -File tests/e2e/noisy_link_test.ps1 --help
 
   fuzz:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
       - name: Fuzz for one minute each
         run: fuzz/run_fuzzers.sh --build-dir build-fuzz --seconds 60
 
@@ -167,3 +206,162 @@ jobs:
         run: pip install platformio==6.1.19
       - name: Build ESP32 firmware
         run: pio run -d firmware/esp32 -e esp32dev -e esp32dev-console
+
+  windows:
+    name: windows (mingw 7.3)
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      # log the Qt messages to standard error also without a console window
+      QT_FORCE_STDERR_LOGGING: 1
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Install Qt 5.12.12 with MinGW 7.3.0 and Ninja
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: windows
+          target: desktop
+          arch: win64_mingw73
+          tools: 'tools_mingw,qt.tools.win64_mingw730 tools_ninja,qt.tools.ninja'
+          add-tools-to-path: true
+          cache: true
+      - name: Build Debug
+        run: |
+          # report the compiler errors as annotations, so they show on the run page
+          $compiler = "$env:IQTA_TOOLS/mingw730_64/bin/g++.exe"
+          & $compiler --version
+          cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_CXX_COMPILER=$compiler" "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -eq 0) {
+            cmake --build build-debug 2>&1 | Tee-Object -Variable output
+          }
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-String -Pattern 'error|Error|FAILED' | Select-Object -First 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+      - name: Show the help of every program without Qt and MinGW on the path
+        run: |
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          foreach ($program in 'sercom_cli', 'sercom_device_sim', 'sercom_dump') {
+            & "build-debug/$program.exe" --help
+            if ($LASTEXITCODE -ne 0) {
+              Write-Output "::error::$program.exe --help exited with $LASTEXITCODE"
+              exit 1
+            }
+          }
+      - name: Unit tests
+        run: |
+          build-debug/sercom_test.exe --order decl `
+            --reporter "JUnit::out=$PWD/test_results_junit.xml" `
+            --reporter "xml::out=$PWD/test_results.xml" `
+            --reporter console
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error::sercom_test.exe exited with $LASTEXITCODE"
+            exit 1
+          }
+      - uses: actions/setup-python@v7
+        with:
+          # put this Python ahead of the one that MinGW 7.3.0 brings for its debugger
+          python-version: '3.12'
+      - name: Install pyserial
+        run: |
+          python -m pip install pyserial 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-Object -Last 10 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+      - name: Install com0com with the pairs COM10 to COM11 and COM12 to COM13
+        run: |
+          # the signed com0com 3.0.0.0 installs on the runner, its publisher is trusted first to skip the prompt
+          curl.exe -sSL --retry 3 -o com0com.zip 'https://sourceforge.net/projects/com0com/files/com0com/3.0.0.0/com0com-3.0.0.0-i386-and-x64-signed.zip/download'
+          7z x com0com.zip -ocom0com | Out-Null
+          $installer = Get-ChildItem -Recurse com0com -Filter 'Setup_com0com*x64*.exe' | Select-Object -First 1
+          $certificate = (Get-AuthenticodeSignature $installer.FullName).SignerCertificate
+          Export-Certificate -Cert $certificate -FilePath "$env:RUNNER_TEMP\com0com.cer" | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\com0com.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+          $env:CNC_INSTALL_CNCA0_CNCB0_PORTS = 'NO'
+          $env:CNC_INSTALL_COMX_COMX_PORTS = 'NO'
+          Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait
+          Push-Location 'C:\Program Files (x86)\com0com'
+          ./setupc.exe --silent install PortName=COM10 PortName=COM11 | Out-Null
+          ./setupc.exe --silent install PortName=COM12 PortName=COM13 | Out-Null
+          Pop-Location
+
+          # bytes must cross both pairs
+          foreach ($pair in @(@('COM10', 'COM11'), @('COM13', 'COM12'))) {
+            $first = New-Object System.IO.Ports.SerialPort $pair[0], 115200
+            $second = New-Object System.IO.Ports.SerialPort $pair[1], 115200
+            $first.Open()
+            $second.Open()
+            $first.Write('hello')
+            Start-Sleep -Milliseconds 300
+            $received = $second.ReadExisting()
+            $first.Close()
+            $second.Close()
+            if ($received -ne 'hello') {
+              Write-Output "::error::$($pair[0]) to $($pair[1]) carried '$received' instead of hello, ports: $([System.IO.Ports.SerialPort]::GetPortNames() -join ',')"
+              exit 1
+            }
+          }
+      - name: Run every example, 01 and 24 on COM10 and COM11
+        run: |
+          pwsh -NoProfile -File tools/run_examples.ps1 build-debug 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-Object -Last 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+
+          # examples 01 and 24 must have run on the pair
+          if (-not ($output -match 'skipped: 0$')) {
+            Write-Output "::error::examples 01 and 24 did not run on COM10 and COM11: $($output | Select-Object -Last 1)"
+            exit 1
+          }
+      - name: End to end over a noisy link of COM10 to COM13
+        run: |
+          pwsh -NoProfile -File tests/e2e/noisy_link_test.ps1 build-debug/sercom_cli.exe build-debug/sercom_device_sim.exe 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-Object -Last 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+      - name: Python reference self test
+        run: python tools/sercom_frame.py self-test
+      - name: Show the help of every tool
+        run: |
+          tools/noisy_link.ps1 --help
+          tools/run_examples.ps1 --help
+          tests/e2e/noisy_link_test.ps1 --help
+          python tools/noise.py --help
+          python tests/e2e/late_ping_device.py --help
+      - name: Build Release
+        run: |
+          $compiler = "$env:IQTA_TOOLS/mingw730_64/bin/g++.exe"
+          cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_CXX_COMPILER=$compiler" "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -eq 0) {
+            cmake --build build-release 2>&1 | Tee-Object -Variable output
+          }
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-String -Pattern 'error|Error|FAILED' | Select-Object -First 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+      - name: Archive executables and test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sercom-windows-build-${{ github.run_number }}
+          path: |
+            build-release/*.exe
+            build-release/*.dll
+            test_results_junit.xml
+            test_results.xml
+          if-no-files-found: ignore
+      - name: Publish test results
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: test_results_junit.xml
+          check_name: unit tests (windows)
