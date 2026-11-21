@@ -66,7 +66,7 @@ read a record cut after five bytes
 The first block shows the written bytes. Read them field by field:
 
 - `01` is the LED state.
-- `01 02` is the boot count 513, that is `0x0201`, least significant byte first.
+- `01 02` is the boot count 513, that is `0x0201`, least significant byte first (see example 04).
 - `2E FB FF FF` is the temperature -1234. Negative numbers are stored in *two's complement*, the usual form in every
   computer: -1234 as a 32 bit number is `0xFFFFFB2E`.
 - `33 33 53 40` is the voltage 3.3. A float travels as its *IEEE 754* bit pattern, the standard layout of floating
@@ -131,5 +131,6 @@ like this. Print the exit code with `echo $?` and you see `0`.
 - `core/include/ByteCodec.h` and `core/src/ByteCodec.cpp` define `ByteWriter` and `ByteReader`. The functions
   `reserve` and `consume` hold the bounds checks and make the writer and the reader invalid.
 - `core/src/Frame.cpp` writes the header of every frame with a `ByteWriter`.
+- `app/src/Messages.cpp` writes the payload of every message with a `ByteWriter`.
 - Lectures: L27 "ByteWriter and the sticky error pattern", L28 "ByteReader: parsing untrusted bytes" and L29
   "Signed values, floats and strings".
