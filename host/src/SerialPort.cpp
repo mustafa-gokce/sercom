@@ -1,56 +1,15 @@
 #include "../include/SerialPort.h"
 
-#if defined(__linux__)
-#include <cerrno>
-#include <fcntl.h>
-#include <poll.h>
-#include <termios.h>
-#include <unistd.h>
-#endif
+#include <algorithm>
+#include <array>
+
+#include <QIODevice>
+#include <QSignalBlocker>
+#include <QString>
 
 #include "../include/HostSettings.h"
 
 namespace sercom::SerialPort {
-
-namespace {
-
-/*
- * Convert a baud rate to its termios speed or to B0 when termios does not know it.
- */
-speed_t toTermiosSpeed(const uint32_t baudRate)
-{
-    switch (baudRate) {
-    case 9600: {
-        return B9600;
-    }
-    case 19200: {
-        return B19200;
-    }
-    case 38400: {
-        return B38400;
-    }
-    case 57600: {
-        return B57600;
-    }
-    case 115200: {
-        return B115200;
-    }
-    case 230400: {
-        return B230400;
-    }
-    case 460800: {
-        return B460800;
-    }
-    case 921600: {
-        return B921600;
-    }
-    default: {
-        return B0;
-    }
-    }
-}
-
-} // namespace
 
 std::string_view fromSerialPortStatusType(const SerialPortStatusType serialPortStatusType)
 {
@@ -78,6 +37,9 @@ std::string_view fromSerialPortStatusType(const SerialPortStatusType serialPortS
     }
     case SerialPortStatusType::DISCONNECTED: {
         return {"DISCONNECTED"};
+    }
+    case SerialPortStatusType::WRITE_FAILED: {
+        return {"WRITE_FAILED"};
     }
     case SerialPortStatusType::UNKNOWN:
     default: {
@@ -112,18 +74,67 @@ SerialPortStatusType toSerialPortStatusType(const std::string_view serialPortSta
     if (serialPortStatusType == std::string_view("DISCONNECTED")) {
         return SerialPortStatusType::DISCONNECTED;
     }
+    if (serialPortStatusType == std::string_view("WRITE_FAILED")) {
+        return SerialPortStatusType::WRITE_FAILED;
+    }
     return SerialPortStatusType::UNKNOWN;
+}
+
+SerialPortStatusType getSerialPortStatusType(const QSerialPort::SerialPortError serialPortError)
+{
+    switch (serialPortError) {
+    case QSerialPort::SerialPortError::NoError: {
+        return SerialPortStatusType::OK;
+    }
+    case QSerialPort::SerialPortError::DeviceNotFoundError:
+    case QSerialPort::SerialPortError::PermissionError:
+    case QSerialPort::SerialPortError::OpenError: {
+        return SerialPortStatusType::OPEN_FAILED;
+    }
+    case QSerialPort::SerialPortError::UnsupportedOperationError: {
+        return SerialPortStatusType::CONFIGURATION_FAILED;
+    }
+    case QSerialPort::SerialPortError::ReadError: {
+        return SerialPortStatusType::READ_FAILED;
+    }
+    case QSerialPort::SerialPortError::WriteError: {
+        return SerialPortStatusType::WRITE_FAILED;
+    }
+    case QSerialPort::SerialPortError::ResourceError: {
+        return SerialPortStatusType::DISCONNECTED;
+    }
+    case QSerialPort::SerialPortError::TimeoutError: {
+        return SerialPortStatusType::TIMED_OUT;
+    }
+    case QSerialPort::SerialPortError::NotOpenError: {
+        return SerialPortStatusType::NOT_OPEN;
+    }
+    case QSerialPort::SerialPortError::UnknownError:
+    default: {
+        return SerialPortStatusType::UNKNOWN;
+    }
+    }
 }
 
 bool isBaudRateSupported(const uint32_t baudRate)
 {
-    // expose whether termios knows the baud rate
-    return toTermiosSpeed(baudRate) != B0;
+    // expose whether the baud rate is one of the standard baud rates of every system
+    static constexpr std::array<uint32_t, 8> supportedBaudRates
+        = {9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600};
+    return std::find(supportedBaudRates.cbegin(), supportedBaudRates.cend(), baudRate)
+           != supportedBaudRates.cend();
 }
 
 SerialPort::SerialPort()
-    : fileDescriptor(-1)
-{}
+    : serialPort()
+{
+    // connect serial port signals and slots
+    QObject::connect(&this->serialPort, &QSerialPort::readyRead, this, &SerialPort::onReadyRead);
+    QObject::connect(&this->serialPort,
+                     &QSerialPort::errorOccurred,
+                     this,
+                     &SerialPort::onErrorOccurred);
+}
 
 SerialPort::~SerialPort()
 {
@@ -136,57 +147,30 @@ SerialPortStatusType SerialPort::open(const std::string &portName, const uint32_
     // close the open port
     this->close();
 
-    // baud rate must be known to termios
-    const speed_t speed = toTermiosSpeed(baudRate);
-    if (speed == B0) {
+    // baud rate must be supported
+    if (!isBaudRateSupported(baudRate)) {
         return SerialPortStatusType::UNSUPPORTED_BAUD_RATE;
     }
 
-    // device must open without becoming the controlling terminal
-    const int newFileDescriptor = ::open(portName.c_str(),
-                                         O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
-    if (newFileDescriptor < 0) {
-        return SerialPortStatusType::OPEN_FAILED;
-    }
+    // use raw 8N1 mode without flow control and a bounded read buffer
+    this->serialPort.setPortName(QString::fromStdString(portName));
+    this->serialPort.setBaudRate(static_cast<qint32>(baudRate));
+    this->serialPort.setDataBits(QSerialPort::DataBits::Data8);
+    this->serialPort.setParity(QSerialPort::Parity::NoParity);
+    this->serialPort.setStopBits(QSerialPort::StopBits::OneStop);
+    this->serialPort.setFlowControl(QSerialPort::FlowControl::NoFlowControl);
+    this->serialPort.setReadBufferSize(static_cast<qint64>(HostSettings::READ_BUFFER_SIZE));
 
-    // current settings of the device must be readable
-    termios tty = termios();
-    if (::tcgetattr(newFileDescriptor, &tty) != 0) {
-        ::close(newFileDescriptor);
-        return SerialPortStatusType::CONFIGURATION_FAILED;
-    }
-
-    // use raw mode with 8 data bits and no parity
-    ::cfmakeraw(&tty);
-
-    // use one stop bit without flow control
-    tty.c_cflag &= ~static_cast<tcflag_t>(CSTOPB);
-    tty.c_cflag &= ~static_cast<tcflag_t>(CRTSCTS);
-
-    // enable the receiver and ignore the modem lines
-    tty.c_cflag |= CREAD | CLOCAL;
-
-    // return reads at once and wait in poll
-    tty.c_cc[VMIN] = 0;
-    tty.c_cc[VTIME] = 0;
-
-    // baud rate must apply in both directions
-    if (::cfsetispeed(&tty, speed) != 0 || ::cfsetospeed(&tty, speed) != 0) {
-        ::close(newFileDescriptor);
-        return SerialPortStatusType::CONFIGURATION_FAILED;
-    }
-
-    // settings must apply immediately
-    if (::tcsetattr(newFileDescriptor, TCSANOW, &tty) != 0) {
-        ::close(newFileDescriptor);
-        return SerialPortStatusType::CONFIGURATION_FAILED;
+    // device must open for reading and writing
+    if (!this->serialPort.open(QIODevice::OpenModeFlag::ReadWrite)) {
+        return getSerialPortStatusType(this->serialPort.error());
     }
 
     // NOTE: toggling DTR or RTS resets many ESP32 boards
-    ::tcflush(newFileDescriptor, TCIOFLUSH);
+    [[maybe_unused]] const bool cleared = this->serialPort.clear(
+        QSerialPort::Direction::AllDirections);
 
     // remember the open port
-    this->fileDescriptor = newFileDescriptor;
     this->portName = portName;
 
     // serial port opened successfully
@@ -196,108 +180,42 @@ SerialPortStatusType SerialPort::open(const std::string &portName, const uint32_
 void SerialPort::close()
 {
     // port must be open
-    if (this->fileDescriptor < 0) {
+    if (!this->serialPort.isOpen()) {
         return;
     }
 
+    // send the bytes that wait for the driver within the write timeout without reading more
+    {
+        const QSignalBlocker signalBlocker(&this->serialPort);
+        bool bytesWritten = true;
+        while (bytesWritten && this->serialPort.bytesToWrite() > 0) {
+            bytesWritten = this->serialPort.waitForBytesWritten(
+                static_cast<int>(HostSettings::WRITE_TIMEOUT_MSEC.count()));
+        }
+    }
+
     // close the device
-    ::close(this->fileDescriptor);
+    this->serialPort.close();
 
     // forget the closed port
-    this->fileDescriptor = -1;
     this->portName.clear();
-}
-
-SerialPortStatusType SerialPort::read(uint8_t *data,
-                                      const size_t capacity,
-                                      size_t &size,
-                                      const std::chrono::milliseconds timeout)
-{
-    // clear the size of the read data
-    size = 0;
-
-    // port must be open
-    if (this->fileDescriptor < 0) {
-        return SerialPortStatusType::NOT_OPEN;
-    }
-
-    // bytes must arrive within the timeout
-    pollfd pollDescriptor = pollfd();
-    pollDescriptor.fd = this->fileDescriptor;
-    pollDescriptor.events = POLLIN;
-    const int pollResult = ::poll(&pollDescriptor, 1, static_cast<int>(timeout.count()));
-    if (pollResult == 0) {
-        return SerialPortStatusType::TIMED_OUT;
-    }
-
-    // waiting must not fail unless a signal interrupted it
-    if (pollResult < 0) {
-        return errno == EINTR ? SerialPortStatusType::TIMED_OUT : SerialPortStatusType::READ_FAILED;
-    }
-
-    // device must not have hung up without pending data
-    if ((pollDescriptor.revents & POLLIN) == 0
-        && (pollDescriptor.revents & (POLLHUP | POLLERR)) != 0) {
-        return SerialPortStatusType::DISCONNECTED;
-    }
-
-    // device must not have hung up while reading
-    const ssize_t readResult = ::read(this->fileDescriptor, data, capacity);
-    if (readResult == 0) {
-        return SerialPortStatusType::DISCONNECTED;
-    }
-
-    // read must not fail unless no byte is waiting
-    if (readResult < 0) {
-        return errno == EAGAIN || errno == EINTR ? SerialPortStatusType::TIMED_OUT
-                                                 : SerialPortStatusType::READ_FAILED;
-    }
-
-    // set the size of the read data
-    size = static_cast<size_t>(readResult);
-
-    // data read successfully
-    return SerialPortStatusType::OK;
 }
 
 bool SerialPort::sendData(const uint8_t *data, const size_t size)
 {
     // port must be open
-    if (this->fileDescriptor < 0) {
+    if (!this->serialPort.isOpen()) {
         return false;
     }
 
-    // write until every byte is sent
-    size_t sentSize = 0;
-    while (sentSize < size) {
-        // write what the driver takes
-        const ssize_t writeResult = ::write(this->fileDescriptor, data + sentSize, size - sentSize);
-        if (writeResult > 0) {
-            sentSize += static_cast<size_t>(writeResult);
-            continue;
-        }
-
-        // write again after a signal
-        if (writeResult < 0 && errno == EINTR) {
-            continue;
-        }
-
-        // write must not fail unless the driver buffer is full
-        if (writeResult < 0 && errno != EAGAIN) {
-            return false;
-        }
-
-        // driver buffer must drain within the write timeout
-        pollfd pollDescriptor = pollfd();
-        pollDescriptor.fd = this->fileDescriptor;
-        pollDescriptor.events = POLLOUT;
-        const int pollResult = ::poll(&pollDescriptor,
-                                      1,
-                                      static_cast<int>(HostSettings::WRITE_TIMEOUT_MSEC.count()));
-        if (pollResult <= 0) {
-            return false;
-        }
+    // serial port must take every byte
+    const qint64 dataSize = static_cast<qint64>(size);
+    if (this->serialPort.write(reinterpret_cast<const char *>(data), dataSize) != dataSize) {
+        return false;
     }
+
+    // hand the bytes to the driver at once
+    [[maybe_unused]] const bool flushed = this->serialPort.flush();
 
     // data sent successfully
     return true;
@@ -306,7 +224,7 @@ bool SerialPort::sendData(const uint8_t *data, const size_t size)
 bool SerialPort::getOpened() const
 {
     // expose whether the port is open
-    return this->fileDescriptor >= 0;
+    return this->serialPort.isOpen();
 }
 
 std::string SerialPort::getPortName() const
@@ -315,10 +233,27 @@ std::string SerialPort::getPortName() const
     return this->portName;
 }
 
-int SerialPort::getFileDescriptor() const
+void SerialPort::onReadyRead()
 {
-    // expose the file descriptor
-    return this->fileDescriptor;
+    // bytes must have arrived
+    const QByteArray data = this->serialPort.readAll();
+    if (data.isEmpty()) {
+        return;
+    }
+
+    // notify listeners about the received data
+    emit this->receivedData(data);
+}
+
+void SerialPort::onErrorOccurred(const QSerialPort::SerialPortError serialPortError)
+{
+    // error must belong to the open port, a failed open reports its status itself
+    if (serialPortError == QSerialPort::SerialPortError::NoError || !this->serialPort.isOpen()) {
+        return;
+    }
+
+    // notify listeners about the error
+    emit this->errorHappened(getSerialPortStatusType(serialPortError));
 }
 
 } // namespace sercom::SerialPort

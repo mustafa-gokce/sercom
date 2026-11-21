@@ -1,8 +1,9 @@
 #include "../include/CliApplication.h"
 
 #include <algorithm>
-#include <thread>
 #include <utility>
+
+#include <QCoreApplication>
 
 #include "../../core/include/ByteCodec.h"
 
@@ -66,11 +67,15 @@ CliApplication::CliApplication(const CommandLine &commandLine)
     , frameTracer(*this, this->clock, FrameTracer::TraceDirectionType::HOST_TO_DEVICE)
     , traceTransport(this->serialPort, this->frameTracer)
     , deviceClient(this->traceTransport, this->clock, *this)
+    , maintainTimer()
     , finished(false)
     , exitCode(0)
+    , waitingForDevice(false)
     , waitingForResponse(false)
     , monitoring(false)
     , startTimestamp(0)
+    , waitTimestamp(0)
+    , waitIncomingFrameCounter(0)
     , lastRequestTimestamp(0)
     , lastReconnectTimestamp(0)
     , lastPeriodicRequestTimestamp(0)
@@ -86,8 +91,22 @@ CliApplication::CliApplication(const CommandLine &commandLine)
     , busyEchoRequestCounter(0)
     , echoRoundTripTimeSum(0)
     , maximumEchoRoundTripTime(0)
-    , readBuffer()
-{}
+{
+    // connect serial port signals and slots
+    QObject::connect(&this->serialPort,
+                     &SerialPort::SerialPort::receivedData,
+                     this,
+                     &CliApplication::onReceivedData);
+    QObject::connect(&this->serialPort,
+                     &SerialPort::SerialPort::errorHappened,
+                     this,
+                     &CliApplication::onErrorHappened);
+
+    // maintain the command once per maintenance period
+    this->maintainTimer.setSingleShot(false);
+    this->maintainTimer.setTimerType(Qt::TimerType::PreciseTimer);
+    QObject::connect(&this->maintainTimer, &QTimer::timeout, this, &CliApplication::maintain);
+}
 
 CliApplication::~CliApplication()
 {
@@ -114,18 +133,11 @@ int CliApplication::run()
     this->startCommand();
     this->waitForDevice();
 
-    // run the command until it finishes or is stopped
+    // run the command on the event loop until it finishes or is stopped
     this->startTimestamp = this->clock.getTime();
-    while (!this->finished && HostUtils::getRunning()) {
-        // process the received data of the serial port
-        this->processSerialPort();
-
-        // maintain the device client and the serial port
-        this->maintain();
-
-        // advance the command
-        this->progressCommand();
-    }
+    this->maintainTimer.start(HostSettings::MAINTAIN_PERIOD_MSEC);
+    [[maybe_unused]] const int eventLoopExitCode = QCoreApplication::exec();
+    this->maintainTimer.stop();
 
     // get the exit code of an interrupted command
     if (!this->finished) {
@@ -411,68 +423,40 @@ void CliApplication::onReceivedUnframedData(
         HostUtils::getUnframedDataLine(traceDirectionType, data, size, elapsedTime));
 }
 
-void CliApplication::cleanUp()
+void CliApplication::onReceivedData(const QByteArray &data)
 {
-    // notify the user
-    const std::string closingDebugMessage = "Closing the CliApplication on "
-                                            + this->getSerialPortText();
-    HostUtils::logDebug(closingDebugMessage);
-
-    // close the serial port
-    this->serialPort.close();
-
-    // notify the user
-    const std::string closedDebugMessage = "Closed the CliApplication on "
-                                           + this->getSerialPortText();
-    HostUtils::logDebug(closedDebugMessage);
+    // hand the received data to the frame tracer and the device client
+    const uint8_t *receivedData = reinterpret_cast<const uint8_t *>(data.constData());
+    const size_t size = static_cast<size_t>(data.size());
+    this->frameTracer.onReceivedData(receivedData, size);
+    this->deviceClient.onReceivedData(receivedData, size);
 }
 
-void CliApplication::processSerialPort()
+void CliApplication::onErrorHappened(const SerialPort::SerialPortStatusType serialPortStatusType)
 {
-    // serial port must be open
-    if (!this->serialPort.getOpened()) {
-        std::this_thread::sleep_for(HostSettings::READ_TIMEOUT_MSEC);
-        return;
-    }
+    // warn the user
+    const std::string warningMessage = "CliApplication disconnected from serial port on "
+                                       + this->getSerialPortText() + " ("
+                                       + std::string(SerialPort::fromSerialPortStatusType(
+                                           serialPortStatusType))
+                                       + ")";
+    HostUtils::logWarning(warningMessage);
 
-    // data must arrive within the read timeout
-    size_t size = 0;
-    const SerialPort::SerialPortStatusType serialPortStatusType
-        = this->serialPort.read(this->readBuffer.data(),
-                                this->readBuffer.size(),
-                                size,
-                                HostSettings::READ_TIMEOUT_MSEC);
-    if (serialPortStatusType == SerialPort::SerialPortStatusType::TIMED_OUT) {
-        return;
-    }
+    // close the serial port until the next reconnect attempt
+    this->serialPort.close();
 
-    // serial port must not be disconnected
-    if (serialPortStatusType != SerialPort::SerialPortStatusType::OK) {
-        // warn the user
-        const std::string warningMessage = "CliApplication disconnected from serial port on "
-                                           + this->getSerialPortText() + " ("
-                                           + std::string(SerialPort::fromSerialPortStatusType(
-                                               serialPortStatusType))
-                                           + ")";
-        HostUtils::logWarning(warningMessage);
-
-        // close the serial port until the next reconnect attempt
-        this->serialPort.close();
-
-        // clear the last device message timestamp
-        this->lastDeviceMessageTimestamp = 0ms;
-
-        // do not proceed further
-        return;
-    }
-
-    // hand the received data to the frame tracer and the device client
-    this->frameTracer.onReceivedData(this->readBuffer.data(), size);
-    this->deviceClient.onReceivedData(this->readBuffer.data(), size);
+    // clear the last device message timestamp
+    this->lastDeviceMessageTimestamp = 0ms;
 }
 
 void CliApplication::maintain()
 {
+    // stop the event loop when a stop signal arrived
+    if (!HostUtils::getRunning()) {
+        QCoreApplication::quit();
+        return;
+    }
+
     // maintain the device client and the frame tracer
     this->deviceClient.maintain();
     this->frameTracer.maintain();
@@ -491,6 +475,37 @@ void CliApplication::maintain()
         this->lastPeriodicRequestTimestamp = currentTime;
         this->sendPeriodicRequest();
     }
+
+    // stop the event loop when the command finished
+    if (this->finished) {
+        QCoreApplication::quit();
+        return;
+    }
+
+    // wait for the device before the command advances
+    if (this->waitingForDevice) {
+        this->progressWaitForDevice();
+        return;
+    }
+
+    // advance the command
+    this->progressCommand();
+}
+
+void CliApplication::cleanUp()
+{
+    // notify the user
+    const std::string closingDebugMessage = "Closing the CliApplication on "
+                                            + this->getSerialPortText();
+    HostUtils::logDebug(closingDebugMessage);
+
+    // close the serial port
+    this->serialPort.close();
+
+    // notify the user
+    const std::string closedDebugMessage = "Closed the CliApplication on "
+                                           + this->getSerialPortText();
+    HostUtils::logDebug(closedDebugMessage);
 }
 
 void CliApplication::attemptReconnect()
@@ -563,24 +578,29 @@ void CliApplication::waitForDevice()
         = this->deviceClient.sendPingRequest(messageCounter);
 
     // wait for the first frame of the device and the end of the ping request within the boot time
-    const std::chrono::milliseconds waitTimestamp = this->clock.getTime();
-    const uint64_t currentIncomingFrameCounter = this->deviceClient.getLinkStatistics()
-                                                     .incomingFrameCounter;
-    while (
-        (this->deviceClient.getLinkStatistics().incomingFrameCounter == currentIncomingFrameCounter
-         || this->deviceClient.getPendingCount() > 0)
-        && this->clock.getTime() - waitTimestamp < HostSettings::DEVICE_BOOT_TIMEOUT_MSEC
-        && HostUtils::getRunning()) {
-        // process the received data of the serial port
-        this->processSerialPort();
+    this->waitingForDevice = true;
+    this->waitTimestamp = this->clock.getTime();
+    this->waitIncomingFrameCounter = this->deviceClient.getLinkStatistics().incomingFrameCounter;
+}
 
-        // maintain the device client and the serial port
-        this->maintain();
+void CliApplication::progressWaitForDevice()
+{
+    // wait must be over by an answer of the device or by the boot time
+    const std::chrono::milliseconds currentTime = this->clock.getTime();
+    const std::chrono::milliseconds waitTime = currentTime - this->waitTimestamp;
+    const bool deviceSilent = this->deviceClient.getLinkStatistics().incomingFrameCounter
+                              == this->waitIncomingFrameCounter;
+    if ((deviceSilent || this->deviceClient.getPendingCount() > 0)
+        && waitTime < HostSettings::DEVICE_BOOT_TIMEOUT_MSEC) {
+        return;
     }
 
+    // start the command after the wait
+    this->waitingForDevice = false;
+    this->startTimestamp = currentTime;
+
     // device must have answered within the boot time
-    const std::chrono::milliseconds waitTime = this->clock.getTime() - waitTimestamp;
-    if (this->deviceClient.getLinkStatistics().incomingFrameCounter == currentIncomingFrameCounter) {
+    if (deviceSilent) {
         // warn the user
         const std::string warningMessage = "Device did not answer within "
                                            + std::to_string(waitTime.count())

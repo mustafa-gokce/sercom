@@ -1,7 +1,6 @@
 #ifndef SERCOM_CLI_APPLICATION_H
 #define SERCOM_CLI_APPLICATION_H
 
-#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -9,6 +8,10 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <QByteArray>
+#include <QObject>
+#include <QTimer>
 
 #include "../../app/include/DeviceClient.h"
 #include "../../app/include/Messages.h"
@@ -75,9 +78,12 @@ struct PendingEcho
     uint16_t messageCounter = 0;             // message counter of the latest echo request
 };
 
-class CliApplication final : public DeviceClient::DeviceClientHandler,
+class CliApplication final : public QObject,
+                             public DeviceClient::DeviceClientHandler,
                              public FrameTracer::FrameTracerHandler
 {
+    Q_OBJECT
+
 public:
     /*
      * Command line tool that runs one command against the device on a serial port.
@@ -95,7 +101,7 @@ public:
 
 public:
     /*
-     * Run the command until it finishes or a stop signal arrives.
+     * Run the command on the event loop until it finishes or a stop signal arrives.
      * Get the exit code of the process.
      */
     [[nodiscard]] int run();
@@ -162,6 +168,23 @@ private:
                                 size_t size,
                                 std::chrono::milliseconds currentTime) final;
 
+private slots:
+    /*
+     * Listen for received data of the serial port.
+     */
+    void onReceivedData(const QByteArray &data);
+
+    /*
+     * Listen for an error of the serial port and close it until the next reconnect attempt.
+     */
+    void onErrorHappened(sercom::SerialPort::SerialPortStatusType serialPortStatusType);
+
+    /*
+     * Maintain the device client, the serial port, the wait for the device and the command.
+     * Stop the event loop when the command finished or a stop signal arrived.
+     */
+    void maintain();
+
 private:
     /*
      * Clean up on close.
@@ -169,26 +192,21 @@ private:
     void cleanUp();
 
     /*
-     * Process the received data of the serial port.
-     */
-    void processSerialPort();
-
-    /*
-     * Maintain the device client, the serial port and the periodic requests.
-     */
-    void maintain();
-
-    /*
      * Attempt to reconnect the serial port when it is closed or the device went silent.
      */
     void attemptReconnect();
 
     /*
-     * Wait up to the boot time for the first frame of the device after the serial port opened.
+     * Start to wait up to the boot time for the first frame of the device after the serial port opened.
      * A ping request asks a device that is already running for an answer.
      * The wait also lasts until that ping request is acknowledged or has failed.
      */
     void waitForDevice();
+
+    /*
+     * Finish the wait for the device once it answered or the boot time passed.
+     */
+    void progressWaitForDevice();
 
     /*
      * Send a ping request as periodic request while the link is idle.
@@ -201,7 +219,7 @@ private:
     void startCommand();
 
     /*
-     * Advance the command once per loop.
+     * Advance the command once per maintenance period.
      */
     void progressCommand();
 
@@ -295,11 +313,15 @@ private:
     FrameTracer::FrameTracer frameTracer;                   // tracer of the serial port bytes
     TraceTransport::TraceTransport traceTransport;          // serial port tracing the sent bytes
     DeviceClient::DeviceClient deviceClient;                // protocol client of the device
+    QTimer maintainTimer;                                   // timer of the maintenance period
     bool finished;                                          // command is finished
     int exitCode;                                           // exit code of the process
+    bool waitingForDevice;                                  // first frame of the device is awaited
     bool waitingForResponse;                                // response of a request is awaited
     bool monitoring;                                        // device reports are printed
     std::chrono::milliseconds startTimestamp;               // time the command started
+    std::chrono::milliseconds waitTimestamp;                // time the wait for the device started
+    uint64_t waitIncomingFrameCounter;                      // frames received before the wait
     std::chrono::milliseconds lastRequestTimestamp;         // time of the last request
     std::chrono::milliseconds lastReconnectTimestamp;       // time of the last reconnect attempt
     std::chrono::milliseconds lastPeriodicRequestTimestamp; // time of the last periodic request
@@ -317,7 +339,6 @@ private:
     std::chrono::milliseconds maximumEchoRoundTripTime;     // longest echo round trip time
     std::map<uint32_t, PendingEcho> pendingEchoes;          // pending echoes by sequence number
     std::vector<uint32_t> retrySequenceNumbers;             // busy echo requests to send again
-    std::array<uint8_t, HostSettings::READ_BUFFER_SIZE> readBuffer; // received serial port data
 };
 
 } // namespace sercom::CliApplication

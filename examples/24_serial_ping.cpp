@@ -5,6 +5,12 @@
 #include <string_view>
 #include <vector>
 
+#include <QByteArray>
+#include <QCoreApplication>
+#include <QEventLoop>
+#include <QObject>
+#include <QTimer>
+
 #include "../app/include/DeviceClient.h"
 #include "../app/include/Messages.h"
 #include "../core/include/Clock.h"
@@ -155,10 +161,10 @@ void printUsage(std::string_view programName);
 [[nodiscard]] bool parseCommandLine(int argc, char *argv[], std::string &portName);
 
 /*
- * Send ping requests until a new ping response arrives and get false when the timeout passes first.
+ * Send ping requests on the event loop until a new ping response arrives.
+ * Get false when the timeout passes first or the serial port fails.
  */
-[[nodiscard]] bool waitForPingResponse(sercom::SerialPort::SerialPort &serialPort,
-                                       sercom::DeviceClient::DeviceClient &deviceClient,
+[[nodiscard]] bool waitForPingResponse(sercom::DeviceClient::DeviceClient &deviceClient,
                                        MockClientHandler &mockClientHandler,
                                        const sercom::Clock::Clock &clock,
                                        std::chrono::milliseconds timeout);
@@ -171,6 +177,9 @@ int main(int argc, char *argv[]);
 int main(int argc, char *argv[])
 {
     using namespace sercom;
+
+    // initialize the Qt application of the event loop
+    const QCoreApplication application(argc, argv);
 
     // command line must be valid
     std::string portName;
@@ -203,6 +212,32 @@ int main(int argc, char *argv[])
     MockClientHandler mockClientHandler;
     DeviceClient::DeviceClient deviceClient(serialPort, clock, mockClientHandler);
 
+    // hand the received data to the device client
+    QObject::connect(&serialPort,
+                     &SerialPort::SerialPort::receivedData,
+                     [&deviceClient](const QByteArray &data) {
+                         deviceClient.onReceivedData(reinterpret_cast<const uint8_t *>(
+                                                         data.constData()),
+                                                     static_cast<size_t>(data.size()));
+                     });
+
+    // stop the wait with a failure when the serial port fails
+    QObject::connect(&serialPort,
+                     &SerialPort::SerialPort::errorHappened,
+                     [&serialPort](const SerialPort::SerialPortStatusType serialPortStatusType) {
+                         // warn the user
+                         const std::string warningMessage = "Can not read the serial port "
+                                                            + serialPort.getPortName() + " ("
+                                                            + std::string(
+                                                                SerialPort::fromSerialPortStatusType(
+                                                                    serialPortStatusType))
+                                                            + ")";
+                         HostUtils::logWarning(warningMessage);
+
+                         // stop the event loop with the failure
+                         QCoreApplication::exit(1);
+                     });
+
     // print the wait for the device
     const std::string waitingLine = "waiting for the device on "
                                     + HostUtils::getSerialPortText(portName,
@@ -213,8 +248,7 @@ int main(int argc, char *argv[])
     HostUtils::printLine(waitingLine);
 
     // wait for the device within the boot timeout
-    const bool deviceAnswered = waitForPingResponse(serialPort,
-                                                    deviceClient,
+    const bool deviceAnswered = waitForPingResponse(deviceClient,
                                                     mockClientHandler,
                                                     clock,
                                                     HostSettings::DEVICE_BOOT_TIMEOUT_MSEC);
@@ -234,8 +268,7 @@ int main(int argc, char *argv[])
     HostUtils::printLine("device answered, sending one ping request");
 
     // wait for the response to one more ping request
-    const bool pingAnswered = waitForPingResponse(serialPort,
-                                                  deviceClient,
+    const bool pingAnswered = waitForPingResponse(deviceClient,
                                                   mockClientHandler,
                                                   clock,
                                                   HostSettings::RESPONSE_TIMEOUT_MSEC);
@@ -301,8 +334,7 @@ bool parseCommandLine(const int argc, char *argv[], std::string &portName)
     return true;
 }
 
-bool waitForPingResponse(sercom::SerialPort::SerialPort &serialPort,
-                         sercom::DeviceClient::DeviceClient &deviceClient,
+bool waitForPingResponse(sercom::DeviceClient::DeviceClient &deviceClient,
                          MockClientHandler &mockClientHandler,
                          const sercom::Clock::Clock &clock,
                          const std::chrono::milliseconds timeout)
@@ -312,45 +344,39 @@ bool waitForPingResponse(sercom::SerialPort::SerialPort &serialPort,
     // forget the earlier ping response
     mockClientHandler.setPingResponseReceived(false);
 
-    // wait for a new ping response
+    // send ping requests and maintain the device client once per maintenance period
     const std::chrono::milliseconds waitTimestamp = clock.getTime();
-    std::vector<uint8_t> readBuffer(HostSettings::READ_BUFFER_SIZE);
-    while (!mockClientHandler.getPingResponseReceived() && clock.getTime() - waitTimestamp < timeout
-           && HostUtils::getRunning()) {
-        // ping request must be sent when no request waits
-        uint16_t messageCounter = 0;
-        if (deviceClient.getPendingCount() == 0
-            && deviceClient.sendPingRequest(messageCounter) != Definitions::SendStatusType::SENT) {
-            HostUtils::logWarning("Can not send the ping request");
-            return false;
-        }
+    QEventLoop eventLoop;
+    QTimer timer;
+    QObject::connect(
+        &timer,
+        &QTimer::timeout,
+        [&deviceClient, &mockClientHandler, &clock, &eventLoop, waitTimestamp, timeout]() {
+            // wait must go on until a new ping response, the timeout or a stop signal
+            if (mockClientHandler.getPingResponseReceived()
+                || clock.getTime() - waitTimestamp >= timeout || !HostUtils::getRunning()) {
+                eventLoop.quit();
+                return;
+            }
 
-        // read must succeed or time out
-        size_t size = 0;
-        const SerialPort::SerialPortStatusType readStatusType
-            = serialPort.read(readBuffer.data(),
-                              readBuffer.size(),
-                              size,
-                              HostSettings::READ_TIMEOUT_MSEC);
-        if (readStatusType != SerialPort::SerialPortStatusType::OK
-            && readStatusType != SerialPort::SerialPortStatusType::TIMED_OUT) {
-            // warn the user
-            const std::string warningMessage = "Can not read the serial port "
-                                               + serialPort.getPortName() + " ("
-                                               + std::string(SerialPort::fromSerialPortStatusType(
-                                                   readStatusType))
-                                               + ")";
-            HostUtils::logWarning(warningMessage);
+            // ping request must be sent when no request waits
+            uint16_t messageCounter = 0;
+            if (deviceClient.getPendingCount() == 0
+                && deviceClient.sendPingRequest(messageCounter)
+                       != Definitions::SendStatusType::SENT) {
+                HostUtils::logWarning("Can not send the ping request");
+                eventLoop.exit(1);
+                return;
+            }
 
-            // do not proceed further
-            return false;
-        }
+            // maintain the retransmissions of the device client
+            deviceClient.maintain();
+        });
+    timer.start(HostSettings::MAINTAIN_PERIOD_MSEC);
 
-        // hand the received data to the device client
-        deviceClient.onReceivedData(readBuffer.data(), size);
-
-        // maintain the retransmissions of the device client
-        deviceClient.maintain();
+    // event loop must not stop with a failure
+    if (eventLoop.exec() != 0) {
+        return false;
     }
 
     // expose whether a new ping response arrived

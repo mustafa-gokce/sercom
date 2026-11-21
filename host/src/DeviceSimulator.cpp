@@ -1,8 +1,9 @@
 #include "../include/DeviceSimulator.h"
 
 #include <algorithm>
-#include <thread>
 #include <vector>
+
+#include <QCoreApplication>
 
 #include "../../app/include/AppSettings.h"
 #include "../../app/include/Messages.h"
@@ -17,11 +18,26 @@ DeviceSimulator::DeviceSimulator(const CommandLine &commandLine)
     , frameTracer(*this, this->clock, FrameTracer::TraceDirectionType::DEVICE_TO_HOST)
     , traceTransport(this->serialPort, this->frameTracer)
     , deviceApplication(this->traceTransport, this->clock, this->simulatedPlatform)
+    , maintainTimer()
     , lastReconnectTimestamp(0)
     , lastHeartbeatTimestamp(0)
     , outgoingHeartbeatCounter(0)
-    , readBuffer()
-{}
+{
+    // connect serial port signals and slots
+    QObject::connect(&this->serialPort,
+                     &SerialPort::SerialPort::receivedData,
+                     this,
+                     &DeviceSimulator::onReceivedData);
+    QObject::connect(&this->serialPort,
+                     &SerialPort::SerialPort::errorHappened,
+                     this,
+                     &DeviceSimulator::onErrorHappened);
+
+    // maintain the device simulator once per maintenance period
+    this->maintainTimer.setSingleShot(false);
+    this->maintainTimer.setTimerType(Qt::TimerType::PreciseTimer);
+    QObject::connect(&this->maintainTimer, &QTimer::timeout, this, &DeviceSimulator::maintain);
+}
 
 DeviceSimulator::~DeviceSimulator()
 {
@@ -46,14 +62,10 @@ int DeviceSimulator::run()
                                             + std::string(AppSettings::AppVersionString);
     HostUtils::logDebug(startedDebugMessage);
 
-    // answer the host until a stop signal arrives
-    while (HostUtils::getRunning()) {
-        // process the received data of the serial port
-        this->processSerialPort();
-
-        // maintain the device simulator
-        this->maintain();
-    }
+    // answer the host on the event loop until a stop signal arrives
+    this->maintainTimer.start(HostSettings::MAINTAIN_PERIOD_MSEC);
+    [[maybe_unused]] const int eventLoopExitCode = QCoreApplication::exec();
+    this->maintainTimer.stop();
 
     // device simulator stopped successfully
     return 0;
@@ -91,6 +103,57 @@ void DeviceSimulator::onReceivedUnframedData(
         HostUtils::getUnframedDataLine(traceDirectionType, data, size, elapsedTime));
 }
 
+void DeviceSimulator::onReceivedData(const QByteArray &data)
+{
+    // hand the received data to the frame tracer and the device application
+    const uint8_t *receivedData = reinterpret_cast<const uint8_t *>(data.constData());
+    const size_t size = static_cast<size_t>(data.size());
+    this->frameTracer.onReceivedData(receivedData, size);
+    this->deviceApplication.onReceivedData(receivedData, size);
+}
+
+void DeviceSimulator::onErrorHappened(const SerialPort::SerialPortStatusType serialPortStatusType)
+{
+    // warn the user
+    const std::string warningMessage = "DeviceSimulator disconnected from serial port on "
+                                       + this->getSerialPortText() + " ("
+                                       + std::string(SerialPort::fromSerialPortStatusType(
+                                           serialPortStatusType))
+                                       + ")";
+    HostUtils::logWarning(warningMessage);
+
+    // close the serial port until the next reconnect attempt
+    this->serialPort.close();
+}
+
+void DeviceSimulator::maintain()
+{
+    // stop the event loop when a stop signal arrived
+    if (!HostUtils::getRunning()) {
+        QCoreApplication::quit();
+        return;
+    }
+
+    // maintain the device application and the frame tracer
+    this->deviceApplication.maintain();
+    this->frameTracer.maintain();
+
+    // attempt to reconnect the serial port periodically
+    const std::chrono::milliseconds currentTime = this->clock.getTime();
+    if (currentTime - this->lastReconnectTimestamp
+        >= HostSettings::SERIAL_PORT_RECONNECT_PERIOD_MSEC) {
+        this->lastReconnectTimestamp = currentTime;
+        this->attemptReconnect();
+    }
+
+    // send the heartbeat log report response when it is due
+    if (this->commandLine.logPeriod != 0ms
+        && currentTime - this->lastHeartbeatTimestamp >= this->commandLine.logPeriod) {
+        this->lastHeartbeatTimestamp = currentTime;
+        this->sendHeartbeatLogReportResponse();
+    }
+}
+
 void DeviceSimulator::cleanUp()
 {
     // notify the user
@@ -114,69 +177,6 @@ void DeviceSimulator::cleanUp()
     const std::string closedDebugMessage = "Closed the DeviceSimulator on "
                                            + this->getSerialPortText();
     HostUtils::logDebug(closedDebugMessage);
-}
-
-void DeviceSimulator::processSerialPort()
-{
-    // serial port must be open
-    if (!this->serialPort.getOpened()) {
-        std::this_thread::sleep_for(HostSettings::READ_TIMEOUT_MSEC);
-        return;
-    }
-
-    // data must arrive within the read timeout
-    size_t size = 0;
-    const SerialPort::SerialPortStatusType serialPortStatusType
-        = this->serialPort.read(this->readBuffer.data(),
-                                this->readBuffer.size(),
-                                size,
-                                HostSettings::READ_TIMEOUT_MSEC);
-    if (serialPortStatusType == SerialPort::SerialPortStatusType::TIMED_OUT) {
-        return;
-    }
-
-    // serial port must not be disconnected
-    if (serialPortStatusType != SerialPort::SerialPortStatusType::OK) {
-        // warn the user
-        const std::string warningMessage = "DeviceSimulator disconnected from serial port on "
-                                           + this->getSerialPortText() + " ("
-                                           + std::string(SerialPort::fromSerialPortStatusType(
-                                               serialPortStatusType))
-                                           + ")";
-        HostUtils::logWarning(warningMessage);
-
-        // close the serial port until the next reconnect attempt
-        this->serialPort.close();
-
-        // do not proceed further
-        return;
-    }
-
-    // hand the received data to the frame tracer and the device application
-    this->frameTracer.onReceivedData(this->readBuffer.data(), size);
-    this->deviceApplication.onReceivedData(this->readBuffer.data(), size);
-}
-
-void DeviceSimulator::maintain()
-{
-    // maintain the device application and the frame tracer
-    this->deviceApplication.maintain();
-    this->frameTracer.maintain();
-
-    // attempt to reconnect the serial port periodically
-    const std::chrono::milliseconds currentTime = this->clock.getTime();
-    if (currentTime - this->lastReconnectTimestamp
-        >= HostSettings::SERIAL_PORT_RECONNECT_PERIOD_MSEC) {
-        this->lastReconnectTimestamp = currentTime;
-        this->attemptReconnect();
-    }
-
-    // send the heartbeat log report response when it is due
-    if (this->commandLine.logPeriod != 0ms
-        && currentTime - this->lastHeartbeatTimestamp >= this->commandLine.logPeriod) {
-        this->lastHeartbeatTimestamp = currentTime;
-        this->sendHeartbeatLogReportResponse();
-    }
 }
 
 void DeviceSimulator::attemptReconnect()

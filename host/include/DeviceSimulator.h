@@ -1,11 +1,14 @@
 #ifndef SERCOM_DEVICE_SIMULATOR_H
 #define SERCOM_DEVICE_SIMULATOR_H
 
-#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+
+#include <QByteArray>
+#include <QObject>
+#include <QTimer>
 
 #include "../../app/include/DeviceApplication.h"
 #include "../../core/include/Frame.h"
@@ -32,8 +35,10 @@ struct CommandLine
     bool traced = false;                     // every frame on the serial port is printed
 };
 
-class DeviceSimulator final : public FrameTracer::FrameTracerHandler
+class DeviceSimulator final : public QObject, public FrameTracer::FrameTracerHandler
 {
+    Q_OBJECT
+
 public:
     /*
      * Device simulator that answers the host on a serial port like the firmware does.
@@ -51,7 +56,7 @@ public:
 
 public:
     /*
-     * Run the device simulator until a stop signal arrives.
+     * Run the device simulator on the event loop until a stop signal arrives.
      * Get the exit code of the process.
      */
     [[nodiscard]] int run();
@@ -72,21 +77,28 @@ private:
                                 size_t size,
                                 std::chrono::milliseconds currentTime) final;
 
+private slots:
+    /*
+     * Listen for received data of the serial port.
+     */
+    void onReceivedData(const QByteArray &data);
+
+    /*
+     * Listen for an error of the serial port and close it until the next reconnect attempt.
+     */
+    void onErrorHappened(sercom::SerialPort::SerialPortStatusType serialPortStatusType);
+
+    /*
+     * Maintain the device application, the serial port and the heartbeat log.
+     * Stop the event loop when a stop signal arrived.
+     */
+    void maintain();
+
 private:
     /*
      * Clean up on close.
      */
     void cleanUp();
-
-    /*
-     * Process the received data of the serial port.
-     */
-    void processSerialPort();
-
-    /*
-     * Maintain the device application, the serial port and the heartbeat log.
-     */
-    void maintain();
 
     /*
      * Attempt to reconnect the serial port when it is closed.
@@ -111,10 +123,10 @@ private:
     FrameTracer::FrameTracer frameTracer;                   // tracer of the serial port bytes
     TraceTransport::TraceTransport traceTransport;          // serial port tracing the sent bytes
     DeviceApplication::DeviceApplication deviceApplication; // device side of the protocol
+    QTimer maintainTimer;                                   // timer of the maintenance period
     std::chrono::milliseconds lastReconnectTimestamp;       // time of the last reconnect attempt
     std::chrono::milliseconds lastHeartbeatTimestamp;       // time of the last heartbeat log
     uint64_t outgoingHeartbeatCounter;                      // heartbeat log report responses
-    std::array<uint8_t, HostSettings::READ_BUFFER_SIZE> readBuffer; // received serial port data
 };
 
 } // namespace sercom::DeviceSimulator

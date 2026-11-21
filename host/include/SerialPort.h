@@ -1,11 +1,14 @@
 #ifndef SERCOM_SERIAL_PORT_H
 #define SERCOM_SERIAL_PORT_H
 
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
+
+#include <QByteArray>
+#include <QObject>
+#include <QSerialPort>
 
 #include "../../core/include/Transport.h"
 
@@ -21,9 +24,10 @@ enum class SerialPortStatusType : uint8_t {
     NOT_OPEN = 3,              // serial port is not open
     OPEN_FAILED = 4,           // device could not be opened
     CONFIGURATION_FAILED = 5,  // device did not take the configuration
-    UNSUPPORTED_BAUD_RATE = 6, // termios has no speed for the baud rate
+    UNSUPPORTED_BAUD_RATE = 6, // serial port does not support the baud rate
     READ_FAILED = 7,           // reading from the device failed
-    DISCONNECTED = 8,          // device hung up
+    DISCONNECTED = 8,          // device was removed or became unavailable
+    WRITE_FAILED = 9,          // writing to the device failed
 };
 
 /*
@@ -37,15 +41,23 @@ std::string_view fromSerialPortStatusType(SerialPortStatusType serialPortStatusT
 SerialPortStatusType toSerialPortStatusType(std::string_view serialPortStatusType);
 
 /*
- * Check whether termios has a speed for the baud rate.
+ * Get the serial port status type of a QSerialPort error.
+ */
+[[nodiscard]] SerialPortStatusType getSerialPortStatusType(
+    QSerialPort::SerialPortError serialPortError);
+
+/*
+ * Check whether the serial port supports the baud rate.
  */
 [[nodiscard]] bool isBaudRateSupported(uint32_t baudRate);
 
-class SerialPort final : public Transport::Transport
+class SerialPort final : public QObject, public sercom::Transport::Transport
 {
+    Q_OBJECT
+
 public:
     /*
-     * Serial port on Linux in raw 8N1 mode without flow control.
+     * Serial port of the host on QSerialPort in raw 8N1 mode without flow control.
      */
     SerialPort();
     ~SerialPort() final;
@@ -60,27 +72,19 @@ public:
 
 public:
     /*
-     * Open and configure a serial device or pseudo terminal.
+     * Open and configure a serial device, a pseudo terminal or a COM port.
      * Close an open port first.
      */
     [[nodiscard]] SerialPortStatusType open(const std::string &portName, uint32_t baudRate);
 
     /*
-     * Close the port.
+     * Send the bytes that wait for the driver and close the port.
      * Closing a closed port does nothing.
      */
     void close();
 
     /*
-     * Wait up to the timeout for bytes and read at most the capacity of what is available.
-     */
-    [[nodiscard]] SerialPortStatusType read(uint8_t *data,
-                                            size_t capacity,
-                                            size_t &size,
-                                            std::chrono::milliseconds timeout);
-
-    /*
-     * Send every byte of the data and wait while the driver buffer is full.
+     * Hand every byte of the data to the driver, the event loop sends what the driver can not take yet.
      */
     [[nodiscard]] bool sendData(const uint8_t *data, size_t size) final;
 
@@ -95,14 +99,31 @@ public:
      */
     [[nodiscard]] std::string getPortName() const;
 
+signals:
     /*
-     * Get the native file descriptor or minus one when the port is closed.
+     * Notify listeners about the received data.
      */
-    [[nodiscard]] int getFileDescriptor() const;
+    void receivedData(const QByteArray &data);
+
+    /*
+     * Notify listeners about an error of the open port.
+     */
+    void errorHappened(sercom::SerialPort::SerialPortStatusType serialPortStatusType);
+
+private slots:
+    /*
+     * Listen for received bytes that are ready to read.
+     */
+    void onReadyRead();
+
+    /*
+     * Listen for an error of the serial port.
+     */
+    void onErrorOccurred(QSerialPort::SerialPortError serialPortError);
 
 private:
-    int fileDescriptor;   // native handle or minus one when closed
-    std::string portName; // device path
+    QSerialPort serialPort; // serial port of Qt
+    std::string portName;   // name of the open port
 };
 
 } // namespace sercom::SerialPort
