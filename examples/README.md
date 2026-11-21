@@ -5,8 +5,9 @@ Small Standalone Programs with Step-by-Step Guides
 Every example is one short program in the `examples/` directory with a guide of the same name next to it. The guide says which
 lectures to watch first, builds and runs the program, walks through the source step by step, explains the output
 and ends with changes to try. The examples use only the public API of the `core`, `app` and `host` libraries.
-Examples 01 and 24 open a serial port, a virtual serial cable made with `socat` stands in for the hardware. The others
-run in memory with fixed inputs and print the same output on every run.
+Examples 01 and 24 open a serial port through Qt, a virtual serial cable made with `socat` on Linux or a com0com pair on
+Windows stands in for the hardware. The others run in memory with fixed inputs and print the same output on every run.
+Every example builds and runs on Linux and on Windows.
 
 An example exits with 0 when its result is as expected, with 1 when it is not, and with 64 for a wrong command line.
 
@@ -46,21 +47,21 @@ because its messages travel over the link layer of example 18.
 | S12 | L74, L75 (also L17, L76, L86) | 24 | Serial Ping | Opens a serial port, waits for the device to boot, measures one ping and prints the round trip time | [guide](24_serial_ping.md), [source](24_serial_ping.cpp) |
 
 ## Building the examples
-1. Open a terminal.
-2. Install the build tools once: `sudo apt install build-essential cmake ninja-build git socat`
+1. Open a terminal, on Windows PowerShell 7 with the path of the README.
+2. Install the build tools and Qt 5.12.12 once, as README.md shows in the section "Building the project" for Linux and Windows.
 3. Go to the source directory, the directory that holds `CMakeLists.txt`.
 4. Populate dependencies once: `git submodule update --init --recursive`
-5. Configure the build: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug`
+5. Configure the build: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64`, on Windows with `-DCMAKE_PREFIX_PATH=C:/Qt/5.12.12/mingw73_64`
 6. Build every program: `cmake --build build`
-7. The program of example NN is `build/sercom_example_NN_name`, for example `build/sercom_example_02_build_frame`.
+7. The program of example NN is `build/sercom_example_NN_name`, for example `build/sercom_example_02_build_frame`, with `.exe` on Windows.
 8. Build one example only with its target: `cmake --build build --target sercom_example_02_build_frame`
 
 ## Run one example
 1. Go to the source directory.
 2. Run the program of the example: `build/sercom_example_02_build_frame`
-3. Print its exit code: `echo $?`
+3. Print its exit code: `echo $?`, in PowerShell `$LASTEXITCODE`
 4. Compare the output with the guide of the example, `examples/02_build_frame.md`.
-5. Examples 01 and 24 take a serial port as their argument, their guides show how to make one with `socat`.
+5. Examples 01 and 24 take a serial port as their argument, their guides show how to make one with `socat` or com0com.
 
 ## Run all examples
 1. Install `socat` for examples 01 and 24: `sudo apt install socat`
@@ -71,3 +72,5 @@ because its messages travel over the link layer of example 18.
 6. It runs example 24 on a `socat` pseudo terminal pair against `build/sercom_device_sim`.
 7. Without `socat` it skips examples 01 and 24 with a message.
 8. The exit code is 0 when every example exited with 0, otherwise 1.
+9. On Windows run the PowerShell twin instead: `tools/run_examples.ps1 build`
+10. It runs examples 01 and 24 on the com0com pair `COM10` and `COM11` of `tools/COM0COM.md`, stops example 01 with Ctrl+C and skips both with a message without the pair.
