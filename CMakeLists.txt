@@ -347,6 +347,18 @@ if (SERCOM_BUILD_BINARIES)
         Qt${QT_VERSION_MAJOR}::Core
     )
 
+    # create link loopback example executable
+    add_executable(${PROJECT_NAME}_example_18_link_loopback
+        examples/18_link_loopback.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_18_link_loopback PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
+
     # create message dispatching example executable
     add_executable(${PROJECT_NAME}_example_25_dispatch_messages
         examples/25_dispatch_messages.cpp
