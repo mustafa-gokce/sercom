@@ -84,10 +84,28 @@ void FrameDecoder::processBuffer()
             break;
         }
 
-        // get the payload length from the header
+        // version must be the protocol version
         const uint8_t *candidate = this->buffer.data() + this->bufferStart;
         const Frame::Frame frameHeader(candidate, Definitions::HEADER_SIZE);
+        if (frameHeader.getVersion() != Definitions::PROTOCOL_VERSION) {
+            // keep track of invalid versions
+            ++this->statistics.invalidVersionCounter;
+
+            // reject the candidate and scan again
+            this->rejectCandidate(Definitions::DecodeErrorType::INVALID_VERSION);
+            continue;
+        }
+
+        // payload must fit into a frame of this build
         const size_t payloadLength = frameHeader.getPayloadLength();
+        if (payloadLength > Settings::MaximumPayloadSize) {
+            // keep track of oversized payloads
+            ++this->statistics.payloadTooLongCounter;
+
+            // reject the candidate and scan again
+            this->rejectCandidate(Definitions::DecodeErrorType::PAYLOAD_TOO_LONG);
+            continue;
+        }
 
         // payload and CRC32 must be buffered
         const size_t frameSize = Definitions::FRAME_OVERHEAD + payloadLength;
@@ -107,6 +125,15 @@ void FrameDecoder::processBuffer()
         // notify listeners about the received frame
         this->handler.onReceivedFrame(frame);
     }
+}
+
+void FrameDecoder::rejectCandidate(const Definitions::DecodeErrorType decodeErrorType)
+{
+    // NOTE: the real frame may start inside the rejected candidate
+    this->discardBytes(1, true);
+
+    // notify listeners about the decode error
+    this->handler.onDecodeError(decodeErrorType);
 }
 
 void FrameDecoder::discardBytes(const size_t byteCount, const bool countAsDiscarded)

@@ -17,9 +17,11 @@ namespace sercom::FrameDecoder {
  */
 struct DecoderStatistics
 {
-    uint64_t incomingByteCounter = 0;  // bytes handed to the decoder
-    uint64_t discardedByteCounter = 0; // bytes that did not end up in a valid frame
-    uint64_t incomingFrameCounter = 0; // frames that passed every check
+    uint64_t incomingByteCounter = 0;   // bytes handed to the decoder
+    uint64_t discardedByteCounter = 0;  // bytes that did not end up in a valid frame
+    uint64_t incomingFrameCounter = 0;  // frames that passed every check
+    uint64_t invalidVersionCounter = 0; // frame candidates with an unsupported version
+    uint64_t payloadTooLongCounter = 0; // frame candidates with a payload above the limit
 };
 
 class FrameDecoderHandler
@@ -96,6 +98,11 @@ private:
      * Process the buffered bytes until more bytes are needed.
      */
     void processBuffer();
+
+    /*
+     * Reject the current frame candidate and scan the bytes after its first byte again.
+     */
+    void rejectCandidate(Definitions::DecodeErrorType decodeErrorType);
 
     /*
      * Remove bytes from the front of the buffer.
