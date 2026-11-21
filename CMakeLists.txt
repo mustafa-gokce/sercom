@@ -147,6 +147,7 @@ add_library(${PROJECT_NAME}_firmware_lib
     firmware/common/include/ActivityLed.h firmware/common/src/ActivityLed.cpp
 
     firmware/common/include/FirmwareRole.h firmware/common/src/FirmwareRole.cpp
+    firmware/common/include/DeviceRole.h firmware/common/src/DeviceRole.cpp
 )
 target_link_libraries(${PROJECT_NAME}_firmware_lib PRIVATE
     ${PROJECT_NAME}_settings
