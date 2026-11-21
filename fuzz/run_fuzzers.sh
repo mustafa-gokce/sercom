@@ -3,10 +3,10 @@
 #
 # run_fuzzers.sh
 #
-# Build the libFuzzer executable of the frame decoder and run it for a while.
+# Build the libFuzzer executables of the frame decoder and the link layer and run each of them for a while.
 #
 # The fuzzer flags reach CMake from outside through CMAKE_CXX_FLAGS, CXX selects the Clang compiler.
-# The frame decoder starts from a copy of fuzz/corpus in the build directory.
+# The frame decoder starts from a copy of fuzz/corpus in the build directory, the link layer from nothing.
 #
 # usage: fuzz/run_fuzzers.sh [--build-dir DIR] [--seconds N]
 #
@@ -53,5 +53,6 @@ cmake --build "${BUILD_DIRECTORY}" --parallel
 mkdir -p "${BUILD_DIRECTORY}/corpus"
 cp "${SOURCE_DIRECTORY}"/fuzz/corpus/* "${BUILD_DIRECTORY}/corpus/"
 
-# run the fuzzer for its time
+# run each fuzzer for its time
 "${BUILD_DIRECTORY}/sercom_fuzz_frame_decoder" -max_total_time="${FUZZ_SECONDS}" "${BUILD_DIRECTORY}/corpus"
+"${BUILD_DIRECTORY}/sercom_fuzz_link" -max_total_time="${FUZZ_SECONDS}"
