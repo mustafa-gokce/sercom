@@ -14,7 +14,7 @@ or against an ESP32 with the sercom firmware.
 
 ## Before you start
 
-1. Watch lectures L74 "A single-threaded event loop" and L75 "DeviceClient: requests and replies" (section S12). You also need three terminals.
+1. Watch lectures L77 "The Qt event loop: one thread, signals and a timer" and L78 "DeviceClient: requests and replies" (section S12). You also need three terminals.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git socat` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows. On Windows create the com0com pair `COM10` and `COM11` of `tools/COM0COM.md`.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`. On Windows open PowerShell 7 with the path of the README.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -60,7 +60,7 @@ frames and calls the handler. A `QTimer` calls its lambda every `HostSettings::M
 - `// maintain the retransmissions of the device client`: `maintain()` sends a ping again when its
   answer is late.
 
-This is the *event loop* of L74, without threads; Qt does the waiting for bytes and for the timer.
+This is the *event loop* of L77, without threads; Qt does the waiting for bytes and for the timer.
 
 `main()` calls it twice. `// wait for the device within the boot timeout` waits up to
 `HostSettings::DEVICE_BOOT_TIMEOUT_MSEC` (3000 ms): an ESP32 may restart when the port opens and
@@ -147,6 +147,7 @@ Stop the simulator and the cable with Ctrl+C when you are done.
   version of this program.
 - `tools/SOCAT.md`: the virtual cable; `tools/noisy_link.sh` adds noise to it. `tools/COM0COM.md`
   and `tools/noisy_link.ps1` do the same on Windows.
-- Lectures: L74 "A single-threaded event loop", L75 "DeviceClient: requests and replies", L76 "The
-  sercom_cli tool" and L86 "Flashing and the first ping"; the virtual cable is L17 "Pseudo
-  terminals and socat".
+- Lectures: L77 "The Qt event loop: one thread, signals and a timer", L78 "DeviceClient: requests
+  and replies", L79 "The sercom_cli tool on Linux and Windows" and L89 "Flashing and the first
+  ping"; the virtual cable is L19 "Pseudo terminals and socat", on Windows L20 "Virtual COM port
+  pairs on Windows: com0com".
