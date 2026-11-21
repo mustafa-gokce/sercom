@@ -456,6 +456,23 @@ holds the port open.
 when a tool is killed before that, the bridge links a new pseudo terminal in place of
 the refused one, as the port of a board is free again once the program is gone.
 
+QEMU also writes the output of every port into `<port>.log` of the run directory, from
+the first byte of the chip on, and `start` returns only once one of these logs holds the
+start line of the firmware, `Started the DeviceApplication ...` or a controller's
+`Started the DeviceClient ...`. The first command then finds a running chip, as on a
+board that runs before a tool opens its port; the boot wait of the tools stays at
+3000 ms for the reset of a board. Measured with `esp32dev` and
+`sercom_cli <port> --trace info` right after `start` on a host with 20 cores: at a load
+average of 14 to 21, 8 runs without the wait got the answer to the boot wait after 1946
+to 2075 ms, 8 runs with it after 4 to 14 ms, `start` took 2.2 to 3.4 s. Beside two
+parallel builds, 8 runs without the wait (load average 18 to 33) got no answer within
+3000 ms in 2 runs and no answer to `info` in 6; 16 runs with the wait (load average 32
+to 46) got the answer after 2 to 23 ms and completed `info` every time, `start` took 3.3
+to 22.0 s. On such a busy host the second core of the emulated ESP32 can panic in its
+start code (`Cache disabled but cached memory region accessed` in `uart0.log`) and the
+chip boots again; `start` waits for that boot too, up to `BOOT_TIMEOUT_SECONDS` (60 by
+default).
+
 Two emulated chips are wired with socat between their pseudo terminals:
 `socat /tmp/esp32/uart2,raw,echo=0 /tmp/stm32f4/usart2,raw,echo=0`; two
 `tools/noise.py` processes in its place, or one with `--duplex`, add the noise of
