@@ -15,7 +15,9 @@ using namespace std::chrono_literals;
 DeviceSimulator::DeviceSimulator(const CommandLine &commandLine)
     : commandLine(commandLine)
     , simulatedPlatform(this->clock, this->commandLine.deviceName)
-    , deviceApplication(this->serialPort, this->clock, this->simulatedPlatform)
+    , frameTracer(*this, this->clock, FrameTracer::TraceDirectionType::DEVICE_TO_HOST)
+    , traceTransport(this->serialPort, this->frameTracer)
+    , deviceApplication(this->traceTransport, this->clock, this->simulatedPlatform)
     , maintainTimer()
     , lastReconnectTimestamp(0)
     , lastHeartbeatTimestamp(0)
@@ -69,11 +71,44 @@ int DeviceSimulator::run()
     return 0;
 }
 
+void DeviceSimulator::onReceivedTracedFrame(
+    const FrameTracer::TraceDirectionType traceDirectionType,
+    const Frame::Frame &frame,
+    [[maybe_unused]] const std::chrono::milliseconds currentTime)
+{
+    // frames must be traced
+    if (!this->commandLine.traced) {
+        return;
+    }
+
+    // print the traced frame at the time of the log lines
+    const std::chrono::milliseconds elapsedTime = HostUtils::getElapsedTime();
+    HostUtils::printLine(HostUtils::getTracedFrameLine(traceDirectionType, frame, elapsedTime));
+}
+
+void DeviceSimulator::onReceivedUnframedData(
+    const FrameTracer::TraceDirectionType traceDirectionType,
+    const uint8_t *data,
+    const size_t size,
+    [[maybe_unused]] const std::chrono::milliseconds currentTime)
+{
+    // frames must be traced
+    if (!this->commandLine.traced) {
+        return;
+    }
+
+    // print the traced bytes outside a frame at the time of the log lines
+    const std::chrono::milliseconds elapsedTime = HostUtils::getElapsedTime();
+    HostUtils::printLine(
+        HostUtils::getUnframedDataLine(traceDirectionType, data, size, elapsedTime));
+}
+
 void DeviceSimulator::onReceivedData(const QByteArray &data)
 {
-    // hand the received data to the device application
+    // hand the received data to the frame tracer and the device application
     const uint8_t *receivedData = reinterpret_cast<const uint8_t *>(data.constData());
     const size_t size = static_cast<size_t>(data.size());
+    this->frameTracer.onReceivedData(receivedData, size);
     this->deviceApplication.onReceivedData(receivedData, size);
 }
 
@@ -99,8 +134,9 @@ void DeviceSimulator::maintain()
         return;
     }
 
-    // maintain the device application
+    // maintain the device application and the frame tracer
     this->deviceApplication.maintain();
+    this->frameTracer.maintain();
 
     // attempt to reconnect the serial port periodically
     const std::chrono::milliseconds currentTime = this->clock.getTime();

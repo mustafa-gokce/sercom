@@ -2,6 +2,7 @@
 #define SERCOM_DEVICE_SIMULATOR_H
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -10,6 +11,9 @@
 #include <QTimer>
 
 #include "../../app/include/DeviceApplication.h"
+#include "../../core/include/Frame.h"
+#include "../../core/include/FrameTracer.h"
+#include "../../core/include/TraceTransport.h"
 
 #include "../include/HostSettings.h"
 #include "../include/HostUtils.h"
@@ -28,9 +32,10 @@ struct CommandLine
     std::string deviceName;                              // device name of the simulated device
     std::chrono::milliseconds logPeriod
         = std::chrono::milliseconds::zero(); // heartbeat log period in milliseconds or zero for none
+    bool traced = false;                     // every frame on the serial port is printed
 };
 
-class DeviceSimulator final : public QObject
+class DeviceSimulator final : public QObject, public FrameTracer::FrameTracerHandler
 {
     Q_OBJECT
 
@@ -55,6 +60,22 @@ public:
      * Get the exit code of the process.
      */
     [[nodiscard]] int run();
+
+private:
+    /*
+     * Listen for a traced frame and print it when the frames are traced.
+     */
+    void onReceivedTracedFrame(FrameTracer::TraceDirectionType traceDirectionType,
+                               const Frame::Frame &frame,
+                               std::chrono::milliseconds currentTime) final;
+
+    /*
+     * Listen for traced bytes outside a frame and print them when the frames are traced.
+     */
+    void onReceivedUnframedData(FrameTracer::TraceDirectionType traceDirectionType,
+                                const uint8_t *data,
+                                size_t size,
+                                std::chrono::milliseconds currentTime) final;
 
 private slots:
     /*
@@ -99,6 +120,8 @@ private:
     SerialPort::SerialPort serialPort;                      // serial port to the host
     const HostUtils::SteadyClock clock;                     // steady clock of the host
     SimulatedPlatform::SimulatedPlatform simulatedPlatform; // simulated device hardware
+    FrameTracer::FrameTracer frameTracer;                   // tracer of the serial port bytes
+    TraceTransport::TraceTransport traceTransport;          // serial port tracing the sent bytes
     DeviceApplication::DeviceApplication deviceApplication; // device side of the protocol
     QTimer maintainTimer;                                   // timer of the maintenance period
     std::chrono::milliseconds lastReconnectTimestamp;       // time of the last reconnect attempt
