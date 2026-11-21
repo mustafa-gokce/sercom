@@ -527,7 +527,7 @@ TEST_CASE_METHOD(TestControllerRole,
     REQUIRE(getTextFound(controllerText, "log DEBUG: Device answered after 1 ms\r\n"));
     REQUIRE(getTextFound(controllerText,
                          "log DEBUG: Device info: unit-under-test, firmware 1.0, uptime "));
-    REQUIRE(getTextFound(controllerText, "temperature -327.68 C\r\n"));
+    REQUIRE(getTextFound(controllerText, "temperature no reading\r\n"));
     REQUIRE(getTextFound(controllerText,
                          "log DEBUG: Stress report: echo responses verified 300, corrupted 0, "
                          "unexpected 0\r\n"));
