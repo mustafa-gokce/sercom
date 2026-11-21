@@ -81,6 +81,17 @@ void FrameDecoder::checkTimeout(const std::chrono::milliseconds currentTime)
     this->handler.onDecodeError(Definitions::DecodeErrorType::INTER_BYTE_TIMEOUT);
 }
 
+void FrameDecoder::reset()
+{
+    // drop the buffered bytes
+    this->bufferStart = 0;
+    this->bufferEnd = 0;
+    this->lastByteTimestamp = 0ms;
+
+    // clear the statistics
+    this->statistics = DecoderStatistics();
+}
+
 DecoderStatistics FrameDecoder::getStatistics() const
 {
     // expose the decoder statistics

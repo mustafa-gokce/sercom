@@ -13,7 +13,7 @@
 namespace sercom::FrameDecoder {
 
 /*
- * Decoder statistics since construction.
+ * Decoder statistics since construction or the last reset.
  */
 struct DecoderStatistics
 {
@@ -92,6 +92,11 @@ public:
      * Without this periodic check a partial frame is only dropped when the next byte arrives.
      */
     void checkTimeout(std::chrono::milliseconds currentTime);
+
+    /*
+     * Drop every buffered byte and clear the statistics.
+     */
+    void reset();
 
 public:
     /*
