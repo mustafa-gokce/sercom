@@ -42,6 +42,35 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 2. Go to the build directory.
 3. `./sercom_test.exe --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
 
+## Run application
+### Linux
+1. Open a terminal.
+2. Go to the source directory.
+3. Start a noisy virtual link between `/tmp/ttyV1` and `/tmp/ttyV2`: `tools/noisy_link.sh --profile realistic --seed 1 &`
+4. Start the device simulator: `build/sercom_device_sim /tmp/ttyV2 &`
+5. Measure the round trip time: `build/sercom_cli /tmp/ttyV1 ping 3`
+6. Print every frame on the wire in both directions: `build/sercom_cli /tmp/ttyV1 --trace ping 1`
+7. Print the device information: `build/sercom_cli /tmp/ttyV1 info`
+8. Switch the LED: `build/sercom_cli /tmp/ttyV1 led on`
+9. Print the telemetry: `build/sercom_cli /tmp/ttyV1 telemetry 200 3`
+10. Print the telemetry and the device logs for five seconds: `build/sercom_cli /tmp/ttyV1 monitor 5`
+11. Run the echo stress test: `build/sercom_cli /tmp/ttyV1 stress 300 32 2`
+12. Stop the device simulator and the noisy link: `kill %2 %1`
+13. Write one frame into a capture file: `python3 tools/sercom_frame.py encode --type 0x0001 --counter 7 --flags 0x01 --payload E8030000 --binary > /tmp/ping.bin`
+14. Decode the capture file: `build/sercom_dump /tmp/ping.bin`
+
+### Windows
+1. Create the com0com pairs `COM10` with `COM11` and `COM12` with `COM13` as [tools/COM0COM.md](tools/COM0COM.md) shows.
+2. Open PowerShell 7 with the path of the build steps.
+3. Go to the source directory.
+4. Start a noisy link between `COM10` and `COM13`: `Start-Process pwsh -ArgumentList '-File', 'tools/noisy_link.ps1', '--profile', 'realistic', '--seed', '1'`
+5. Start the device simulator: `Start-Process build/sercom_device_sim.exe -ArgumentList 'COM13'`
+6. Measure the round trip time: `build/sercom_cli.exe COM10 ping 3`
+7. Print every frame on the wire in both directions: `build/sercom_cli.exe COM10 --trace ping 1`
+8. Run the other commands of the Linux steps the same way, with `COM10` in place of `/tmp/ttyV1`.
+9. Stop the device simulator and the noisy link with Ctrl+C in their windows.
+10. A port name from `COM1` to `COM256` works as it is, `\\.\COM10` works too.
+
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
 1. Fork the project.
