@@ -191,6 +191,7 @@ or carry their own sequence numbers.
 `str` is a `u8` length followed by that many bytes, no terminator.
 Times (`requestTimestamp`, `uptime`, `telemetryPeriod`) are milliseconds, sizes
 (`freeHeapSize`) are bytes and `temperature` is in 0.01 °C steps.
+A device without a temperature reading sends `-32768` (-327.68 °C, below absolute zero).
 `logLevelType`: 0 `UNKNOWN`, 1 `DEBUG`, 2 `WARNING`.
 
 Rules of the demo application:
