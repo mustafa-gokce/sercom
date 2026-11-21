@@ -4,11 +4,11 @@
 #include <cstdint>
 #include <string_view>
 
-#include "../../../app/include/DeviceApplication.h"
+#include "../../common/include/FirmwarePlatform.h"
 
 namespace sercom::Esp32Platform {
 
-class Esp32Platform final : public DeviceApplication::DevicePlatform
+class Esp32Platform final : public FirmwarePlatform::FirmwarePlatform
 {
 public:
     /*
@@ -56,6 +56,11 @@ public:
      * Get the device name.
      */
     [[nodiscard]] std::string_view getDeviceName() const final;
+
+    /*
+     * Show the LED lit or dark without changing whether the LED is on.
+     */
+    void showLed(bool ledLit) final;
 
 private:
     const uint8_t ledPin;              // GPIO of the LED
