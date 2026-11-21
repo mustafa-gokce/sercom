@@ -454,6 +454,7 @@ if (SERCOM_BUILD_TESTS)
         tests/test_NoiseChecklist.cpp
         tests/test_Definitions.cpp
         tests/test_SerialPort.cpp
+        tests/test_CliApplication.cpp
     )
     target_link_libraries(${PROJECT_NAME}_test PRIVATE
         ${PROJECT_NAME}_settings
