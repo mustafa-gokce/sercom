@@ -51,6 +51,9 @@ int main(int argc, char *argv[])
         return HostSettings::INVALID_COMMAND_LINE_EXIT_CODE;
     }
 
+    // install the stop handlers
+    HostUtils::installStopHandlers();
+
     // serial port must open in raw 8N1 mode without flow control
     QSerialPort serialPort;
     serialPort.setPortName(QString::fromStdString(portName));
@@ -113,6 +116,12 @@ int main(int argc, char *argv[])
     QObject::connect(&timer,
                      &QTimer::timeout,
                      [&serialPort, &portName, &clock, &lastMessageTimestamp]() {
+                         // stop signal must not have arrived
+                         if (!HostUtils::getRunning()) {
+                             QCoreApplication::quit();
+                             return;
+                         }
+
                          // message period must have passed since the last message
                          const std::chrono::milliseconds currentTime = clock.getTime();
                          if (currentTime - lastMessageTimestamp < messagePeriod) {
