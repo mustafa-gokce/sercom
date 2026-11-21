@@ -11,6 +11,7 @@ set(PROJECT_NAME sercom)
 
 # options for protocol limits
 set(MAXIMUM_PAYLOAD_SIZE 255)
+set(MAXIMUM_PENDING_FRAMES 4)
 
 #####################
 # DO NOT EDIT BELOW #
@@ -97,6 +98,7 @@ target_compile_definitions(${PROJECT_NAME}_settings INTERFACE
     APP_GIT_HASH="${APP_GIT_HASH}"
     APP_VERSION_STRING="${APP_VERSION_STRING}"
     MAXIMUM_PAYLOAD_SIZE=${MAXIMUM_PAYLOAD_SIZE}
+    MAXIMUM_PENDING_FRAMES=${MAXIMUM_PENDING_FRAMES}
 )
 
 # create core library
