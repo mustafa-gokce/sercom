@@ -12,7 +12,7 @@ buffer at once.
 
 ## Before you start
 
-1. Watch lecture L36 about the table-driven CRC32 first. It explains the register, the lookup table and the incremental use. Example 06 shows the CRC32 of a whole buffer.
+1. Watch lecture L39 about the table-driven CRC32 first. It explains the register, the lookup table and the incremental use. Example 06 shows the CRC32 of a whole buffer.
 2. Install the build tools and Qt 5.12.12 once: `sudo apt install build-essential cmake ninja-build git` and the aqtinstall steps of README.md, section "Building the project", which also has the steps for Windows.
 3. Open a terminal and go to the source directory of sercom, the directory that holds `CMakeLists.txt`.
 4. If you cloned the repository just now, fetch its submodules once: `git submodule update --init --recursive`
@@ -125,5 +125,5 @@ the bytes arrive and does not need to keep them for the check.
 - `core/src/Frame.cpp` calculates the CRC32 of the protected bytes when it builds a frame and when `getCRCValid`
   checks one.
 - `tests/test_CRC32.cpp` checks that a buffer in two parts gives the same CRC32 as the whole buffer.
-- Lectures: L36 about the table-driven CRC32, L37 "Verifying a CRC implementation" and L46 "CRC check and copying the
+- Lectures: L39 about the table-driven CRC32, L40 "Verifying a CRC implementation" and L49 "CRC check and copying the
   frame out".
