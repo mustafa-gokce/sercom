@@ -12,6 +12,7 @@
 #include "../core/include/Definitions.h"
 #include "../core/include/Frame.h"
 #include "../core/include/FrameTracer.h"
+#include "../host/include/HostSettings.h"
 #include "../host/include/HostUtils.h"
 
 using namespace std::chrono_literals;
@@ -77,6 +78,21 @@ TEST_CASE_METHOD(TestHostUtils,
     REQUIRE(HostUtils::getTimeText(0ms) == "[     0.000]");
     REQUIRE(HostUtils::getTimeText(1234ms) == "[     1.234]");
     REQUIRE(HostUtils::getTimeText(longTime) == "[ 86400.000]");
+}
+
+TEST_CASE_METHOD(TestHostUtils,
+                 "A temperature is shown in degrees Celsius or as no reading",
+                 "[HostUtils][getTemperatureText]")
+{
+    // check temperatures with a reading
+    static constexpr int16_t lowestReading = std::numeric_limits<int16_t>::min() + 1;
+    REQUIRE(HostUtils::getTemperatureText(2500) == "25.00 C");
+    REQUIRE(HostUtils::getTemperatureText(0) == "0.00 C");
+    REQUIRE(HostUtils::getTemperatureText(-1234) == "-12.34 C");
+    REQUIRE(HostUtils::getTemperatureText(lowestReading) == "-327.67 C");
+
+    // check the temperature without a reading
+    REQUIRE(HostUtils::getTemperatureText(HostSettings::UNAVAILABLE_TEMPERATURE) == "no reading");
 }
 
 TEST_CASE_METHOD(TestHostUtils,
