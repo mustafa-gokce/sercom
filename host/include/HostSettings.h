@@ -4,7 +4,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <string_view>
 
 namespace sercom::HostSettings {
@@ -62,8 +61,6 @@ constexpr int16_t SIMULATED_TEMPERATURE_AMPLITUDE
     = 300; // simulated temperature amplitude in 0.01 degree steps
 constexpr std::chrono::milliseconds SIMULATED_TEMPERATURE_PERIOD_MSEC
     = 60 * 1000ms; // simulated temperature period in milliseconds
-constexpr int16_t UNAVAILABLE_TEMPERATURE
-    = std::numeric_limits<int16_t>::min(); // temperature without a reading in 0.01 degree steps
 
 constexpr double PI = 3.14159265358979323846; // ratio of circumference to diameter
 
