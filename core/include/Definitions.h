@@ -149,6 +149,25 @@ std::string_view fromDeliveryFailureType(DeliveryFailureType deliveryFailureType
 DeliveryFailureType toDeliveryFailureType(std::string_view deliveryFailureType);
 
 /*
+ * Peer version type.
+ */
+enum class PeerVersionType : uint8_t {
+    UNKNOWN = 0,   // peer has not sent a valid frame yet
+    VERSION_1 = 1, // peer reads direct frames only
+    VERSION_2 = 2, // peer reads routed frames too
+};
+
+/*
+ * Peer version type to string.
+ */
+std::string_view fromPeerVersionType(PeerVersionType peerVersionType);
+
+/*
+ * String to peer version type.
+ */
+PeerVersionType toPeerVersionType(std::string_view peerVersionType);
+
+/*
  * Check whether a flag is set in the value of a FLAGS field.
  */
 [[nodiscard]] bool isFrameFlagSet(uint8_t flags, FrameFlagType frameFlagType);

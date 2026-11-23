@@ -153,6 +153,33 @@ DeliveryFailureType toDeliveryFailureType(const std::string_view deliveryFailure
     return DeliveryFailureType::UNKNOWN;
 }
 
+std::string_view fromPeerVersionType(const PeerVersionType peerVersionType)
+{
+    switch (peerVersionType) {
+    case PeerVersionType::VERSION_1: {
+        return {"VERSION_1"};
+    }
+    case PeerVersionType::VERSION_2: {
+        return {"VERSION_2"};
+    }
+    case PeerVersionType::UNKNOWN:
+    default: {
+        return {"UNKNOWN"};
+    }
+    }
+}
+
+PeerVersionType toPeerVersionType(const std::string_view peerVersionType)
+{
+    if (peerVersionType == std::string_view("VERSION_1")) {
+        return PeerVersionType::VERSION_1;
+    }
+    if (peerVersionType == std::string_view("VERSION_2")) {
+        return PeerVersionType::VERSION_2;
+    }
+    return PeerVersionType::UNKNOWN;
+}
+
 bool isFrameFlagSet(const uint8_t flags, const FrameFlagType frameFlagType)
 {
     // expose whether the bit of the flag is set
