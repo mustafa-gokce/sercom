@@ -6,7 +6,7 @@ set(PROJECT_NAME consume_with_fetch_content)
 
 # set the repository and the tag of sercom
 set(SERCOM_GIT_REPOSITORY https://github.com/mustafa-gokce/sercom.git)
-set(SERCOM_GIT_TAG L115)
+set(SERCOM_GIT_TAG v2.0.0)
 
 #####################
 # DO NOT EDIT BELOW #
