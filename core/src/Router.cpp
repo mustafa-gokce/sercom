@@ -1,5 +1,7 @@
 #include "../include/Router.h"
 
+#include <algorithm>
+
 namespace sercom::Router {
 
 namespace {
@@ -17,6 +19,20 @@ namespace {
 
     // expose the link configuration of the ports
     return portLinkConfiguration;
+}
+
+/*
+ * Get the other port of a node with two ports.
+ */
+[[nodiscard]] Definitions::PortType getOtherPortType(const Definitions::PortType portType)
+{
+    // expose the primary port as the other port of the secondary one
+    if (portType == Definitions::PortType::SECONDARY) {
+        return Definitions::PortType::PRIMARY;
+    }
+
+    // expose the secondary port as the other port of the primary one
+    return Definitions::PortType::SECONDARY;
 }
 
 } // namespace
@@ -42,7 +58,10 @@ Router::Router(Transport::Transport &primaryTransport,
                     this->secondaryPort,
                     clock,
                     getPortLinkConfiguration(linkConfiguration, routerConfiguration))
+    , secondaryPortUsed(secondaryTransport != nullptr)
     , statistics()
+    , primaryForwardedMessages()
+    , secondaryForwardedMessages()
 {}
 
 Router::~Router() {}
@@ -169,6 +188,15 @@ void Router::onPortDeliveryConfirmed(const Definitions::PortType portType,
                                      const uint16_t messageCounter,
                                      const uint16_t messageType)
 {
+    // forget a forwarded message that reached the next hop
+    ForwardedMessage *forwardedMessage = this->getForwardedMessageWithMessageCounter(portType,
+                                                                                     messageCounter,
+                                                                                     messageType);
+    if (forwardedMessage != nullptr) {
+        forwardedMessage->used = false;
+        return;
+    }
+
     // own messages leave on the primary port only
     if (portType != Definitions::PortType::PRIMARY) {
         return;
@@ -184,6 +212,21 @@ void Router::onPortDeliveryFailed(const Definitions::PortType portType,
                                   const Definitions::DeliveryFailureType deliveryFailureType,
                                   const Definitions::MessageStatusType remoteMessageStatusType)
 {
+    // forwarded message must not have failed at the next hop
+    ForwardedMessage *forwardedMessage = this->getForwardedMessageWithMessageCounter(portType,
+                                                                                     messageCounter,
+                                                                                     messageType);
+    if (forwardedMessage != nullptr) {
+        // forget the forwarded message
+        forwardedMessage->used = false;
+
+        // keep track of failed forwards
+        ++this->statistics.failedForwardCounter;
+
+        // do not proceed further
+        return;
+    }
+
     // own messages leave on the primary port only
     if (portType != Definitions::PortType::PRIMARY) {
         return;
@@ -208,8 +251,8 @@ Definitions::MessageStatusType Router::handleDirectMessage(const Definitions::Po
     return this->dropUnreachableMessage();
 }
 
-Definitions::MessageStatusType Router::handleRoutedMessage(
-    [[maybe_unused]] const Definitions::PortType portType, const Frame::Frame &frame)
+Definitions::MessageStatusType Router::handleRoutedMessage(const Definitions::PortType portType,
+                                                           const Frame::Frame &frame)
 {
     // node must have an address
     if (this->configuration.nodeAddress == Definitions::UNASSIGNED_ADDRESS) {
@@ -239,8 +282,31 @@ Definitions::MessageStatusType Router::handleRoutedMessage(
         return this->deliverMessage(frame);
     }
 
-    // drop a frame for another node
-    return this->dropUnreachableMessage();
+    // frame for the host must not come from the side of the host
+    if (destinationAddress == Definitions::HOST_ADDRESS
+        && portType == Definitions::PortType::PRIMARY) {
+        return this->dropUnreachableMessage();
+    }
+
+    // time to live must allow one more link
+    if (frame.getTimeToLive() <= 1) {
+        // keep track of expired frames
+        ++this->statistics.expiredFrameCounter;
+
+        // do not proceed further
+        return Definitions::MessageStatusType::EXPIRED;
+    }
+
+    // node must have another port
+    const Definitions::PortType otherPortType = getOtherPortType(portType);
+    if (otherPortType == Definitions::PortType::SECONDARY && !this->secondaryPortUsed) {
+        return this->dropUnreachableMessage();
+    }
+
+    // pass the frame on to the other port with one link less to live
+    Frame::RouteHeader routeHeader = frame.getRouteHeader();
+    --routeHeader.timeToLive;
+    return this->forwardMessage(portType, otherPortType, frame, routeHeader);
 }
 
 Definitions::MessageStatusType Router::deliverMessage(const Frame::Frame &frame)
@@ -250,6 +316,104 @@ Definitions::MessageStatusType Router::deliverMessage(const Frame::Frame &frame)
 
     // notify listeners about the received message
     return this->handler.onReceivedMessage(frame);
+}
+
+Definitions::MessageStatusType Router::forwardMessage(const Definitions::PortType arrivalPortType,
+                                                      const Definitions::PortType departurePortType,
+                                                      const Frame::Frame &frame,
+                                                      const Frame::RouteHeader &routeHeader)
+{
+    // peer of the departure port must read routed frames
+    Link::Link &departureLink = this->getLink(departurePortType);
+    if (departureLink.getPeerVersionType() == Definitions::PeerVersionType::VERSION_1) {
+        return this->dropUnreachableMessage();
+    }
+
+    // previous hop must learn that the window of the next link is full
+    const bool acknowledged = frame.getFlag(Definitions::FrameFlagType::ACK_REQUEST);
+    uint16_t forwardedMessageCounter = 0;
+    const Definitions::SendStatusType sendStatusType
+        = departureLink.sendRoutedMessage(routeHeader,
+                                          frame.getMessageType(),
+                                          frame.getPayload(),
+                                          frame.getPayloadLength(),
+                                          acknowledged,
+                                          forwardedMessageCounter);
+    if (sendStatusType == Definitions::SendStatusType::WINDOW_FULL) {
+        // keep track of busy frames
+        ++this->statistics.busyFrameCounter;
+
+        // do not proceed further
+        return Definitions::MessageStatusType::BUSY;
+    }
+
+    // frame must be taken by the next link
+    if (sendStatusType != Definitions::SendStatusType::SENT) {
+        return this->dropUnreachableMessage();
+    }
+
+    // remember an acknowledged frame until the next hop answers it
+    if (acknowledged) {
+        this->rememberForwardedMessage(arrivalPortType,
+                                       departurePortType,
+                                       forwardedMessageCounter,
+                                       frame.getMessageType());
+    }
+
+    // keep track of forwarded frames
+    ++this->statistics.forwardedFrameCounter;
+
+    // frame is held by the node now
+    return Definitions::MessageStatusType::ACCEPTED;
+}
+
+void Router::rememberForwardedMessage(const Definitions::PortType arrivalPortType,
+                                      const Definitions::PortType departurePortType,
+                                      const uint16_t messageCounter,
+                                      const uint16_t messageType)
+{
+    // free entry must be found, each entry holds a pending message of the departure link
+    std::array<ForwardedMessage, Settings::MaximumPendingFrames> &forwardedMessages
+        = this->getForwardedMessages(departurePortType);
+    const std::array<ForwardedMessage, Settings::MaximumPendingFrames>::iterator &iterator
+        = std::find_if(forwardedMessages.begin(),
+                       forwardedMessages.end(),
+                       [](const ForwardedMessage &forwardedMessage) {
+                           return !forwardedMessage.used;
+                       });
+    if (iterator == forwardedMessages.end()) {
+        return;
+    }
+
+    // remember the forwarded message
+    iterator->used = true;
+    iterator->arrivalPortType = arrivalPortType;
+    iterator->messageCounter = messageCounter;
+    iterator->messageType = messageType;
+}
+
+ForwardedMessage *Router::getForwardedMessageWithMessageCounter(
+    const Definitions::PortType departurePortType,
+    const uint16_t messageCounter,
+    const uint16_t messageType)
+{
+    // forwarded message must be found
+    std::array<ForwardedMessage, Settings::MaximumPendingFrames> &forwardedMessages
+        = this->getForwardedMessages(departurePortType);
+    const std::array<ForwardedMessage, Settings::MaximumPendingFrames>::iterator &iterator
+        = std::find_if(forwardedMessages.begin(),
+                       forwardedMessages.end(),
+                       [messageCounter, messageType](const ForwardedMessage &forwardedMessage) {
+                           return forwardedMessage.used
+                                  && forwardedMessage.messageCounter == messageCounter
+                                  && forwardedMessage.messageType == messageType;
+                       });
+    if (iterator == forwardedMessages.end()) {
+        return nullptr;
+    }
+
+    // expose the forwarded message
+    return &*iterator;
 }
 
 Definitions::MessageStatusType Router::dropUnreachableMessage()
@@ -281,6 +445,18 @@ const Link::Link &Router::getLink(const Definitions::PortType portType) const
 
     // expose the link of the primary port
     return this->primaryLink;
+}
+
+std::array<ForwardedMessage, Settings::MaximumPendingFrames> &Router::getForwardedMessages(
+    const Definitions::PortType departurePortType)
+{
+    // expose the forwarded messages of the secondary port
+    if (departurePortType == Definitions::PortType::SECONDARY) {
+        return this->secondaryForwardedMessages;
+    }
+
+    // expose the forwarded messages of the primary port
+    return this->primaryForwardedMessages;
 }
 
 } // namespace sercom::Router

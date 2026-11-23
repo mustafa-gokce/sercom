@@ -1,6 +1,7 @@
 #ifndef SERCOM_ROUTER_H
 #define SERCOM_ROUTER_H
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -31,8 +32,24 @@ struct RouterConfiguration
 struct RouterStatistics
 {
     uint64_t localFrameCounter = 0;       // frames delivered to the node
+    uint64_t forwardedFrameCounter = 0;   // frames passed on to the other port
+    uint64_t expiredFrameCounter = 0;     // frames dropped at the end of their time to live
     uint64_t unreachableFrameCounter = 0; // frames dropped without a way to their destination
     uint64_t loopedFrameCounter = 0;      // frames dropped that came back to their source
+    uint64_t busyFrameCounter = 0;        // frames refused while the next window was full
+    uint64_t failedForwardCounter = 0;    // forwarded frames that the next hop failed
+};
+
+/*
+ * Forwarded acknowledged message that waits for the answer of the next hop.
+ */
+struct ForwardedMessage
+{
+    bool used = false; // entry holds a message
+    Definitions::PortType arrivalPortType
+        = Definitions::PortType::UNKNOWN; // port the message arrived on
+    uint16_t messageCounter = 0;          // message counter on the link of the next hop
+    uint16_t messageType = 0;             // message type of the message
 };
 
 class Router final : public RoutePort::RoutePortHandler
@@ -156,6 +173,31 @@ private:
     [[nodiscard]] Definitions::MessageStatusType deliverMessage(const Frame::Frame &frame);
 
     /*
+     * Pass a frame on from its arrival port to the departure port with a route header.
+     * Get the answer to the previous hop: accepted when sent, busy when the window is full.
+     */
+    [[nodiscard]] Definitions::MessageStatusType forwardMessage(
+        Definitions::PortType arrivalPortType,
+        Definitions::PortType departurePortType,
+        const Frame::Frame &frame,
+        const Frame::RouteHeader &routeHeader);
+
+    /*
+     * Remember a forwarded acknowledged message until the next hop answers it.
+     */
+    void rememberForwardedMessage(Definitions::PortType arrivalPortType,
+                                  Definitions::PortType departurePortType,
+                                  uint16_t messageCounter,
+                                  uint16_t messageType);
+
+    /*
+     * Find a forwarded message of a departure port with its message counter and message type.
+     * It is null when the message is not a forwarded one.
+     */
+    [[nodiscard]] ForwardedMessage *getForwardedMessageWithMessageCounter(
+        Definitions::PortType departurePortType, uint16_t messageCounter, uint16_t messageType);
+
+    /*
      * Drop a frame that has no way to its destination and get the unreachable status.
      */
     [[nodiscard]] Definitions::MessageStatusType dropUnreachableMessage();
@@ -166,6 +208,12 @@ private:
     [[nodiscard]] Link::Link &getLink(Definitions::PortType portType);
     [[nodiscard]] const Link::Link &getLink(Definitions::PortType portType) const;
 
+    /*
+     * Get the forwarded messages of a departure port, of the primary port for any other port.
+     */
+    [[nodiscard]] std::array<ForwardedMessage, Settings::MaximumPendingFrames> &getForwardedMessages(
+        Definitions::PortType departurePortType);
+
 private:
     const RouterConfiguration configuration;    // router configuration
     Link::LinkHandler &handler;                 // reference to handler
@@ -174,7 +222,12 @@ private:
     RoutePort::RoutePort secondaryPort;         // port away from the host
     Link::Link primaryLink;                     // link of the primary port
     Link::Link secondaryLink;                   // link of the secondary port
+    const bool secondaryPortUsed;               // secondary port has a transport
     RouterStatistics statistics;                // router statistics
+    std::array<ForwardedMessage, Settings::MaximumPendingFrames>
+        primaryForwardedMessages; // messages forwarded on the primary port
+    std::array<ForwardedMessage, Settings::MaximumPendingFrames>
+        secondaryForwardedMessages; // messages forwarded on the secondary port
 };
 
 } // namespace sercom::Router
