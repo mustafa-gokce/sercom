@@ -63,9 +63,9 @@ Run `build/sercom_example_22_trace_a_conversation`. You get:
 host received a ping response: round trip 2 ms, device uptime 1001 ms
 [     1.002] >> #0     PING_RESPONSE                ACK                        len   0  CRC ok
 [     1.003] >> #1     DEVICE_INFO_REQUEST          ACK_REQUEST                len   0  CRC ok
-[     1.005] << #1     DEVICE_INFO_RESPONSE         ACK_REQUEST                len  25  01 00 EC 03 00 00 20 BF 02 00 0E 65 78 61 6D 70 ..  CRC ok
+[     1.005] << #1     DEVICE_INFO_RESPONSE         ACK_REQUEST                len  25  02 00 EC 03 00 00 20 BF 02 00 0E 65 78 61 6D 70 ..  CRC ok
 [     1.005] << #1     DEVICE_INFO_REQUEST          ACK                        len   0  CRC ok
-host received a device info response: example-device, firmware 1.0
+host received a device info response: example-device, firmware 2.0
 [     1.005] >> #1     DEVICE_INFO_RESPONSE         ACK                        len   0  CRC ok
 ```
 
@@ -96,7 +96,7 @@ Take the first line:
 - `host received ...` stands between the trace lines, because the tracer sees the bytes before the
   client handles them.
 - The device info response has 25 payload bytes. The trace prints the first 16
-  (`Settings::MAXIMUM_TRACED_PAYLOAD_SIZE`) and `..` for the rest. You can see the version `01 00`,
+  (`Settings::MAXIMUM_TRACED_PAYLOAD_SIZE`) and `..` for the rest. You can see the version `02 00`,
   the uptime `EC 03 00 00` (1004 ms), the free heap `20 BF 02 00` (180000 bytes), the name length
   `0E` (14) and the first characters of `example-device`.
 
