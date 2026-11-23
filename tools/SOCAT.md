@@ -237,6 +237,12 @@ leftovers from crashes.
   applications; they belong to the noise plumbing.
 - Startup order matters only in that the `socat` bridges must exist before the
   filters open the internal PTYs — hence the `sleep 0.2`.
+- The Qt tools open their port in exclusive mode and end the mode when they close it.
+  A tool that is killed first, for example by the broken pipe of
+  `build/sercom_cli /tmp/ttyV1 --trace stress 30 16 2 | head`, leaves the pseudo terminal
+  exclusive, and every later open of it fails with `OPEN_FAILED` until the link is
+  restarted. `tools/uart_bridge.py` avoids this for the emulator: it links a new pseudo
+  terminal in place of the refused one.
 
 See also: `NOISE.md` for the noise options, what each mode tests, and the
 recommended profiles, and `noisy_link.sh` for the scripted version of this setup
