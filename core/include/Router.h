@@ -33,6 +33,7 @@ struct RouterStatistics
 {
     uint64_t localFrameCounter = 0;       // frames delivered to the node
     uint64_t forwardedFrameCounter = 0;   // frames passed on to the other port
+    uint64_t broadcastFrameCounter = 0;   // broadcast frames delivered to the node
     uint64_t expiredFrameCounter = 0;     // frames dropped at the end of their time to live
     uint64_t unreachableFrameCounter = 0; // frames dropped without a way to their destination
     uint64_t loopedFrameCounter = 0;      // frames dropped that came back to their source
@@ -166,6 +167,13 @@ private:
      */
     [[nodiscard]] Definitions::MessageStatusType handleRoutedMessage(Definitions::PortType portType,
                                                                      const Frame::Frame &frame);
+
+    /*
+     * Deliver a broadcast frame and pass a copy on to the other port while it has links to live.
+     * Get the message status of the handler, the copy is never answered.
+     */
+    [[nodiscard]] Definitions::MessageStatusType handleBroadcastMessage(
+        Definitions::PortType portType, const Frame::Frame &frame);
 
     /*
      * Deliver a frame to the node and get the message status of the handler.

@@ -282,6 +282,11 @@ Definitions::MessageStatusType Router::handleRoutedMessage(const Definitions::Po
         return this->deliverMessage(frame);
     }
 
+    // deliver a broadcast frame and pass it on
+    if (destinationAddress == Definitions::BROADCAST_ADDRESS) {
+        return this->handleBroadcastMessage(portType, frame);
+    }
+
     // frame for the host must not come from the side of the host
     if (destinationAddress == Definitions::HOST_ADDRESS
         && portType == Definitions::PortType::PRIMARY) {
@@ -307,6 +312,36 @@ Definitions::MessageStatusType Router::handleRoutedMessage(const Definitions::Po
     Frame::RouteHeader routeHeader = frame.getRouteHeader();
     --routeHeader.timeToLive;
     return this->forwardMessage(portType, otherPortType, frame, routeHeader);
+}
+
+Definitions::MessageStatusType Router::handleBroadcastMessage(const Definitions::PortType portType,
+                                                              const Frame::Frame &frame)
+{
+    // keep track of broadcast frames
+    ++this->statistics.broadcastFrameCounter;
+
+    // deliver the broadcast frame to the node
+    const Definitions::MessageStatusType messageStatusType = this->handler.onReceivedMessage(frame);
+
+    // time to live must allow a copy for the other port
+    if (frame.getTimeToLive() <= 1) {
+        return messageStatusType;
+    }
+
+    // node must have another port for the copy
+    const Definitions::PortType otherPortType = getOtherPortType(portType);
+    if (otherPortType == Definitions::PortType::SECONDARY && !this->secondaryPortUsed) {
+        return messageStatusType;
+    }
+
+    // pass a copy with one link less to live on to the other port at best effort
+    Frame::RouteHeader routeHeader = frame.getRouteHeader();
+    --routeHeader.timeToLive;
+    [[maybe_unused]] const Definitions::MessageStatusType copyMessageStatusType
+        = this->forwardMessage(portType, otherPortType, frame, routeHeader);
+
+    // answer with the message status of the node
+    return messageStatusType;
 }
 
 Definitions::MessageStatusType Router::deliverMessage(const Frame::Frame &frame)
