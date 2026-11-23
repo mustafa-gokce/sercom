@@ -1,6 +1,7 @@
 """Pass the build values of CMakeLists.txt to a firmware build and mark the framework headers as system headers.
 
     pio run -d firmware/esp32
+    pio run -d firmware/stm32f4
 
 The platformio.ini of every firmware project runs this script before the build, so every firmware and the host tools
 share one set of build values.
