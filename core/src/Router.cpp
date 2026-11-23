@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "../include/ByteCodec.h"
+
 namespace sercom::Router {
 
 namespace {
@@ -218,10 +220,14 @@ void Router::onPortDeliveryFailed(const Definitions::PortType portType,
                                                                                      messageType);
     if (forwardedMessage != nullptr) {
         // forget the forwarded message
+        const ForwardedMessage failedMessage = *forwardedMessage;
         forwardedMessage->used = false;
 
         // keep track of failed forwards
         ++this->statistics.failedForwardCounter;
+
+        // report the failed forward to the source of the message
+        this->sendRouteFailureReport(failedMessage, deliveryFailureType, remoteMessageStatusType);
 
         // do not proceed further
         return;
@@ -392,7 +398,8 @@ Definitions::MessageStatusType Router::forwardMessage(const Definitions::PortTyp
         this->rememberForwardedMessage(arrivalPortType,
                                        departurePortType,
                                        forwardedMessageCounter,
-                                       frame.getMessageType());
+                                       frame,
+                                       routeHeader);
     }
 
     // keep track of forwarded frames
@@ -405,7 +412,8 @@ Definitions::MessageStatusType Router::forwardMessage(const Definitions::PortTyp
 void Router::rememberForwardedMessage(const Definitions::PortType arrivalPortType,
                                       const Definitions::PortType departurePortType,
                                       const uint16_t messageCounter,
-                                      const uint16_t messageType)
+                                      const Frame::Frame &frame,
+                                      const Frame::RouteHeader &routeHeader)
 {
     // free entry must be found, each entry holds a pending message of the departure link
     std::array<ForwardedMessage, Settings::MaximumPendingFrames> &forwardedMessages
@@ -420,11 +428,19 @@ void Router::rememberForwardedMessage(const Definitions::PortType arrivalPortTyp
         return;
     }
 
-    // remember the forwarded message
+    // remember the forwarded message with its route
     iterator->used = true;
     iterator->arrivalPortType = arrivalPortType;
     iterator->messageCounter = messageCounter;
-    iterator->messageType = messageType;
+    iterator->messageType = frame.getMessageType();
+    iterator->sourceAddress = routeHeader.sourceAddress;
+    iterator->destinationAddress = routeHeader.destinationAddress;
+
+    // quote the first payload bytes
+    const size_t quoteLength = std::min(static_cast<size_t>(frame.getPayloadLength()),
+                                        Definitions::MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE);
+    std::copy_n(frame.getPayload(), quoteLength, iterator->quote.begin());
+    iterator->quoteLength = static_cast<uint8_t>(quoteLength);
 }
 
 ForwardedMessage *Router::getForwardedMessageWithMessageCounter(
@@ -449,6 +465,62 @@ ForwardedMessage *Router::getForwardedMessageWithMessageCounter(
 
     // expose the forwarded message
     return &*iterator;
+}
+
+void Router::sendRouteFailureReport(const ForwardedMessage &forwardedMessage,
+                                    const Definitions::DeliveryFailureType deliveryFailureType,
+                                    const Definitions::MessageStatusType remoteMessageStatusType)
+{
+    // failed message must be neither a report nor a broadcast
+    if (forwardedMessage.messageType == Definitions::ROUTE_FAILURE_REPORT_MESSAGE_TYPE
+        || forwardedMessage.destinationAddress == Definitions::BROADCAST_ADDRESS) {
+        return;
+    }
+
+    // source must be a node that can receive the report
+    if (forwardedMessage.sourceAddress == Definitions::UNASSIGNED_ADDRESS
+        || forwardedMessage.sourceAddress == Definitions::BROADCAST_ADDRESS
+        || forwardedMessage.sourceAddress == this->configuration.proxyAddress) {
+        return;
+    }
+
+    // peer of the arrival port must read routed frames
+    Link::Link &arrivalLink = this->getLink(forwardedMessage.arrivalPortType);
+    if (arrivalLink.getPeerVersionType() == Definitions::PeerVersionType::VERSION_1) {
+        return;
+    }
+
+    // write the route failure report with the quote of the failed message
+    static constexpr size_t maximumReportSize = Definitions::ROUTE_FAILURE_REPORT_SIZE
+                                                + Definitions::MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE;
+    std::array<uint8_t, maximumReportSize> report = std::array<uint8_t, maximumReportSize>();
+    ByteCodec::ByteWriter byteWriter(report.data(), report.size());
+    byteWriter.writeUint8(forwardedMessage.destinationAddress);
+    byteWriter.writeUint16(forwardedMessage.messageType);
+    byteWriter.writeUint8(static_cast<uint8_t>(deliveryFailureType));
+    byteWriter.writeUint8(Definitions::fromMessageStatusType(remoteMessageStatusType));
+    byteWriter.writeUint8(forwardedMessage.quoteLength);
+    byteWriter.writeBytes(forwardedMessage.quote.data(), forwardedMessage.quoteLength);
+
+    // route failure report must be sent to the source without acknowledgement
+    Frame::RouteHeader routeHeader;
+    routeHeader.sourceAddress = this->configuration.nodeAddress;
+    routeHeader.destinationAddress = forwardedMessage.sourceAddress;
+    routeHeader.timeToLive = this->configuration.timeToLive;
+    uint16_t messageCounter = 0;
+    const Definitions::SendStatusType sendStatusType
+        = arrivalLink.sendRoutedMessage(routeHeader,
+                                        Definitions::ROUTE_FAILURE_REPORT_MESSAGE_TYPE,
+                                        report.data(),
+                                        byteWriter.getSize(),
+                                        false,
+                                        messageCounter);
+    if (sendStatusType != Definitions::SendStatusType::SENT) {
+        return;
+    }
+
+    // keep track of route failure reports
+    ++this->statistics.outgoingReportCounter;
 }
 
 Definitions::MessageStatusType Router::dropUnreachableMessage()

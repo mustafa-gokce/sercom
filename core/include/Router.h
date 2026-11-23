@@ -39,6 +39,7 @@ struct RouterStatistics
     uint64_t loopedFrameCounter = 0;      // frames dropped that came back to their source
     uint64_t busyFrameCounter = 0;        // frames refused while the next window was full
     uint64_t failedForwardCounter = 0;    // forwarded frames that the next hop failed
+    uint64_t outgoingReportCounter = 0;   // sent route failure reports
 };
 
 /*
@@ -51,6 +52,11 @@ struct ForwardedMessage
         = Definitions::PortType::UNKNOWN; // port the message arrived on
     uint16_t messageCounter = 0;          // message counter on the link of the next hop
     uint16_t messageType = 0;             // message type of the message
+    uint8_t sourceAddress = Definitions::UNASSIGNED_ADDRESS;      // source of the message
+    uint8_t destinationAddress = Definitions::UNASSIGNED_ADDRESS; // destination of the message
+    uint8_t quoteLength = 0;                                      // number of quoted payload bytes
+    std::array<uint8_t, Definitions::MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE>
+        quote{}; // first payload bytes of the message
 };
 
 class Router final : public RoutePort::RoutePortHandler
@@ -191,12 +197,13 @@ private:
         const Frame::RouteHeader &routeHeader);
 
     /*
-     * Remember a forwarded acknowledged message until the next hop answers it.
+     * Remember a forwarded acknowledged message and its quote until the next hop answers it.
      */
     void rememberForwardedMessage(Definitions::PortType arrivalPortType,
                                   Definitions::PortType departurePortType,
                                   uint16_t messageCounter,
-                                  uint16_t messageType);
+                                  const Frame::Frame &frame,
+                                  const Frame::RouteHeader &routeHeader);
 
     /*
      * Find a forwarded message of a departure port with its message counter and message type.
@@ -204,6 +211,14 @@ private:
      */
     [[nodiscard]] ForwardedMessage *getForwardedMessageWithMessageCounter(
         Definitions::PortType departurePortType, uint16_t messageCounter, uint16_t messageType);
+
+    /*
+     * Send a route failure report about a forwarded message back on its arrival port to its source.
+     * No report is sent about a report or a broadcast, or to a source that cannot receive it.
+     */
+    void sendRouteFailureReport(const ForwardedMessage &forwardedMessage,
+                                Definitions::DeliveryFailureType deliveryFailureType,
+                                Definitions::MessageStatusType remoteMessageStatusType);
 
     /*
      * Drop a frame that has no way to its destination and get the unreachable status.
