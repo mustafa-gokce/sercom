@@ -25,8 +25,14 @@ if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
 endif()
 
 # build options
-option(SERCOM_BUILD_BINARIES  "Build the binaries in the project"    ${SERCOM_IS_MAIN_PROJECT})
-option(SERCOM_BUILD_TESTS     "Build the tests in the project"       ${SERCOM_IS_MAIN_PROJECT})
+option(SERCOM_BUILD_BINARIES  "Build the binaries in the project"     ${SERCOM_IS_MAIN_PROJECT})
+option(SERCOM_BUILD_TESTS     "Build the tests in the project"        ${SERCOM_IS_MAIN_PROJECT})
+option(SERCOM_BUILD_HOST      "Build the host library in the project" ${SERCOM_IS_MAIN_PROJECT})
+
+# check the host library of the binaries and the tests
+if ((SERCOM_BUILD_BINARIES OR SERCOM_BUILD_TESTS) AND NOT SERCOM_BUILD_HOST)
+    message(FATAL_ERROR "The binaries and the tests need the host library, turn SERCOM_BUILD_HOST on")
+endif()
 
 # set project name
 project(${PROJECT_NAME} LANGUAGES CXX)
@@ -65,8 +71,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
 # handle Qt targets
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
+if (SERCOM_BUILD_HOST)
+    set(CMAKE_AUTOMOC ON)
+    set(CMAKE_AUTORCC ON)
+endif()
 
 # disable file prefix check
 set(CATCH_ENABLE_REPRODUCIBLE_BUILD OFF)
@@ -77,8 +85,15 @@ set(CATCH_INSTALL_DOCS OFF)
 set(CATCH_INSTALL_EXTRAS OFF)
 
 # find Qt packages of the host targets
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core SerialPort Test)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core SerialPort Test)
+if (SERCOM_BUILD_HOST)
+    find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core SerialPort)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core SerialPort)
+endif()
+
+# find Qt package of the tests
+if (SERCOM_BUILD_TESTS)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
+endif()
 
 # include external library dependencies
 if (SERCOM_BUILD_TESTS)
@@ -160,24 +175,26 @@ target_link_libraries(${PROJECT_NAME}_firmware_lib PRIVATE
 )
 
 # create host library
-add_library(${PROJECT_NAME}_host_lib
-    host/include/HostSettings.h host/src/HostSettings.cpp
+if (SERCOM_BUILD_HOST)
+    add_library(${PROJECT_NAME}_host_lib
+        host/include/HostSettings.h host/src/HostSettings.cpp
 
-    host/include/HostUtils.h host/src/HostUtils.cpp
-    host/include/SerialPort.h host/src/SerialPort.cpp
+        host/include/HostUtils.h host/src/HostUtils.cpp
+        host/include/SerialPort.h host/src/SerialPort.cpp
 
-    host/include/CliApplication.h host/src/CliApplication.cpp
-    host/include/SimulatedPlatform.h host/src/SimulatedPlatform.cpp
-    host/include/DumpHandler.h host/src/DumpHandler.cpp
-    host/include/DeviceSimulator.h host/src/DeviceSimulator.cpp
-)
-target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
-    ${PROJECT_NAME}_settings
-    ${PROJECT_NAME}_core_lib
-    ${PROJECT_NAME}_app_lib
-    Qt${QT_VERSION_MAJOR}::Core
-    Qt${QT_VERSION_MAJOR}::SerialPort
-)
+        host/include/CliApplication.h host/src/CliApplication.cpp
+        host/include/SimulatedPlatform.h host/src/SimulatedPlatform.cpp
+        host/include/DumpHandler.h host/src/DumpHandler.cpp
+        host/include/DeviceSimulator.h host/src/DeviceSimulator.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_host_lib PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::SerialPort
+    )
+endif()
 
 # create tool executables
 if (SERCOM_BUILD_BINARIES)
@@ -715,7 +732,7 @@ if (CMAKE_CXX_FLAGS MATCHES "fuzzer-no-link" AND NOT CMAKE_CXX_COMPILER_ID MATCH
 endif()
 
 # check the Qt version of the host targets
-if (NOT Qt${QT_VERSION_MAJOR}_VERSION VERSION_EQUAL 5.12.12)
+if (SERCOM_BUILD_HOST AND NOT Qt${QT_VERSION_MAJOR}_VERSION VERSION_EQUAL 5.12.12)
     message(FATAL_ERROR "The host targets need Qt 5.12.12 but found Qt ${Qt${QT_VERSION_MAJOR}_VERSION}, "
                         "point CMAKE_PREFIX_PATH at a Qt 5.12.12 install such as "
                         "-DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64 or -DCMAKE_PREFIX_PATH=C:/Qt/5.12.12/mingw73_64")
@@ -731,5 +748,7 @@ else()
 endif()
 message(STATUS ">>> APP_VERSION_STRING  : ${APP_VERSION_STRING}    ")
 message(STATUS ">>> APP_GIT_HASH        : ${APP_GIT_HASH_SHORT}    ")
-message(STATUS ">>> QT_VERSION          : ${Qt${QT_VERSION_MAJOR}_VERSION}    ")
+if (SERCOM_BUILD_HOST)
+    message(STATUS ">>> QT_VERSION          : ${Qt${QT_VERSION_MAJOR}_VERSION}    ")
+endif()
 message(STATUS "###################################################")
