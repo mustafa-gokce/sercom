@@ -1352,3 +1352,160 @@ TEST_CASE_METHOD(TestRouter,
     REQUIRE(lowerRouter->getStatistics().outgoingReportCounter == static_cast<uint64_t>(0));
     REQUIRE(endRouter->getStatistics().unreachableFrameCounter == static_cast<uint64_t>(2));
 }
+
+TEST_CASE_METHOD(TestRouter,
+                 "A router stands in for a neighbour without an address in both directions",
+                 "[Router][testProxy]")
+{
+    // send a message of the host to the end node without an address behind the proxy of the lower node
+    createRouters(UpperNodeAddress,
+                  LowerNodeAddress,
+                  EndNodeAddress,
+                  Definitions::UNASSIGNED_ADDRESS);
+    REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the direct frame on the last hop and the delivery to the end node
+    const std::vector<Frame::Frame> lowerFrames = lowerSecondaryTransport.getSentFrames();
+    REQUIRE(lowerFrames.size() == static_cast<size_t>(1));
+    REQUIRE(lowerFrames.at(0).getVersion() == Definitions::PROTOCOL_VERSION);
+    REQUIRE(lowerFrames.at(0).getFlag(Definitions::FrameFlagType::ACK_REQUEST));
+    const std::vector<Frame::Frame> endMessages = endHandler.getMessages();
+    REQUIRE(endMessages.size() == static_cast<size_t>(1));
+    REQUIRE_FALSE(endMessages.at(0).getRouted());
+    REQUIRE(lowerRouter->getPeerVersionType(Definitions::PortType::SECONDARY)
+            == Definitions::PeerVersionType::VERSION_1);
+
+    // answer from the end node in a direct frame
+    REQUIRE(endRouter->sendMessage(Definitions::UNASSIGNED_ADDRESS,
+                                   TestMessageType,
+                                   nullptr,
+                                   0,
+                                   true,
+                                   messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the answer at the host as a routed frame of the proxy address
+    const std::vector<Frame::Frame> hostMessages = hostHandler.getMessages();
+    REQUIRE(hostMessages.size() == static_cast<size_t>(1));
+    REQUIRE(hostMessages.at(0).getSourceAddress() == EndNodeAddress);
+    REQUIRE(hostMessages.at(0).getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE - 1);
+    REQUIRE(endHandler.getDeliveryResults().size() == static_cast<size_t>(1));
+    REQUIRE(endHandler.getDeliveryResults().at(0).confirmed);
+
+    // hand the lower node a message of the upper node for the end node and answer it
+    const std::vector<uint8_t> upperFrame = getRoutedFrameData(0x11,
+                                                               1,
+                                                               UpperNodeAddress,
+                                                               EndNodeAddress,
+                                                               Settings::DEFAULT_TIME_TO_LIVE);
+    lowerRouter->onReceivedData(Definitions::PortType::PRIMARY,
+                                upperFrame.data(),
+                                upperFrame.size());
+    pump();
+    REQUIRE(endRouter->sendMessage(Definitions::UNASSIGNED_ADDRESS,
+                                   TestMessageType,
+                                   nullptr,
+                                   0,
+                                   false,
+                                   messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check that the answer goes to the latest source of a frame for the end node
+    const std::vector<Frame::Frame> upperMessages = upperHandler.getMessages();
+    REQUIRE(upperMessages.size() == static_cast<size_t>(1));
+    REQUIRE(upperMessages.at(0).getSourceAddress() == EndNodeAddress);
+    REQUIRE(hostHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(lowerRouter->getStatistics().proxiedFrameCounter == static_cast<uint64_t>(4));
+}
+
+TEST_CASE_METHOD(
+    TestRouter,
+    "A neighbour of version 1 is reached through the proxy after a routed frame timed out",
+    "[Router][testProxyAfterReflash]")
+{
+    // learn that the end node with an address behind the lower node reads routed frames
+    createRouters(UpperNodeAddress, LowerNodeAddress, EndNodeAddress, EndNodeAddress);
+    REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE(endHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(lowerRouter->getPeerVersionType(Definitions::PortType::SECONDARY)
+            == Definitions::PeerVersionType::VERSION_2);
+
+    // replace the end node by a device of version 1 that drops every routed frame as noise
+    endRouter.reset(new Router::Router(endTransport,
+                                       nullptr,
+                                       endHandler,
+                                       clock,
+                                       getLinkConfiguration(),
+                                       getRouterConfiguration(Definitions::UNASSIGNED_ADDRESS,
+                                                              Definitions::UNASSIGNED_ADDRESS)));
+    lowerSecondaryTransport.setFilter([]([[maybe_unused]] const size_t sendCount,
+                                         const std::vector<uint8_t> &data) noexcept {
+        return Frame::Frame(data.data(), data.size()).getVersion() == Definitions::PROTOCOL_VERSION;
+    });
+
+    // let a routed message of the host time out on the last hop
+    REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+    const Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    for (uint8_t retransmission = 0; retransmission <= linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        advance(linkConfiguration.retransmitTimeout);
+    }
+
+    // check the report of the timeout and the unknown version of the new neighbour
+    REQUIRE(hostHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(hostHandler.getMessages().at(0).getMessageType()
+            == Definitions::ROUTE_FAILURE_REPORT_MESSAGE_TYPE);
+    REQUIRE(lowerRouter->getPeerVersionType(Definitions::PortType::SECONDARY)
+            == Definitions::PeerVersionType::UNKNOWN);
+
+    // check that the next message reaches the device in a direct frame
+    REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE(endHandler.getMessages().size() == static_cast<size_t>(2));
+    REQUIRE_FALSE(endHandler.getMessages().back().getRouted());
+    REQUIRE(lowerRouter->getPeerVersionType(Definitions::PortType::SECONDARY)
+            == Definitions::PeerVersionType::VERSION_1);
+}
+
+TEST_CASE_METHOD(TestRouter,
+                 "A router without an address passes nothing on",
+                 "[Router][testUnaddressedRouter]")
+{
+    // send a message of the host to the end node through a lower node without an address
+    createRouters(UpperNodeAddress, Definitions::UNASSIGNED_ADDRESS, EndNodeAddress, EndNodeAddress);
+    REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+
+    // send a direct message of the end node up to the lower node
+    REQUIRE(endRouter->sendMessage(Definitions::UNASSIGNED_ADDRESS,
+                                   TestMessageType,
+                                   nullptr,
+                                   0,
+                                   true,
+                                   messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check that neither message passed the lower node
+    REQUIRE(endHandler.getMessages().empty());
+    REQUIRE(upperHandler.getMessages().empty());
+    REQUIRE(lowerHandler.getMessages().empty());
+    REQUIRE(lowerRouter->getStatistics().forwardedFrameCounter == static_cast<uint64_t>(0));
+    REQUIRE(lowerRouter->getStatistics().unreachableFrameCounter == static_cast<uint64_t>(2));
+    REQUIRE(endHandler.getDeliveryResults().at(0).remoteMessageStatusType
+            == Definitions::MessageStatusType::UNREACHABLE);
+
+    // check the report of the upper node about the dropped message of the host
+    const std::vector<Frame::Frame> hostMessages = hostHandler.getMessages();
+    REQUIRE(hostMessages.size() == static_cast<size_t>(1));
+    checkReport(hostMessages.at(0),
+                UpperNodeAddress,
+                std::vector<uint8_t>(
+                    {EndNodeAddress, 0x00, 0x01, 0x02, 0x06, 0x03, 0x10, 0x20, 0x30}));
+}
