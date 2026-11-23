@@ -26,10 +26,10 @@ Stm32Platform::~Stm32Platform() {}
 
 void Stm32Platform::begin()
 {
-    // enable the clocks of port A, both USARTs and the ADC
+    // enable the clocks of port A, the three USARTs and the ADC
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
     RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
-    RCC->APB2ENR |= RCC_APB2ENR_USART1EN | RCC_APB2ENR_ADC1EN;
+    RCC->APB2ENR |= RCC_APB2ENR_USART1EN | RCC_APB2ENR_USART6EN | RCC_APB2ENR_ADC1EN;
 
     // wait until the clocks run before the first register access
     __DSB();
