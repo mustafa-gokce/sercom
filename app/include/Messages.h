@@ -8,6 +8,7 @@
 #include <limits>
 #include <string_view>
 
+#include "../../core/include/Definitions.h"
 #include "../../core/include/Frame.h"
 #include "../../core/include/Settings.h"
 
@@ -97,6 +98,7 @@ public:
     /*
      * Message of the demo device protocol that keeps its payload bytes.
      * A message built from more bytes than a payload holds stays empty.
+     * A message built from a routed frame keeps the address of its source.
      */
     GenericMessage();
     explicit GenericMessage(const uint8_t *data, size_t size);
@@ -122,9 +124,15 @@ public:
      */
     [[nodiscard]] size_t getPayloadLength() const;
 
+    /*
+     * Get the address of the node that sent the message, unassigned for a direct frame.
+     */
+    [[nodiscard]] uint8_t getSourceAddress() const;
+
 protected:
     std::array<uint8_t, Settings::MaximumPayloadSize> payload; // payload as byte array
     size_t payloadLength;                                      // payload length in bytes
+    uint8_t sourceAddress;                                     // node that sent the message
 };
 
 class PingRequest final : public GenericMessage

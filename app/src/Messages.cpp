@@ -139,11 +139,13 @@ std::string_view getLogLevelTypeText(const LogLevelType logLevelType)
 GenericMessage::GenericMessage()
     : payload()
     , payloadLength(0)
+    , sourceAddress(Definitions::UNASSIGNED_ADDRESS)
 {}
 
 GenericMessage::GenericMessage(const uint8_t *data, const size_t size)
     : payload()
     , payloadLength(0)
+    , sourceAddress(Definitions::UNASSIGNED_ADDRESS)
 {
     // data must fit into a payload of this build
     if (size > this->payload.size()) {
@@ -162,7 +164,10 @@ GenericMessage::GenericMessage(const uint8_t *data, const size_t size)
 
 GenericMessage::GenericMessage(const Frame::Frame &frame)
     : GenericMessage(frame.getPayload(), frame.getPayloadLength())
-{}
+{
+    // keep the address of the source of a routed frame
+    this->sourceAddress = frame.getSourceAddress();
+}
 
 const uint8_t *GenericMessage::getPayload() const
 {
@@ -174,6 +179,12 @@ size_t GenericMessage::getPayloadLength() const
 {
     // expose the payload length
     return this->payloadLength;
+}
+
+uint8_t GenericMessage::getSourceAddress() const
+{
+    // expose the address of the source
+    return this->sourceAddress;
 }
 
 PingRequest::PingRequest(const std::chrono::milliseconds requestTimestamp)
