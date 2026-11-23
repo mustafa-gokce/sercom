@@ -20,6 +20,9 @@ DeviceClient::DeviceClient(Transport::Transport &transport,
     , nextPendingPingIndex(0)
     , ignoredPingResponseCounter(0)
     , pendingPings()
+    , nextSentRequestIndex(0)
+    , routeFailureReportCounter(0)
+    , sentRequests()
 {}
 
 DeviceClient::~DeviceClient() {}
@@ -166,6 +169,12 @@ uint64_t DeviceClient::getIgnoredPingResponseCounter() const
     return this->ignoredPingResponseCounter;
 }
 
+uint64_t DeviceClient::getRouteFailureReportCounter() const
+{
+    // expose the number of received route failure reports
+    return this->routeFailureReportCounter;
+}
+
 Definitions::MessageStatusType DeviceClient::onReceivedMessage(const Frame::Frame &frame)
 {
     // handle the message by its message type
@@ -198,6 +207,11 @@ Definitions::MessageStatusType DeviceClient::onReceivedMessage(const Frame::Fram
     // handle an echo response
     case Messages::MessageType::ECHO_RESPONSE: {
         return this->handleEchoResponse(frame);
+    }
+
+    // handle a route failure report response
+    case Messages::MessageType::ROUTE_FAILURE_REPORT_RESPONSE: {
+        return this->handleRouteFailureReportResponse(frame);
     }
 
     // do not handle requests and unknown messages
@@ -340,18 +354,61 @@ Definitions::MessageStatusType DeviceClient::handleEchoResponse(const Frame::Fra
     return Definitions::MessageStatusType::ACCEPTED;
 }
 
+Definitions::MessageStatusType DeviceClient::handleRouteFailureReportResponse(
+    const Frame::Frame &frame)
+{
+    // get route failure report response arguments
+    const Messages::RouteFailureReportResponse routeFailureReportResponse(frame);
+    if (!routeFailureReportResponse.getLikelyValid()) {
+        return Definitions::MessageStatusType::MALFORMED_PAYLOAD;
+    }
+
+    // keep track of route failure reports
+    ++this->routeFailureReportCounter;
+
+    // request that the report quotes must be found
+    SentRequest *sentRequest = this->getSentRequestWithQuote(routeFailureReportResponse);
+    if (sentRequest == nullptr) {
+        return Definitions::MessageStatusType::ACCEPTED;
+    }
+
+    // forget the failed request
+    sentRequest->used = false;
+
+    // notify listeners about the failed request
+    this->handler.onRequestFailed(sentRequest->messageCounter,
+                                  Messages::toMessageType(sentRequest->messageType),
+                                  routeFailureReportResponse.getDeliveryFailureType(),
+                                  routeFailureReportResponse.getMessageStatusType());
+
+    // route failure report response handled successfully
+    return Definitions::MessageStatusType::ACCEPTED;
+}
+
 Definitions::SendStatusType DeviceClient::sendRequest(const Messages::MessageType messageType,
                                                       const uint8_t *payload,
                                                       const size_t payloadLength,
                                                       uint16_t &messageCounter)
 {
-    // send the request acknowledged to the destination
-    return this->router.sendMessage(this->destinationAddress,
-                                    Messages::fromMessageType(messageType),
-                                    payload,
-                                    payloadLength,
-                                    true,
-                                    messageCounter);
+    // request must be sent acknowledged to the destination
+    const Definitions::SendStatusType sendStatusType
+        = this->router.sendMessage(this->destinationAddress,
+                                   Messages::fromMessageType(messageType),
+                                   payload,
+                                   payloadLength,
+                                   true,
+                                   messageCounter);
+    if (sendStatusType != Definitions::SendStatusType::SENT) {
+        return sendStatusType;
+    }
+
+    // remember a request to a destination for a route failure report about it
+    if (this->destinationAddress != Definitions::UNASSIGNED_ADDRESS) {
+        this->rememberSentRequest(messageType, payload, payloadLength, messageCounter);
+    }
+
+    // request sent successfully
+    return Definitions::SendStatusType::SENT;
 }
 
 void DeviceClient::rememberPendingPing(const std::chrono::milliseconds requestTimestamp)
@@ -364,6 +421,54 @@ void DeviceClient::rememberPendingPing(const std::chrono::milliseconds requestTi
 
     // move to the next pending ping of the ring
     this->nextPendingPingIndex = (this->nextPendingPingIndex + 1) % this->pendingPings.size();
+}
+
+void DeviceClient::rememberSentRequest(const Messages::MessageType messageType,
+                                       const uint8_t *payload,
+                                       const size_t payloadLength,
+                                       const uint16_t messageCounter)
+{
+    // overwrite the oldest sent request
+    SentRequest &sentRequest = this->sentRequests[this->nextSentRequestIndex];
+    sentRequest.used = true;
+    sentRequest.messageCounter = messageCounter;
+    sentRequest.messageType = Messages::fromMessageType(messageType);
+    sentRequest.destinationAddress = this->destinationAddress;
+
+    // quote the first payload bytes as a router does
+    const size_t quoteLength = std::min(payloadLength,
+                                        Definitions::MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE);
+    std::copy_n(payload, quoteLength, sentRequest.quote.begin());
+    sentRequest.quoteLength = static_cast<uint8_t>(quoteLength);
+
+    // move to the next sent request of the ring
+    this->nextSentRequestIndex = (this->nextSentRequestIndex + 1) % this->sentRequests.size();
+}
+
+SentRequest *DeviceClient::getSentRequestWithQuote(
+    const Messages::RouteFailureReportResponse &routeFailureReportResponse)
+{
+    // iterate over the sent requests from the newest to the oldest
+    const size_t sentRequestCount = this->sentRequests.size();
+    for (size_t age = 1; age <= sentRequestCount; ++age) {
+        // expose the request with the message type, the destination and the quote of the report
+        SentRequest &sentRequest
+            = this->sentRequests[(this->nextSentRequestIndex + sentRequestCount - age)
+                                 % sentRequestCount];
+        const size_t quoteLength = routeFailureReportResponse.getQuoteLength();
+        if (sentRequest.used
+            && sentRequest.messageType == routeFailureReportResponse.getMessageType()
+            && sentRequest.destinationAddress == routeFailureReportResponse.getDestinationAddress()
+            && sentRequest.quoteLength == quoteLength
+            && std::equal(sentRequest.quote.cbegin(),
+                          sentRequest.quote.cbegin() + quoteLength,
+                          routeFailureReportResponse.getQuote())) {
+            return &sentRequest;
+        }
+    }
+
+    // expose no request for a report that quotes none
+    return nullptr;
 }
 
 } // namespace sercom::DeviceClient

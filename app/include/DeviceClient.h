@@ -28,6 +28,20 @@ struct PendingPing
     bool broadcast = false;                       // ping request went to every node
 };
 
+/*
+ * Request to a destination that a route failure report may quote.
+ */
+struct SentRequest
+{
+    bool used = false;                                            // entry holds a request
+    uint16_t messageCounter = 0;                                  // message counter of the request
+    uint16_t messageType = 0;                                     // message type of the request
+    uint8_t destinationAddress = Definitions::UNASSIGNED_ADDRESS; // destination of the request
+    uint8_t quoteLength = 0;                                      // number of quoted payload bytes
+    std::array<uint8_t, Definitions::MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE>
+        quote{}; // first payload bytes of the request
+};
+
 class DeviceClientHandler
 {
 public:
@@ -197,6 +211,11 @@ public:
      */
     [[nodiscard]] uint64_t getIgnoredPingResponseCounter() const;
 
+    /*
+     * Get the number of received route failure reports.
+     */
+    [[nodiscard]] uint64_t getRouteFailureReportCounter() const;
+
 private:
     /*
      * Listen for a message of the device and get the message status that answers it.
@@ -252,6 +271,13 @@ private:
     [[nodiscard]] Definitions::MessageStatusType handleEchoResponse(const Frame::Frame &frame);
 
     /*
+     * Handle a route failure report response and fail the newest request that it quotes.
+     * A report that quotes no remembered request is accepted and counted only.
+     */
+    [[nodiscard]] Definitions::MessageStatusType handleRouteFailureReportResponse(
+        const Frame::Frame &frame);
+
+    /*
      * Send an acknowledged request and store its message counter.
      */
     [[nodiscard]] Definitions::SendStatusType sendRequest(Messages::MessageType messageType,
@@ -264,6 +290,21 @@ private:
      */
     void rememberPendingPing(std::chrono::milliseconds requestTimestamp);
 
+    /*
+     * Remember a request to a destination in place of the oldest sent request.
+     */
+    void rememberSentRequest(Messages::MessageType messageType,
+                             const uint8_t *payload,
+                             size_t payloadLength,
+                             uint16_t messageCounter);
+
+    /*
+     * Find the newest sent request with the type, the destination and the quote of a report.
+     * It is null when no such request is remembered.
+     */
+    [[nodiscard]] SentRequest *getSentRequestWithQuote(
+        const Messages::RouteFailureReportResponse &routeFailureReportResponse);
+
 private:
     const Clock::Clock &clock;           // reference for clock
     DeviceClientHandler &handler;        // reference to handler
@@ -272,6 +313,9 @@ private:
     size_t nextPendingPingIndex;         // pending ping to overwrite next
     uint64_t ignoredPingResponseCounter; // ping responses without a pending ping
     std::array<PendingPing, AppSettings::PING_HISTORY_SIZE> pendingPings; // sent ping requests
+    size_t nextSentRequestIndex;        // sent request to overwrite next
+    uint64_t routeFailureReportCounter; // received route failure reports
+    std::array<SentRequest, AppSettings::REQUEST_HISTORY_SIZE> sentRequests; // sent requests
 };
 
 } // namespace sercom::DeviceClient
