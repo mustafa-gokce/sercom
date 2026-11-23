@@ -136,10 +136,11 @@ void FrameDecoder::processBuffer()
             break;
         }
 
-        // version must be the protocol version
+        // version must be a protocol version with its header size
         const uint8_t *candidate = this->buffer.data() + this->bufferStart;
         const Frame::Frame frameHeader(candidate, Definitions::HEADER_SIZE);
-        if (frameHeader.getVersion() != Definitions::PROTOCOL_VERSION) {
+        const size_t headerSize = Definitions::getHeaderSize(frameHeader.getVersion());
+        if (headerSize == 0) {
             // keep track of invalid versions
             ++this->statistics.invalidVersionCounter;
 
@@ -159,8 +160,8 @@ void FrameDecoder::processBuffer()
             continue;
         }
 
-        // payload and CRC32 must be buffered
-        const size_t frameSize = Definitions::FRAME_OVERHEAD + payloadLength;
+        // payload and CRC32 must be buffered behind the header of the version
+        const size_t frameSize = headerSize + Definitions::CRC_SIZE + payloadLength;
         if (this->getBufferedSize() < frameSize) {
             break;
         }
