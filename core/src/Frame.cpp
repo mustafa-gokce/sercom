@@ -15,34 +15,33 @@ Frame::Frame(const uint8_t flags,
     : frame()
     , frameSize(0)
 {
-    // payload must fit into a frame of this build
-    if (payloadLength > Settings::MaximumPayloadSize) {
-        return;
-    }
+    // write the direct frame
+    this->writeFrame(Definitions::PROTOCOL_VERSION,
+                     flags,
+                     messageCounter,
+                     messageType,
+                     RouteHeader(),
+                     payload,
+                     payloadLength);
+}
 
-    // payload must exist when it is not empty
-    if (payloadLength > 0 && payload == nullptr) {
-        return;
-    }
-
-    // write the header and the payload
-    ByteCodec::ByteWriter byteWriter(this->frame.data(), this->frame.size());
-    byteWriter.writeUint8(Definitions::SYNC_BYTE_1);
-    byteWriter.writeUint8(Definitions::SYNC_BYTE_2);
-    byteWriter.writeUint8(Definitions::PROTOCOL_VERSION);
-    byteWriter.writeUint8(flags);
-    byteWriter.writeUint16(messageCounter);
-    byteWriter.writeUint16(messageType);
-    byteWriter.writeUint8(static_cast<uint8_t>(payloadLength));
-    byteWriter.writeBytes(payload, payloadLength);
-
-    // write the CRC32 of everything after the sync word
-    const uint32_t crc = CRC32::calculateCRC32(this->frame.data() + Definitions::SYNC_SIZE,
-                                               byteWriter.getSize() - Definitions::SYNC_SIZE);
-    byteWriter.writeUint32(crc);
-
-    // keep the frame size
-    this->frameSize = byteWriter.getSize();
+Frame::Frame(const uint8_t flags,
+             const uint16_t messageCounter,
+             const uint16_t messageType,
+             const RouteHeader &routeHeader,
+             const uint8_t *payload,
+             const size_t payloadLength)
+    : frame()
+    , frameSize(0)
+{
+    // write the routed frame
+    this->writeFrame(Definitions::ROUTED_PROTOCOL_VERSION,
+                     flags,
+                     messageCounter,
+                     messageType,
+                     routeHeader,
+                     payload,
+                     payloadLength);
 }
 
 Frame::Frame(const uint8_t *data, const size_t size)
@@ -119,16 +118,49 @@ uint8_t Frame::getPayloadLength() const
     return this->frame[8];
 }
 
+uint8_t Frame::getSourceAddress() const
+{
+    // frame must hold a route header
+    if (!this->getRouted()) {
+        return Definitions::UNASSIGNED_ADDRESS;
+    }
+
+    // expose the source address
+    return this->frame[9];
+}
+
+uint8_t Frame::getDestinationAddress() const
+{
+    // frame must hold a route header
+    if (!this->getRouted()) {
+        return Definitions::UNASSIGNED_ADDRESS;
+    }
+
+    // expose the destination address
+    return this->frame[10];
+}
+
+uint8_t Frame::getTimeToLive() const
+{
+    // frame must hold a route header
+    if (!this->getRouted()) {
+        return 0;
+    }
+
+    // expose the time to live
+    return this->frame[11];
+}
+
 const uint8_t *Frame::getPayload() const
 {
     // expose the payload behind the header
-    return this->frame.data() + Definitions::HEADER_SIZE;
+    return this->frame.data() + this->getHeaderSize();
 }
 
 uint32_t Frame::getCRC32() const
 {
     // frame must hold the CRC32 behind the payload
-    const size_t crcOffset = Definitions::HEADER_SIZE + this->getPayloadLength();
+    const size_t crcOffset = this->getHeaderSize() + this->getPayloadLength();
     if (this->frameSize < crcOffset + Definitions::CRC_SIZE) {
         return 0;
     }
@@ -143,6 +175,36 @@ bool Frame::getFlag(const Definitions::FrameFlagType frameFlagType) const
     return Definitions::isFrameFlagSet(this->getFlags(), frameFlagType);
 }
 
+bool Frame::getRouted() const
+{
+    // expose whether a routed frame holds its route header
+    return this->getVersion() == Definitions::ROUTED_PROTOCOL_VERSION
+           && this->frameSize >= Definitions::ROUTED_HEADER_SIZE;
+}
+
+RouteHeader Frame::getRouteHeader() const
+{
+    // create route header from its fields
+    RouteHeader routeHeader;
+    routeHeader.sourceAddress = this->getSourceAddress();
+    routeHeader.destinationAddress = this->getDestinationAddress();
+    routeHeader.timeToLive = this->getTimeToLive();
+
+    // expose the route header
+    return routeHeader;
+}
+
+size_t Frame::getHeaderSize() const
+{
+    // expose the header size of a routed frame
+    if (this->getRouted()) {
+        return Definitions::ROUTED_HEADER_SIZE;
+    }
+
+    // expose the header size of every other frame
+    return Definitions::HEADER_SIZE;
+}
+
 bool Frame::getLikelyValid() const
 {
     // frame must hold a header
@@ -155,8 +217,9 @@ bool Frame::getLikelyValid() const
         return false;
     }
 
-    // version must be the protocol version
-    if (this->getVersion() != Definitions::PROTOCOL_VERSION) {
+    // version must be a protocol version with its header size
+    const size_t currentHeaderSize = Definitions::getHeaderSize(this->getVersion());
+    if (currentHeaderSize == 0) {
         return false;
     }
 
@@ -166,8 +229,8 @@ bool Frame::getLikelyValid() const
         return false;
     }
 
-    // frame size must follow from the payload length
-    if (this->frameSize != Definitions::FRAME_OVERHEAD + currentPayloadLength) {
+    // frame size must follow from the header size and the payload length
+    if (this->frameSize != currentHeaderSize + Definitions::CRC_SIZE + currentPayloadLength) {
         return false;
     }
 
@@ -201,6 +264,53 @@ size_t Frame::getSize() const
 {
     // expose the frame size
     return this->frameSize;
+}
+
+void Frame::writeFrame(const uint8_t version,
+                       const uint8_t flags,
+                       const uint16_t messageCounter,
+                       const uint16_t messageType,
+                       const RouteHeader &routeHeader,
+                       const uint8_t *payload,
+                       const size_t payloadLength)
+{
+    // payload must fit into a frame of this build
+    if (payloadLength > Settings::MaximumPayloadSize) {
+        return;
+    }
+
+    // payload must exist when it is not empty
+    if (payloadLength > 0 && payload == nullptr) {
+        return;
+    }
+
+    // write the header
+    ByteCodec::ByteWriter byteWriter(this->frame.data(), this->frame.size());
+    byteWriter.writeUint8(Definitions::SYNC_BYTE_1);
+    byteWriter.writeUint8(Definitions::SYNC_BYTE_2);
+    byteWriter.writeUint8(version);
+    byteWriter.writeUint8(flags);
+    byteWriter.writeUint16(messageCounter);
+    byteWriter.writeUint16(messageType);
+    byteWriter.writeUint8(static_cast<uint8_t>(payloadLength));
+
+    // write the route header of a routed frame
+    if (version == Definitions::ROUTED_PROTOCOL_VERSION) {
+        byteWriter.writeUint8(routeHeader.sourceAddress);
+        byteWriter.writeUint8(routeHeader.destinationAddress);
+        byteWriter.writeUint8(routeHeader.timeToLive);
+    }
+
+    // write the payload
+    byteWriter.writeBytes(payload, payloadLength);
+
+    // write the CRC32 of everything after the sync word
+    const uint32_t crc = CRC32::calculateCRC32(this->frame.data() + Definitions::SYNC_SIZE,
+                                               byteWriter.getSize() - Definitions::SYNC_SIZE);
+    byteWriter.writeUint32(crc);
+
+    // keep the frame size
+    this->frameSize = byteWriter.getSize();
 }
 
 } // namespace sercom::Frame
