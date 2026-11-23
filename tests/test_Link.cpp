@@ -476,6 +476,44 @@ public:
     }
 
     /*
+     * Replace both links by route capable links.
+     */
+    void makeRouteCapable()
+    {
+        // close links
+        this->anotherLink.reset(nullptr);
+        this->testLink.reset(nullptr);
+
+        // initialize route capable links
+        Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+        linkConfiguration.routeCapable = true;
+        this->testLink.reset(new Link::Link(this->testTransport,
+                                            this->testLinkHandler,
+                                            this->clock,
+                                            linkConfiguration));
+        this->anotherLink.reset(new Link::Link(this->anotherTransport,
+                                               this->anotherLinkHandler,
+                                               this->clock,
+                                               linkConfiguration));
+    }
+
+    /*
+     * Get the route header from the host to node 3.
+     */
+    [[nodiscard]] static Frame::RouteHeader getRouteHeader()
+    {
+        // create route header from the host to node 3
+        static constexpr uint8_t destinationAddress = 3;
+        Frame::RouteHeader routeHeader;
+        routeHeader.sourceAddress = Definitions::HOST_ADDRESS;
+        routeHeader.destinationAddress = destinationAddress;
+        routeHeader.timeToLive = Settings::DEFAULT_TIME_TO_LIVE;
+
+        // expose the route header
+        return routeHeader;
+    }
+
+    /*
      * Send an acknowledged message from the test link and store its message counter.
      */
     [[nodiscard]] Definitions::SendStatusType sendAcknowledgedMessage(
@@ -1145,4 +1183,241 @@ TEST_CASE_METHOD(TestLink,
     corruptedData.back() = static_cast<uint8_t>(corruptedData.back() ^ 0x01);
     testLink->onReceivedData(corruptedData.data(), corruptedData.size());
     REQUIRE(testLink->getPeerVersionType() == Definitions::PeerVersionType::VERSION_1);
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A routed message is delivered with its route and answered by a direct ACK",
+                 "[Link][testRoutedMessage]")
+{
+    // send an acknowledged routed message from a route capable link
+    makeRouteCapable();
+    const std::vector<uint8_t> payload = {0xE8, 0x03, 0x00, 0x00};
+    REQUIRE(testLink->sendRoutedMessage(getRouteHeader(),
+                                        0x0001,
+                                        payload.data(),
+                                        payload.size(),
+                                        true,
+                                        messageCounter)
+            == Definitions::SendStatusType::SENT);
+    REQUIRE(messageCounter == 0);
+
+    // check the routed frame on the wire and keep the answer of another link
+    std::vector<uint8_t> data;
+    REQUIRE(testTransport.receiveData(data));
+    const Frame::Frame sentFrame(data.data(), data.size());
+    REQUIRE(sentFrame.getRouted());
+    REQUIRE(sentFrame.getFlag(Definitions::FrameFlagType::ROUTE_CAPABLE));
+    anotherLink->onReceivedData(data.data(), data.size());
+    REQUIRE(anotherTransport.receiveData(data));
+    testLink->onReceivedData(data.data(), data.size());
+
+    // check the delivered message with its route
+    const std::vector<Frame::Frame> messages = anotherLinkHandler.getMessages();
+    REQUIRE(messages.size() == static_cast<size_t>(1));
+    REQUIRE(messages.at(0).getSourceAddress() == Definitions::HOST_ADDRESS);
+    REQUIRE(messages.at(0).getDestinationAddress() == 3);
+    REQUIRE(messages.at(0).getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE);
+    REQUIRE(getPayload(messages.at(0)) == payload);
+
+    // check the direct ACK and the confirmed delivery
+    const Frame::Frame acknowledgementFrame(data.data(), data.size());
+    REQUIRE(acknowledgementFrame.getVersion() == Definitions::PROTOCOL_VERSION);
+    REQUIRE(acknowledgementFrame.getFlag(Definitions::FrameFlagType::ACK));
+    REQUIRE(acknowledgementFrame.getFlag(Definitions::FrameFlagType::ROUTE_CAPABLE));
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.at(0).confirmed);
+    REQUIRE(anotherLink->getPeerVersionType() == Definitions::PeerVersionType::VERSION_2);
+    REQUIRE(testLink->getPeerVersionType() == Definitions::PeerVersionType::VERSION_2);
+}
+
+TEST_CASE_METHOD(
+    TestLink,
+    "A routed message is retransmitted as the same routed frame and kept from duplicates",
+    "[Link][testRoutedRetransmission]")
+{
+    // send an acknowledged routed message whose first transmission and first ACK are lost
+    makeRouteCapable();
+    testTransport.setFilter(
+        [](const size_t sendCount, [[maybe_unused]] const std::vector<uint8_t> &data) noexcept {
+            return sendCount != 1;
+        });
+    anotherTransport.setFilter(
+        [](const size_t sendCount, [[maybe_unused]] const std::vector<uint8_t> &data) noexcept {
+            return sendCount != 1;
+        });
+    REQUIRE(testLink->sendRoutedMessage(getRouteHeader(), 0x0100, nullptr, 0, true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // let two retransmit timeouts pass
+    advance(getLinkConfiguration().retransmitTimeout);
+    advance(getLinkConfiguration().retransmitTimeout);
+
+    // check the single delivery of the retransmitted routed frame and the answered duplicate
+    const std::vector<Frame::Frame> messages = anotherLinkHandler.getMessages();
+    REQUIRE(messages.size() == static_cast<size_t>(1));
+    REQUIRE(messages.at(0).getRouted());
+    REQUIRE(messages.at(0).getFlag(Definitions::FrameFlagType::RETRANSMISSION));
+    REQUIRE(messages.at(0).getDestinationAddress() == 3);
+    REQUIRE(messages.at(0).getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE);
+    REQUIRE(anotherLink->getStatistics().duplicateFrameCounter == static_cast<uint64_t>(1));
+    REQUIRE(testLinkHandler.getDeliveryResults().size() == static_cast<size_t>(1));
+    REQUIRE(testLinkHandler.getDeliveryResults().at(0).confirmed);
+    REQUIRE(testLink->getStatistics().retransmissionCounter == static_cast<uint64_t>(2));
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A routed message needs a route capable link, both addresses and a time to live",
+                 "[Link][testRoutedMessageRefused]")
+{
+    // check the routed message on a link that is not route capable
+    REQUIRE(testLink->sendRoutedMessage(getRouteHeader(), 0x0100, nullptr, 0, false, messageCounter)
+            == Definitions::SendStatusType::INVALID_ARGUMENT);
+
+    // check the route headers without an address or without a time to live
+    makeRouteCapable();
+    Frame::RouteHeader withoutSourceAddress = getRouteHeader();
+    withoutSourceAddress.sourceAddress = Definitions::UNASSIGNED_ADDRESS;
+    Frame::RouteHeader withoutDestinationAddress = getRouteHeader();
+    withoutDestinationAddress.destinationAddress = Definitions::UNASSIGNED_ADDRESS;
+    Frame::RouteHeader withoutTimeToLive = getRouteHeader();
+    withoutTimeToLive.timeToLive = 0;
+    REQUIRE(
+        testLink->sendRoutedMessage(withoutSourceAddress, 0x0100, nullptr, 0, false, messageCounter)
+        == Definitions::SendStatusType::INVALID_ARGUMENT);
+    REQUIRE(testLink->sendRoutedMessage(withoutDestinationAddress,
+                                        0x0100,
+                                        nullptr,
+                                        0,
+                                        false,
+                                        messageCounter)
+            == Definitions::SendStatusType::INVALID_ARGUMENT);
+    REQUIRE(testLink->sendRoutedMessage(withoutTimeToLive, 0x0100, nullptr, 0, false, messageCounter)
+            == Definitions::SendStatusType::INVALID_ARGUMENT);
+
+    // check that no frame was sent and no message counter was used
+    REQUIRE(testTransport.getEmpty());
+    REQUIRE(testLink->getNextMessageCounter() == 0);
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A routed message that timed out makes the peer version unknown again",
+                 "[Link][testRoutedMessageTimeout]")
+{
+    // learn the version of a route capable peer
+    makeRouteCapable();
+    REQUIRE(anotherLink->sendMessage(0x0100, nullptr, 0, false, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE(testLink->getPeerVersionType() == Definitions::PeerVersionType::VERSION_2);
+
+    // send a direct and a routed message into a transport that drops everything
+    testTransport.setFilter(
+        []([[maybe_unused]] const size_t sendCount,
+           [[maybe_unused]] const std::vector<uint8_t> &data) noexcept { return false; });
+    REQUIRE(testLink->sendMessage(0x0100, nullptr, 0, true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    const Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    for (uint8_t retransmission = 0; retransmission <= linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        advance(linkConfiguration.retransmitTimeout);
+    }
+
+    // check that the timed out direct message leaves the peer version
+    REQUIRE(testLinkHandler.getDeliveryResults().size() == static_cast<size_t>(1));
+    REQUIRE(testLink->getPeerVersionType() == Definitions::PeerVersionType::VERSION_2);
+
+    // let a routed message time out
+    REQUIRE(testLink->sendRoutedMessage(getRouteHeader(), 0x0100, nullptr, 0, true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    for (uint8_t retransmission = 0; retransmission <= linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        advance(linkConfiguration.retransmitTimeout);
+    }
+
+    // check the unknown peer version after the timed out routed message
+    REQUIRE(testLinkHandler.getDeliveryResults().size() == static_cast<size_t>(2));
+    REQUIRE(testLinkHandler.getDeliveryResults().at(1).deliveryFailureType
+            == Definitions::DeliveryFailureType::TIMED_OUT);
+    REQUIRE(testLink->getPeerVersionType() == Definitions::PeerVersionType::UNKNOWN);
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A routed message refused as busy is retransmitted and delivered again",
+                 "[Link][testRoutedBusyMessage]")
+{
+    // send an acknowledged routed message that another link refuses as busy
+    makeRouteCapable();
+    anotherLinkHandler.setMessageStatusType(Definitions::MessageStatusType::BUSY);
+    REQUIRE(testLink->sendRoutedMessage(getRouteHeader(), 0x0100, nullptr, 0, true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check that the test link keeps the message after the busy answer
+    REQUIRE(anotherLinkHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(testLinkHandler.getDeliveryResults().empty());
+    REQUIRE(testLink->getPendingCount() == static_cast<size_t>(1));
+
+    // let another link take the retransmission one retransmit timeout later
+    anotherLinkHandler.setMessageStatusType(Definitions::MessageStatusType::ACCEPTED);
+    advance(getLinkConfiguration().retransmitTimeout);
+
+    // check the second delivery of the retransmission and the confirmed delivery
+    const std::vector<Frame::Frame> messages = anotherLinkHandler.getMessages();
+    REQUIRE(messages.size() == static_cast<size_t>(2));
+    REQUIRE(messages.at(1).getFlag(Definitions::FrameFlagType::RETRANSMISSION));
+    REQUIRE(anotherLink->getStatistics().duplicateFrameCounter == static_cast<uint64_t>(0));
+    const std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.at(0).confirmed);
+    REQUIRE(testLink->getStatistics().incomingRejectionCounter == static_cast<uint64_t>(1));
+    REQUIRE(testLink->getStatistics().failedDeliveryCounter == static_cast<uint64_t>(0));
+}
+
+TEST_CASE_METHOD(
+    TestLink,
+    "A busy answer ends a routed delivery after the last retransmission, a broadcast at once",
+    "[Link][testRoutedBusyLimit]")
+{
+    // send an acknowledged routed message that another link always refuses as busy
+    makeRouteCapable();
+    anotherLinkHandler.setMessageStatusType(Definitions::MessageStatusType::BUSY);
+    REQUIRE(testLink->sendRoutedMessage(getRouteHeader(), 0x0100, nullptr, 0, true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+    const Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    for (uint8_t retransmission = 0; retransmission < linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        REQUIRE(testLinkHandler.getDeliveryResults().empty());
+        advance(linkConfiguration.retransmitTimeout);
+    }
+
+    // check the busy failure after the last retransmission
+    REQUIRE(anotherLinkHandler.getMessages().size()
+            == static_cast<size_t>(linkConfiguration.maximumRetransmissions) + 1);
+    std::vector<DeliveryResult> deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(1));
+    REQUIRE(deliveryResults.at(0).deliveryFailureType == Definitions::DeliveryFailureType::REJECTED);
+    REQUIRE(deliveryResults.at(0).remoteMessageStatusType == Definitions::MessageStatusType::BUSY);
+
+    // send a routed broadcast and a direct message that another link refuses as busy
+    Frame::RouteHeader broadcastRouteHeader = getRouteHeader();
+    broadcastRouteHeader.destinationAddress = Definitions::BROADCAST_ADDRESS;
+    REQUIRE(
+        testLink->sendRoutedMessage(broadcastRouteHeader, 0x0100, nullptr, 0, true, messageCounter)
+        == Definitions::SendStatusType::SENT);
+    REQUIRE(testLink->sendMessage(0x0100, nullptr, 0, true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check that both deliveries end at the first busy answer
+    deliveryResults = testLinkHandler.getDeliveryResults();
+    REQUIRE(deliveryResults.size() == static_cast<size_t>(3));
+    REQUIRE(deliveryResults.at(1).remoteMessageStatusType == Definitions::MessageStatusType::BUSY);
+    REQUIRE(deliveryResults.at(2).remoteMessageStatusType == Definitions::MessageStatusType::BUSY);
+    REQUIRE(testLink->getPendingCount() == static_cast<size_t>(0));
 }
