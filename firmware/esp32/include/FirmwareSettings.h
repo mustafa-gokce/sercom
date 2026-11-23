@@ -19,6 +19,13 @@ extern const std::string_view SerialPortName;  // name of the protocol serial po
 extern const int8_t SerialReceivePin;          // GPIO of the protocol receive pin
 extern const int8_t SerialTransmitPin;         // GPIO of the protocol transmit pin
 
+extern const bool RouterRun;                     // device role as a router between two serial ports
+extern const uint8_t NodeAddress;                // address of the node, unassigned without one
+extern const uint8_t ProxyAddress;               // address of the neighbour below without one
+extern const std::string_view SecondaryPortName; // name of the secondary serial port of a router
+extern const int8_t SecondaryReceivePin;         // GPIO of the secondary receive pin
+extern const int8_t SecondaryTransmitPin;        // GPIO of the secondary transmit pin
+
 constexpr std::string_view UART0_PORT_NAME = "UART0"; // name of the serial port on the USB bridge
 constexpr int8_t UART0_RECEIVE_PIN = 3;               // GPIO of the UART0 receive pin
 constexpr int8_t UART0_TRANSMIT_PIN = 1;              // GPIO of the UART0 transmit pin
@@ -57,6 +64,12 @@ constexpr std::chrono::milliseconds PROTOCOL_TICK_PERIOD_MSEC
 constexpr std::chrono::milliseconds LOG_QUEUE_TIMEOUT_MSEC = 0ms; // log queue timeout in milliseconds
 constexpr std::chrono::milliseconds CONSOLE_STREAM_TIMEOUT_MSEC
     = 0ms; // console stream timeout in milliseconds
+
+constexpr uint32_t ROUTER_STATISTICS_QUEUE_LENGTH = 1; // router statistics queue length for overwrites
+constexpr std::chrono::milliseconds SECONDARY_RECEIVE_TIMEOUT_MSEC
+    = 0ms; // secondary receive timeout in milliseconds
+constexpr std::chrono::milliseconds ROUTER_STATISTICS_QUEUE_TIMEOUT_MSEC
+    = 0ms; // router statistics queue timeout in milliseconds
 
 } // namespace sercom::FirmwareSettings
 
