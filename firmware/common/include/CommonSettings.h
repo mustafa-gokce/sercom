@@ -20,8 +20,9 @@ constexpr size_t CONSOLE_FIELD_SIZE = 64;           // console field size in cha
 constexpr size_t CONSOLE_MAXIMUM_ESCAPE_LENGTH = 2; // longest escape of one text byte in characters
 constexpr size_t CONSOLE_HEX_BYTE_LENGTH = 3;       // characters of one byte in hex with its space
 
-constexpr size_t PROTOCOL_CHUNK_SIZE = 128; // protocol chunk size in bytes
-constexpr size_t LOG_LINE_SIZE = 96;        // log line size in characters
+constexpr size_t PROTOCOL_CHUNK_SIZE = 128;   // protocol chunk size in bytes
+constexpr size_t LOG_LINE_SIZE = 96;          // log line size in characters
+constexpr size_t RING_BUFFER_SIZE = 2 * 1024; // ring buffer size in bytes
 
 constexpr std::chrono::milliseconds HEARTBEAT_PERIOD_MSEC
     = 5 * 1000ms; // heartbeat period in milliseconds
