@@ -40,11 +40,7 @@ public:
         }
 
         // rebuilt frame must have the same bytes
-        const sercom::Frame::Frame builtFrame(frame.getFlags(),
-                                              frame.getMessageCounter(),
-                                              frame.getMessageType(),
-                                              frame.getPayload(),
-                                              frame.getPayloadLength());
+        const sercom::Frame::Frame builtFrame = getBuiltFrame(frame);
         if (builtFrame.getSize() != frame.getSize()
             || !std::equal(frame.getData(),
                            frame.getData() + frame.getSize(),
@@ -71,6 +67,30 @@ public:
     {
         // expose the frame size
         return this->frameSize;
+    }
+
+private:
+    /*
+     * Get a frame built again from the fields of a received frame, a routed one with its route header.
+     */
+    [[nodiscard]] static sercom::Frame::Frame getBuiltFrame(const sercom::Frame::Frame &frame)
+    {
+        // build a routed frame again with its route header
+        if (frame.getRouted()) {
+            return sercom::Frame::Frame(frame.getFlags(),
+                                        frame.getMessageCounter(),
+                                        frame.getMessageType(),
+                                        frame.getRouteHeader(),
+                                        frame.getPayload(),
+                                        frame.getPayloadLength());
+        }
+
+        // build a direct frame again
+        return sercom::Frame::Frame(frame.getFlags(),
+                                    frame.getMessageCounter(),
+                                    frame.getMessageType(),
+                                    frame.getPayload(),
+                                    frame.getPayloadLength());
     }
 
 private:
