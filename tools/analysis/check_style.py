@@ -3,6 +3,7 @@
     python3 tools/analysis/check_style.py [--source-directory DIRECTORY] [--rule RULE] [FILE ...]
 
 Without files every C++ file of the own source directories is checked, together with the repository checks.
+The consumer projects in examples/ are checked with their CMakeLists.txt, the build directories inside them are skipped.
 Each finding is printed as path:line: rule: message, the exit code is 1 when there is a finding.
 The layout is checked by tools/analysis/check_format.sh, the analyzers by tools/run_static_analysis.sh.
 """
@@ -22,6 +23,15 @@ SOURCE_DIRECTORIES = ('core', 'app', 'host', 'firmware/common/include', 'firmwar
 
 # extensions of the C++ sources
 SOURCE_EXTENSIONS = ('.h', '.cpp')
+
+# build directories inside the consumer projects, named as in .gitignore
+BUILD_DIRECTORY = re.compile(r'^build(-.*)?$')
+
+# consumer project without the host library, it prints with its own two output functions
+OWN_OUTPUT_CONSUMER = r'^examples/28_consume_with_add_subdirectory/'
+
+# consumer project with the one FetchContent, it includes through the include directory of sercom
+FETCH_CONTENT_CONSUMER = r'^examples/29_consume_with_fetch_content/'
 
 # characters of an identifier or a number
 IDENTIFIER_CHARACTERS = set(string.ascii_letters + string.digits + '_')
@@ -63,7 +73,7 @@ IDIOM_RULES = (
     ('R-019', '#ifdef or #if !defined', r'^\s*#\s*(ifdef|if\s*!\s*defined)', 'all', 'line', None, None),
     ('R-019', '#ifndef outside a guard', r'^#ifndef ', 'all', 'line', r'_H$', None),
     ('R-129', 'output outside the log functions', r'std::(cout|cerr|clog)|\bs?n?printf\(', 'all', 'code', None,
-     r'^(host/src/HostUtils\.cpp|firmware/)'),
+     r'^(host/src/HostUtils\.cpp|firmware/)|' + OWN_OUTPUT_CONSUMER),
     ('R-066', 'analyzer suppression', r'NOLINTNEXTLINE|NOLINT\(|cppcheck-suppress', 'all', 'line', None, None),
     ('R-091', 'auto outside a lambda', r'\bauto\b', 'all', 'code', r'auto \w+ = \[|const auto \w+ = \[', None),
     ('R-117', 'enum name without Type or Key', r'enum class \w+', 'all', 'code', r'enum class \w+(Type|Key)\b', None),
@@ -83,7 +93,7 @@ IDIOM_RULES = (
     ('R-090', 'hand-written minimum or maximum', r'(\w+) [<>]=? (\w+) \? \1 : \2', 'all', 'code', None, None),
     ('R-024', 'nodiscard on an enum converter', r'\[\[nodiscard\]\] [^(]*\b(from|to)[A-Z]\w*(Type|Key)\(', 'headers',
      'code', None, None),
-    ('R-012', 'include through an include directory', r'#include "[^.]', 'all', 'line', None, None),
+    ('R-012', 'include through an include directory', r'#include "[^.]', 'all', 'line', None, FETCH_CONTENT_CONSUMER),
     ('R-033', 'override outside the destructor of a class that others derive from', r'\boverride\b', 'all', 'code',
      r'^\s+~\w+\(\) override;$', None),
     ('R-248', 'letter-suffixed name', r'\b[a-z][a-zA-Z]*[a-z][AB]\b', 'all', 'code', None, None),
@@ -135,14 +145,19 @@ IDIOM_RULES = (
     ('R-181', 'time advanced by a bare number', r'\badvance\([0-9]+(ms)?\)', 'tests', 'code', None, None),
 )
 
-# forbidden CMake commands: rule, message, pattern
+# forbidden CMake commands: rule, message, pattern, the path and line that may hold it
 CMAKE_RULES = (
-    ('R-207', 'FetchContent dependency', r'FetchContent'),
-    ('R-206', 'per-case test discovery', r'catch_discover_tests'),
-    ('R-012', 'include directory', r'include_directories'),
-    ('R-183', 'Catch2 main instead of the own runner', r'Catch2WithMain'),
-    ('R-210', 'forced build type', r'set\(CMAKE_BUILD_TYPE'),
+    ('R-207', 'FetchContent dependency', r'FetchContent', FETCH_CONTENT_CONSUMER),
+    ('R-206', 'per-case test discovery', r'catch_discover_tests', None),
+    ('R-012', 'include directory', r'include_directories',
+     r'^CMakeLists\.txt:target_include_directories\(\$\{PROJECT_NAME\}_settings INTERFACE '
+     r'\$\{CMAKE_CURRENT_SOURCE_DIR\}\)$'),
+    ('R-183', 'Catch2 main instead of the own runner', r'Catch2WithMain', None),
+    ('R-210', 'forced build type', r'set\(CMAKE_BUILD_TYPE', None),
 )
+
+# build options of the main project
+BUILD_OPTIONS = ('SERCOM_BUILD_BINARIES', 'SERCOM_BUILD_TESTS', 'SERCOM_BUILD_HOST')
 
 # mock classes that examples and fuzz targets may keep
 PROGRAM_MOCK = re.compile(r'^(examples|fuzz)/.*:\s*(class|struct) Mock\w+')
@@ -452,6 +467,36 @@ def check_idioms(source, findings):
             findings.append((number, rule, message))
 
 
+def check_cmake_file(source_directory, relative_path):
+    """Check a CMakeLists.txt file, return the findings as (path, line, rule, message)."""
+    findings = []
+    with open(os.path.join(source_directory, relative_path), encoding='utf-8') as cmake_file:
+        cmake_lines = cmake_file.read().split('\n')
+    options = []
+    for number, line in enumerate(cmake_lines, 1):
+        for rule, message, pattern, allowed in CMAKE_RULES:
+            if re.search(pattern, line) and not (allowed and re.search(allowed, '%s:%s' % (relative_path, line))):
+                findings.append((relative_path, number, rule, message))
+        if re.search(r'\b(if|elseif|foreach|while)\(', line):
+            findings.append((relative_path, number, 'R-194', 'no blank between the command and ('))
+        if re.search(r'target_link_libraries\(.*\)$|target_link_libraries\(.*\bPUBLIC\b', line):
+            findings.append((relative_path, number, 'R-253', 'one-line or PUBLIC target_link_libraries'))
+        if re.search(r'\bSTATIC\b|\bSHARED\b|\bGLOB|set\(\w*SOURCES\b', line):
+            findings.append((relative_path, number, 'R-202', 'library type, glob or source list variable'))
+        if re.search(r'\bLABELS\b', line):
+            findings.append((relative_path, number, 'R-206', 'test labels'))
+        option = re.match(r'^\s*option\((\w+)', line)
+        if option:
+            options.append(option.group(1))
+
+    # only the main project has its build options
+    expected_options = list(BUILD_OPTIONS) if relative_path == 'CMakeLists.txt' else []
+    if options != expected_options:
+        findings.append((relative_path, 0, 'R-196', 'option() calls for %s instead of %s' % (
+            ', '.join(options) or 'nothing', ', '.join(expected_options) or 'nothing')))
+    return findings
+
+
 def check_repository(source_directory):
     """Check the repository files, return the findings as (path, line, rule, message)."""
     findings = []
@@ -474,29 +519,17 @@ def check_repository(source_directory):
         if name.endswith('.h'):
             findings.append(('tests/%s' % name, 0, 'R-159', 'shared test header'))
 
-    # build file
+    # build file of the main project
     cmake_path = os.path.join(source_directory, 'CMakeLists.txt')
     if not os.path.exists(cmake_path):
         return findings
-    with open(cmake_path, encoding='utf-8') as cmake_file:
-        cmake_lines = cmake_file.read().split('\n')
-    option_count = 0
-    for number, line in enumerate(cmake_lines, 1):
-        for rule, message, pattern in CMAKE_RULES:
-            if re.search(pattern, line):
-                findings.append(('CMakeLists.txt', number, rule, message))
-        if re.search(r'\b(if|elseif|foreach|while)\(', line):
-            findings.append(('CMakeLists.txt', number, 'R-194', 'no blank between the command and ('))
-        if re.search(r'target_link_libraries\(.*\)$|target_link_libraries\(.*\bPUBLIC\b', line):
-            findings.append(('CMakeLists.txt', number, 'R-253', 'one-line or PUBLIC target_link_libraries'))
-        if re.search(r'\bSTATIC\b|\bSHARED\b|\bGLOB|set\(\w*SOURCES\b', line):
-            findings.append(('CMakeLists.txt', number, 'R-202', 'library type, glob or source list variable'))
-        if re.search(r'\bLABELS\b', line):
-            findings.append(('CMakeLists.txt', number, 'R-206', 'test labels'))
-        if re.match(r'^\s*option\(', line):
-            option_count += 1
-    if option_count != 2:
-        findings.append(('CMakeLists.txt', 0, 'R-196', '%d option() calls instead of 2' % option_count))
+    findings += check_cmake_file(source_directory, 'CMakeLists.txt')
+
+    # build files of the consumer projects
+    examples_directory = os.path.join(source_directory, 'examples')
+    for name in sorted(os.listdir(examples_directory)) if os.path.isdir(examples_directory) else ():
+        if os.path.isfile(os.path.join(examples_directory, name, 'CMakeLists.txt')):
+            findings += check_cmake_file(source_directory, 'examples/%s/CMakeLists.txt' % name)
     return findings
 
 
@@ -505,7 +538,8 @@ def list_sources(source_directory):
     paths = []
     for directory in SOURCE_DIRECTORIES:
         for base, directories, names in os.walk(os.path.join(source_directory, directory)):
-            directories[:] = sorted(name for name in directories if not name.startswith('.'))
+            directories[:] = sorted(name for name in directories
+                                    if not name.startswith('.') and not BUILD_DIRECTORY.match(name))
             for name in sorted(names):
                 if name.endswith(SOURCE_EXTENSIONS):
                     paths.append(os.path.relpath(os.path.join(base, name), source_directory))
