@@ -1,6 +1,6 @@
 {
     "name": "sercom-core",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "description": "Packet based binary serial protocol: CRC32, frame, frame decoder and link layer",
     "keywords": "serial, uart, protocol, framing, crc32",
     "frameworks": "*",

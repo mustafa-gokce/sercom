@@ -1,6 +1,6 @@
 {
     "name": "sercom-app",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "description": "Demo device protocol on top of sercom-core, shared by the firmware and the host tools",
     "frameworks": "*",
     "platforms": "*",

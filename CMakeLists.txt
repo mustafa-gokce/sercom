@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # set version numbers
-set(APP_VERSION_MAJOR 1)
+set(APP_VERSION_MAJOR 2)
 set(APP_VERSION_MINOR 0)
 set(APP_VERSION_BUILD 0)
 
