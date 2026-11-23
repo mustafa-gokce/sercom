@@ -683,6 +683,7 @@ public:
     ~TestDeviceApplication()
     {
         // close the chain
+        this->chainClient.reset(nullptr);
         this->endApplication.reset(nullptr);
         this->nodeApplication.reset(nullptr);
         this->chainHostRouter.reset(nullptr);
@@ -730,6 +731,9 @@ public:
             while (this->chainHostTransport.receiveData(data)) {
                 this->nodeApplication->onReceivedData(data.data(), data.size());
             }
+            while (this->chainClient != nullptr && this->nodePrimaryTransport.receiveData(data)) {
+                this->chainClient->onReceivedData(data.data(), data.size());
+            }
             while (this->nodePrimaryTransport.receiveData(data)) {
                 this->chainHostRouter->onReceivedData(Definitions::PortType::PRIMARY,
                                                       data.data(),
@@ -742,6 +746,43 @@ public:
                 this->nodeApplication->onReceivedSecondaryData(data.data(), data.size());
             }
         }
+    }
+
+    /*
+     * Replace the host of the chain by a device client with the host address and a destination.
+     */
+    void createChainClient(const uint8_t destinationAddress, const uint8_t timeToLive)
+    {
+        // close the host of the chain
+        this->chainHostRouter.reset(nullptr);
+
+        // initialize device client of the chain
+        Router::RouterConfiguration routerConfiguration = getRouterConfiguration(
+            Definitions::HOST_ADDRESS);
+        routerConfiguration.timeToLive = timeToLive;
+        this->chainClient.reset(new DeviceClient::DeviceClient(this->chainHostTransport,
+                                                               this->clock,
+                                                               this->chainClientHandler,
+                                                               Link::LinkConfiguration(),
+                                                               routerConfiguration));
+        this->chainClient->setDestinationAddress(destinationAddress);
+    }
+
+    /*
+     * Let time pass, maintain the device client and both nodes of the chain and deliver what they sent.
+     */
+    void advanceChainClient(const std::chrono::milliseconds duration)
+    {
+        // let time pass
+        this->clock.advanceTime(duration);
+
+        // maintain the device client and both nodes of the chain
+        this->chainClient->maintain();
+        this->nodeApplication->maintain();
+        this->endApplication->maintain();
+
+        // deliver the sent data
+        this->pumpChain();
     }
 
     /*
@@ -899,6 +940,8 @@ protected:
     std::unique_ptr<Router::Router> chainHostRouter; // host of the chain without a device client
     std::unique_ptr<DeviceApplication::DeviceApplication> nodeApplication; // node 2 with two ports
     std::unique_ptr<DeviceApplication::DeviceApplication> endApplication;  // node 3 at the end
+    MockClientHandler chainClientHandler;                    // events of the chain client
+    std::unique_ptr<DeviceClient::DeviceClient> chainClient; // device client of the chain host
 };
 
 TEST_CASE_METHOD(TestDeviceApplication,
@@ -1446,4 +1489,174 @@ TEST_CASE_METHOD(TestDeviceApplication,
     REQUIRE(nodeApplication->getSecondaryLinkStatistics().incomingFrameCounter
             >= static_cast<uint64_t>(2));
     REQUIRE(endApplication->getLinkStatistics().deliveredMessageCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "The device client sends its requests to the destination address through a chain",
+                 "[DeviceApplication][testClientDestination]")
+{
+    // send a device info, a set LED and a ping request of the device client to node 3
+    createChainClient(EndNodeAddress, Settings::DEFAULT_TIME_TO_LIVE);
+    REQUIRE(chainClient->getDestinationAddress() == EndNodeAddress);
+    REQUIRE(chainClient->sendDeviceInfoRequest(messageCounter) == Definitions::SendStatusType::SENT);
+    pumpChain();
+    REQUIRE(chainClient->sendSetLedRequest(true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pumpChain();
+    REQUIRE(chainClient->sendPingRequest(messageCounter) == Definitions::SendStatusType::SENT);
+    pumpChain();
+
+    // check the responses of node 3 with its address
+    const std::vector<Messages::DeviceInfoResponse> deviceInfoResponses
+        = chainClientHandler.getDeviceInfoResponses();
+    REQUIRE(deviceInfoResponses.size() == static_cast<size_t>(1));
+    REQUIRE(deviceInfoResponses.at(0).getSourceAddress() == EndNodeAddress);
+    REQUIRE(deviceInfoResponses.at(0).getNodeAddress() == EndNodeAddress);
+    REQUIRE(chainClientHandler.getSetLedResponses().size() == static_cast<size_t>(1));
+    REQUIRE(chainClientHandler.getSetLedResponses().at(0).getSourceAddress() == EndNodeAddress);
+    REQUIRE(endPlatform.getLedOn());
+    REQUIRE_FALSE(nodePlatform.getLedOn());
+    REQUIRE(chainClientHandler.getPingResponses().size() == static_cast<size_t>(1));
+    REQUIRE(chainClientHandler.getPingResponses().at(0).getSourceAddress() == EndNodeAddress);
+}
+
+TEST_CASE_METHOD(
+    TestDeviceApplication,
+    "A broadcast ping of the device client is answered by every node and stays pending",
+    "[DeviceApplication][testBroadcastPing]")
+{
+    // send a ping request of the device client to every node
+    createChainClient(Definitions::BROADCAST_ADDRESS, Settings::DEFAULT_TIME_TO_LIVE);
+    static constexpr std::chrono::milliseconds wireDelay = 3ms;
+    REQUIRE(chainClient->sendPingRequest(messageCounter) == Definitions::SendStatusType::SENT);
+    clock.advanceTime(wireDelay);
+    pumpChain();
+
+    // check the measured ping responses of node 2 and node 3
+    const std::vector<Messages::PingResponse> pingResponses = chainClientHandler.getPingResponses();
+    REQUIRE(pingResponses.size() == static_cast<size_t>(2));
+    REQUIRE(pingResponses.at(0).getSourceAddress() == NodeAddress);
+    REQUIRE(pingResponses.at(1).getSourceAddress() == EndNodeAddress);
+    REQUIRE(chainClientHandler.getRoundTripTimes().at(0) == wireDelay);
+    REQUIRE(chainClientHandler.getRoundTripTimes().at(1) == wireDelay);
+    REQUIRE(chainClient->getIgnoredPingResponseCounter() == static_cast<uint64_t>(0));
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "A route failure report fails the request of the device client that it quotes",
+                 "[DeviceApplication][testReportedFailure]")
+{
+    // send a ping request of the device client to a missing node
+    static constexpr uint8_t missingNodeAddress = 9;
+    createChainClient(missingNodeAddress, Settings::DEFAULT_TIME_TO_LIVE);
+    REQUIRE(chainClient->sendPingRequest(messageCounter) == Definitions::SendStatusType::SENT);
+    const uint16_t unreachableMessageCounter = messageCounter;
+    REQUIRE(chainClient->sendSetLedRequest(true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pumpChain();
+
+    // check the failed ping request behind the confirmation of the first hop
+    const std::vector<FailedRequest> failedRequests = chainClientHandler.getFailedRequests();
+    REQUIRE(chainClientHandler.getConfirmedMessageTypes().size() == static_cast<size_t>(2));
+    REQUIRE(failedRequests.size() == static_cast<size_t>(2));
+    REQUIRE(failedRequests.at(0).messageCounter == unreachableMessageCounter);
+    REQUIRE(failedRequests.at(0).remoteMessageStatusType
+            == Definitions::MessageStatusType::UNREACHABLE);
+    REQUIRE(failedRequests.at(1).messageCounter == messageCounter);
+
+    // send a ping request with two links to live to the missing node
+    createChainClient(missingNodeAddress, 2);
+    REQUIRE(chainClient->sendPingRequest(messageCounter) == Definitions::SendStatusType::SENT);
+    pumpChain();
+
+    // check the expired ping request
+    REQUIRE(chainClientHandler.getFailedRequests().size() == static_cast<size_t>(3));
+    REQUIRE(chainClientHandler.getFailedRequests().back().remoteMessageStatusType
+            == Definitions::MessageStatusType::EXPIRED);
+    REQUIRE(chainClient->getRouteFailureReportCounter() == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "A route failure report that quotes no request of the device client is ignored",
+                 "[DeviceApplication][testUnmatchedReport]")
+{
+    // send a set LED request of the device client to node 3
+    createChainClient(EndNodeAddress, Settings::DEFAULT_TIME_TO_LIVE);
+    REQUIRE(chainClient->sendSetLedRequest(true, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pumpChain();
+
+    // hand the device client a report of node 2 about a set LED request with another quote
+    const std::vector<uint8_t> quote = {0x00};
+    const Messages::RouteFailureReportResponse
+        routeFailureReportResponse(EndNodeAddress,
+                                   Messages::fromMessageType(Messages::MessageType::SET_LED_REQUEST),
+                                   Definitions::DeliveryFailureType::REJECTED,
+                                   Definitions::MessageStatusType::BUSY,
+                                   quote.data(),
+                                   quote.size());
+    Frame::RouteHeader routeHeader;
+    routeHeader.sourceAddress = NodeAddress;
+    routeHeader.destinationAddress = Definitions::HOST_ADDRESS;
+    routeHeader.timeToLive = Settings::DEFAULT_TIME_TO_LIVE;
+    const Frame::Frame reportFrame(0x10,
+                                   0,
+                                   Messages::fromMessageType(
+                                       Messages::MessageType::ROUTE_FAILURE_REPORT_RESPONSE),
+                                   routeHeader,
+                                   routeFailureReportResponse.getPayload(),
+                                   routeFailureReportResponse.getPayloadLength());
+    chainClient->onReceivedData(reportFrame.getData(), reportFrame.getSize());
+
+    // check that the report was counted and failed nothing
+    REQUIRE(chainClient->getRouteFailureReportCounter() == static_cast<uint64_t>(1));
+    REQUIRE(chainClientHandler.getFailedRequests().empty());
+    REQUIRE(chainClientHandler.getSetLedResponses().size() == static_cast<size_t>(1));
+}
+
+TEST_CASE_METHOD(
+    TestDeviceApplication,
+    "A response that a router refuses as busy is sent again and reaches the device client",
+    "[DeviceApplication][testBusyResponse]")
+{
+    // let the device client acknowledge nothing, so the responses of node 2 fill its window
+    createChainClient(NodeAddress, Settings::DEFAULT_TIME_TO_LIVE);
+    chainHostTransport.setFilter(
+        []([[maybe_unused]] const size_t sendCount, const std::vector<uint8_t> &data) noexcept {
+            return !Frame::Frame(data.data(), data.size()).getFlag(Definitions::FrameFlagType::ACK);
+        });
+    for (uint8_t requestIndex = 0; requestIndex < Settings::MaximumPendingFrames; ++requestIndex) {
+        CAPTURE(requestIndex);
+        REQUIRE(chainClient->sendEchoRequest(&requestIndex, sizeof(requestIndex), messageCounter)
+                == Definitions::SendStatusType::SENT);
+        pumpChain();
+    }
+
+    // send an echo request to node 3 whose response node 2 refuses as busy
+    const std::vector<uint8_t> payload = {0x33};
+    chainClient->setDestinationAddress(EndNodeAddress);
+    REQUIRE(chainClient->sendEchoRequest(payload.data(), payload.size(), messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pumpChain();
+    REQUIRE(chainClientHandler.getEchoResponses().size() == Settings::MaximumPendingFrames);
+    REQUIRE(nodeApplication->getRouterStatistics().busyFrameCounter == static_cast<uint64_t>(1));
+    REQUIRE(endApplication->getLinkStatistics().incomingRejectionCounter
+            == static_cast<uint64_t>(1));
+
+    // let the device client acknowledge again and the retransmissions pass
+    chainHostTransport.setFilter(DataFilter());
+    const Link::LinkConfiguration linkConfiguration;
+    for (uint8_t retransmission = 0; retransmission < linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        advanceChainClient(linkConfiguration.retransmitTimeout);
+    }
+
+    // check the echo response of node 3 and that node 3 lost no response
+    const std::vector<Messages::EchoResponse> echoResponses = chainClientHandler.getEchoResponses();
+    REQUIRE(echoResponses.size() == Settings::MaximumPendingFrames + 1);
+    REQUIRE(echoResponses.back().getSourceAddress() == EndNodeAddress);
+    REQUIRE(getPayload(echoResponses.back()) == payload);
+    REQUIRE(endApplication->getLinkStatistics().failedDeliveryCounter == static_cast<uint64_t>(0));
+    REQUIRE(chainClientHandler.getFailedRequests().empty());
 }
