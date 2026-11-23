@@ -199,6 +199,24 @@ public:
     }
 
     /*
+     * Get the bytes of a routed frame from the host to a destination.
+     */
+    [[nodiscard]] static std::vector<uint8_t> getRoutedFrameData(const uint16_t messageCounter,
+                                                                 const uint8_t destinationAddress,
+                                                                 const std::vector<uint8_t> &payload)
+    {
+        // create the route header from the host
+        Frame::RouteHeader routeHeader;
+        routeHeader.sourceAddress = Definitions::HOST_ADDRESS;
+        routeHeader.destinationAddress = destinationAddress;
+        routeHeader.timeToLive = Settings::DEFAULT_TIME_TO_LIVE;
+
+        // expose the bytes of the routed frame
+        const Frame::Frame frame(0, messageCounter, 1, routeHeader, payload.data(), payload.size());
+        return std::vector<uint8_t>(frame.getData(), frame.getData() + frame.getSize());
+    }
+
+    /*
      * Get the payload bytes of a frame.
      */
     [[nodiscard]] static std::vector<uint8_t> getPayload(const Frame::Frame &frame)
@@ -710,4 +728,92 @@ TEST_CASE_METHOD(TestFrameDecoder,
 
     // check both frames
     REQUIRE(reentrantDecoderHandler.getFrameCount() == static_cast<size_t>(2));
+}
+
+TEST_CASE_METHOD(TestFrameDecoder,
+                 "Routed and direct frames between garbage all arrive in order",
+                 "[FrameDecoder][testRoutedFramesInNoise]")
+{
+    // receive direct and routed frames with garbage between them
+    const std::vector<uint8_t> garbage = {0x00, 0xC3, 0x02, 0xFF};
+    std::vector<uint8_t> stream = garbage;
+    appendData(stream, getFrameData(0, 1, 1, std::vector<uint8_t>({0x11})));
+    appendData(stream, getRoutedFrameData(2, 3, std::vector<uint8_t>({0x22, 0x23})));
+    appendData(stream, garbage);
+    appendData(stream, getRoutedFrameData(3, 4, std::vector<uint8_t>()));
+    appendData(stream, getFrameData(0, 4, 1, std::vector<uint8_t>({0x44})));
+    receiveData(stream);
+
+    // check the frames, their versions and their routes
+    const std::vector<Frame::Frame> frames = testDecoderHandler.getFrames();
+    REQUIRE(testDecoderHandler.getDecodeErrorTypes().empty());
+    REQUIRE(frames.size() == static_cast<size_t>(4));
+    REQUIRE_FALSE(frames.at(0).getRouted());
+    REQUIRE(getPayload(frames.at(0)) == std::vector<uint8_t>({0x11}));
+    REQUIRE(frames.at(1).getRouted());
+    REQUIRE(frames.at(1).getDestinationAddress() == 3);
+    REQUIRE(getPayload(frames.at(1)) == std::vector<uint8_t>({0x22, 0x23}));
+    REQUIRE(frames.at(2).getRouted());
+    REQUIRE(frames.at(2).getDestinationAddress() == 4);
+    REQUIRE(frames.at(2).getPayloadLength() == 0);
+    REQUIRE_FALSE(frames.at(3).getRouted());
+    REQUIRE(frames.at(3).getMessageCounter() == 4);
+    REQUIRE(testFrameDecoder->getStatistics().discardedByteCounter == 2 * garbage.size());
+}
+
+TEST_CASE_METHOD(TestFrameDecoder,
+                 "A repeated first sync byte and sync bytes inside a routed frame are just data",
+                 "[FrameDecoder][testRoutedSyncTrap]")
+{
+    // receive a first sync byte before a routed frame with sync bytes in its route and payload
+    const std::vector<uint8_t> payload = {0xA5, 0xA5, 0xC3, 0x02, 0x00};
+    std::vector<uint8_t> stream = {0xA5};
+    appendData(stream, getRoutedFrameData(1, 0xA5, payload));
+    receiveData(stream);
+
+    // check the routed frame and the discarded byte
+    const std::vector<Frame::Frame> frames = testDecoderHandler.getFrames();
+    REQUIRE(frames.size() == static_cast<size_t>(1));
+    REQUIRE(frames.at(0).getDestinationAddress() == 0xA5);
+    REQUIRE(getPayload(frames.at(0)) == payload);
+    REQUIRE(testFrameDecoder->getStatistics().discardedByteCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(
+    TestFrameDecoder,
+    "A routed frame fed one byte at a time waits for its routing bytes and its payload",
+    "[FrameDecoder][testRoutedByteByByte]")
+{
+    // receive a routed frame one byte at a time
+    const std::vector<uint8_t> frameData = getRoutedFrameData(1, 3, std::vector<uint8_t>({1, 2}));
+    std::for_each(frameData.cbegin(), frameData.cend(), [this](const uint8_t byte) {
+        REQUIRE(testDecoderHandler.getFrames().empty());
+        testFrameDecoder->onReceivedByte(byte, 0ms);
+    });
+
+    // check the frame after its last byte
+    const std::vector<Frame::Frame> frames = testDecoderHandler.getFrames();
+    REQUIRE(frames.size() == static_cast<size_t>(1));
+    REQUIRE(frames.at(0).getSize() == frameData.size());
+    REQUIRE(testFrameDecoder->getBufferedSize() == static_cast<size_t>(0));
+}
+
+TEST_CASE_METHOD(TestFrameDecoder,
+                 "A routed frame with a damaged time to live is a CRC32 mismatch",
+                 "[FrameDecoder][testRoutedCRCMismatch]")
+{
+    // receive a routed frame with a damaged time to live before a direct frame
+    static constexpr size_t timeToLiveOffset = Definitions::ROUTED_HEADER_SIZE - 1;
+    std::vector<uint8_t> stream = getRoutedFrameData(1, 3, std::vector<uint8_t>({0x01}));
+    stream.at(timeToLiveOffset) = static_cast<uint8_t>(stream.at(timeToLiveOffset) - 1);
+    appendData(stream, getFrameData(0, 2, 1, std::vector<uint8_t>()));
+    receiveData(stream);
+
+    // check the decode error and the direct frame behind it
+    const std::vector<Frame::Frame> frames = testDecoderHandler.getFrames();
+    REQUIRE(
+        testDecoderHandler.getDecodeErrorTypes()
+        == std::vector<Definitions::DecodeErrorType>({Definitions::DecodeErrorType::CRC_MISMATCH}));
+    REQUIRE(frames.size() == static_cast<size_t>(1));
+    REQUIRE(frames.at(0).getMessageCounter() == 2);
 }
