@@ -418,6 +418,10 @@ or the other way round:
   the virtual COM port of the Nucleo controller, `/dev/ttyACM0` or `COM5` on Windows.
   Each start runs the steps once; press reset to run them again.
 
+A gateway, where the host talks to one board that forwards to the other, is not part
+of version 1 of the protocol; [GATEWAY.md](GATEWAY.md) explains why and how it could be
+added.
+
 ## 13. Both targets in QEMU without a board
 
 Both targets also run in QEMU: the ESP32 on Espressif's QEMU, the STM32F4 on the
