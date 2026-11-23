@@ -4,11 +4,13 @@ Small Standalone Programs with Step-by-Step Guides
 
 Every example is one short program in the `examples/` directory with a guide of the same name next to it. The guide says which
 lectures to watch first, builds and runs the program, walks through the source step by step, explains the output
-and ends with changes to try. The examples use only the public API of the `core`, `app` and `host` libraries.
+and ends with changes to try. The examples use only the public API of the `core`, `app` and `host` libraries, example 30
+that of the firmware library `firmware/common` too.
 Examples 01 and 24 open a serial port through Qt, a virtual serial cable made with `socat` on Linux or a com0com pair on
 Windows stands in for the hardware. The others run in memory with fixed inputs and print the same output on every run.
-Every example builds and runs on Linux and on Windows. Examples 28 and 29 are CMake projects of their own, a directory
-each with a guide next to it, that use sercom as a library outside the main build.
+Every example builds and runs on Linux and on Windows. Examples 28 and 29 are CMake projects of their own and example 30
+a PlatformIO project of its own, a directory each with a guide next to it, that use sercom as a library outside the main
+build.
 
 An example exits with 0 when its result is as expected, with 1 when it is not, and with 64 for a wrong command line.
 
@@ -81,13 +83,14 @@ because its messages travel over the link layer of example 18.
 ## Consumer projects
 
 A consumer project is a project of its own that uses sercom as a library, the way your project would. Each one is a
-directory with its own `CMakeLists.txt` and source file and is built on its own, not by the main build. In the
-repository it takes the checkout around it; its guide shows the layout of a project of your own.
+directory with its own `CMakeLists.txt` or `platformio.ini` and its sources and is built on its own, not by the main
+build. In the repository it takes the checkout around it; its guide shows the layout of a project of your own.
 
 | Section | Watch first | No. | Title | What it shows | Guide and project |
 |---|---|---|---|---|---|
 | S16 | L115 (also L54, L81) | 28 | Consume with add_subdirectory | Adds sercom with `add_subdirectory`, links `core` and `app` without Qt, includes by relative path and pings a device in memory | [guide](28_consume_with_add_subdirectory.md), [project](28_consume_with_add_subdirectory/CMakeLists.txt) |
 | S16 | L115 (also L77, L78) | 29 | Consume with FetchContent | Fetches sercom at a tag with `FetchContent`, links `sercom::host` and Qt, includes `"core/include/..."` and pings a device on a serial port, with `--to` a node address | [guide](29_consume_with_fetch_content.md), [project](29_consume_with_fetch_content/CMakeLists.txt) |
+| S16 | L116 (also L83, L92) | 30 | Consume with PlatformIO | Links `core`, `app` and `firmware/common` with `symlink://`, reads the build values of sercom through `custom_sercom_directory` and runs the device role on a serial port and a board of its own, pinged in QEMU | [guide](30_consume_with_platformio.md), [project](30_consume_with_platformio/platformio.ini) |
 
 ## Building a consumer project
 1. Open a terminal, on Windows PowerShell 7 with the path of the README.
@@ -99,3 +102,5 @@ repository it takes the checkout around it; its guide shows the layout of a proj
 7. The program is `build/consume_with_add_subdirectory` or `build/consume_with_fetch_content`, with `.exe` on Windows.
 8. Example 29 takes a serial port, its guide runs it against `build/sercom_device_sim` of the main build over `socat` or com0com.
 9. Build and run both projects against this checkout in one go from the source directory: `tools/run_consumers.sh build/sercom_device_sim`, on Windows `tools/run_consumers.ps1 build/sercom_device_sim.exe`
+10. Build example 30 with PlatformIO, installed as README.md shows in the section "Building the project", "ESP32", from the source directory: `pio run -d examples/30_consume_with_platformio`
+11. Its guide runs the firmware in QEMU with `tools/run_emulator.sh` and on an ESP32 board.
