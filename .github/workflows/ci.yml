@@ -70,6 +70,8 @@ jobs:
         run: python3 tools/sercom_frame.py self-test
       - name: End to end over a noisy virtual link
         run: tests/e2e/noisy_link_test.sh build-debug/sercom_cli build-debug/sercom_device_sim
+      - name: Daisy chain of simulators over noisy virtual links
+        run: tests/e2e/chain_test.sh build-debug/sercom_cli build-debug/sercom_device_sim
       - name: Build Release
         run: |
           cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -167,6 +169,8 @@ jobs:
           tools/run_sanitizer_test.sh --help
           tools/run_examples.sh --help
           tests/e2e/noisy_link_test.sh --help
+          tests/e2e/chain_test.sh --help
+          tests/e2e/emulator_chain_test.sh --help
           fuzz/run_fuzzers.sh --help
           python3 tools/noise.py --help
           python3 tools/sercom_frame.py --help
@@ -176,6 +180,7 @@ jobs:
           pwsh -NoProfile -File tools/noisy_link.ps1 --help
           pwsh -NoProfile -File tools/run_examples.ps1 --help
           pwsh -NoProfile -File tests/e2e/noisy_link_test.ps1 --help
+          pwsh -NoProfile -File tests/e2e/chain_test.ps1 --help
 
   fuzz:
     runs-on: ubuntu-24.04
@@ -208,10 +213,14 @@ jobs:
         run: pio run -d firmware/esp32 -e esp32dev -e esp32dev-console
       - name: Build ESP32 controller firmware
         run: pio run -d firmware/esp32 -e esp32dev-controller
+      - name: Build ESP32 router and chain firmware
+        run: pio run -d firmware/esp32 -e esp32dev-router -e esp32dev-chain
       - name: Build STM32F4 firmware
         run: |
           pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console \
             -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller
+      - name: Build STM32F4 router firmware
+        run: pio run -d firmware/stm32f4 -e nucleo_f401re-router -e netduinoplus2-qemu-router
 
   emulator:
     runs-on: ubuntu-24.04
@@ -261,24 +270,32 @@ jobs:
           tools/run_emulator.sh --help
           tests/e2e/emulator_test.sh --help
           python3 tools/uart_bridge.py --help
-      - name: Build the command line tool
+      - name: Build the command line tool and the dump tool
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSERCOM_BUILD_TESTS=OFF
-          cmake --build build --target sercom_cli
+          cmake --build build --target sercom_cli --target sercom_dump
       - name: Build the firmware of the emulated chips
         run: |
-          pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller
-          pio run -d firmware/stm32f4 -e netduinoplus2-qemu -e netduinoplus2-qemu-controller
+          pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller -e esp32dev-router \
+            -e esp32dev-chain
+          pio run -d firmware/stm32f4 -e netduinoplus2-qemu -e netduinoplus2-qemu-controller \
+            -e netduinoplus2-qemu-router
       - name: Both targets with the command line tool and with each other in QEMU
         run: |
           WORK_DIRECTORY="$RUNNER_TEMP/emulator" tests/e2e/emulator_test.sh build/sercom_cli \
             firmware/esp32/.pio/build firmware/stm32f4/.pio/build
+      - name: Daisy chain of three emulated chips
+        run: |
+          WORK_DIRECTORY="$RUNNER_TEMP/emulator-chain" tests/e2e/emulator_chain_test.sh build/sercom_cli \
+            build/sercom_dump firmware/esp32/.pio/build firmware/stm32f4/.pio/build
       - name: Archive the emulator logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: sercom-emulator-logs-${{ github.run_number }}
-          path: ${{ runner.temp }}/emulator
+          path: |
+            ${{ runner.temp }}/emulator
+            ${{ runner.temp }}/emulator-chain
           if-no-files-found: ignore
 
   windows:
@@ -349,7 +366,7 @@ jobs:
             $output | Select-Object -Last 10 | ForEach-Object { Write-Output "::error::$_" }
             exit 1
           }
-      - name: Install com0com with the pairs COM10 to COM11 and COM12 to COM13
+      - name: Install com0com with the pairs COM10 to COM11, COM12 to COM13, COM14 to COM15 and COM16 to COM17
         run: |
           # the signed com0com 3.0.0.0 installs on the runner, its publisher is trusted first to skip the prompt
           curl.exe -sSL --retry 3 -o com0com.zip 'https://sourceforge.net/projects/com0com/files/com0com/3.0.0.0/com0com-3.0.0.0-i386-and-x64-signed.zip/download'
@@ -364,10 +381,12 @@ jobs:
           Push-Location 'C:\Program Files (x86)\com0com'
           ./setupc.exe --silent install PortName=COM10 PortName=COM11 | Out-Null
           ./setupc.exe --silent install PortName=COM12 PortName=COM13 | Out-Null
+          ./setupc.exe --silent install PortName=COM14 PortName=COM15 | Out-Null
+          ./setupc.exe --silent install PortName=COM16 PortName=COM17 | Out-Null
           Pop-Location
 
-          # bytes must cross both pairs
-          foreach ($pair in @(@('COM10', 'COM11'), @('COM13', 'COM12'))) {
+          # bytes must cross every pair
+          foreach ($pair in @(@('COM10', 'COM11'), @('COM13', 'COM12'), @('COM14', 'COM15'), @('COM17', 'COM16'))) {
             $first = New-Object System.IO.Ports.SerialPort $pair[0], 115200
             $second = New-Object System.IO.Ports.SerialPort $pair[1], 115200
             $first.Open()
@@ -402,6 +421,13 @@ jobs:
             $output | Select-Object -Last 30 | ForEach-Object { Write-Output "::error::$_" }
             exit 1
           }
+      - name: Daisy chain of simulators over com0com pairs
+        run: |
+          pwsh -NoProfile -File tests/e2e/chain_test.ps1 build-debug/sercom_cli.exe build-debug/sercom_device_sim.exe 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-Object -Last 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
       - name: Python reference self test
         run: python tools/sercom_frame.py self-test
       - name: Show the help of every tool
@@ -409,6 +435,7 @@ jobs:
           tools/noisy_link.ps1 --help
           tools/run_examples.ps1 --help
           tests/e2e/noisy_link_test.ps1 --help
+          tests/e2e/chain_test.ps1 --help
           python tools/noise.py --help
           python tests/e2e/late_ping_device.py --help
       - name: Build Release
