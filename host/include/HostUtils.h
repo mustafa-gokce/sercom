@@ -126,6 +126,7 @@ namespace sercom::HostUtils {
 
 /*
  * Get a traced frame as one line of text.
+ * The line of a routed frame ends with its route and its time to live.
  */
 [[nodiscard]] std::string getTracedFrameLine(FrameTracer::TraceDirectionType traceDirectionType,
                                              const Frame::Frame &frame,

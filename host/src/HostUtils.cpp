@@ -417,6 +417,7 @@ std::string getFrameFlagsText(const uint8_t flags)
     addFlagName(Definitions::FrameFlagType::ACK);
     addFlagName(Definitions::FrameFlagType::NACK);
     addFlagName(Definitions::FrameFlagType::RETRANSMISSION);
+    addFlagName(Definitions::FrameFlagType::ROUTE_CAPABLE);
 
     // name a FLAGS field without a set flag
     if (flagsAsText.empty()) {
@@ -468,6 +469,13 @@ std::string getTracedFrameLine(const FrameTracer::TraceDirectionType traceDirect
 
     // add the result of the CRC32 check
     line += frame.getCRCValid() ? "  CRC ok" : "  CRC bad";
+
+    // add the route of a routed frame
+    if (frame.getRouted()) {
+        line += "  route " + std::to_string(frame.getSourceAddress()) + ">"
+                + std::to_string(frame.getDestinationAddress()) + " ttl "
+                + std::to_string(frame.getTimeToLive());
+    }
 
     // expose the line
     return line;
