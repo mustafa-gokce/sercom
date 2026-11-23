@@ -108,14 +108,19 @@ endif()
 # privately reusable settings
 add_library(${PROJECT_NAME}_settings INTERFACE)
 target_compile_definitions(${PROJECT_NAME}_settings INTERFACE
+    MAXIMUM_PAYLOAD_SIZE=${MAXIMUM_PAYLOAD_SIZE}
+    MAXIMUM_PENDING_FRAMES=${MAXIMUM_PENDING_FRAMES}
+    DEFAULT_DUPLICATE_HISTORY_SIZE=${DEFAULT_DUPLICATE_HISTORY_SIZE}
+)
+
+# version numbers of the application library only
+add_library(${PROJECT_NAME}_version INTERFACE)
+target_compile_definitions(${PROJECT_NAME}_version INTERFACE
     APP_VERSION_MAJOR=${APP_VERSION_MAJOR}
     APP_VERSION_MINOR=${APP_VERSION_MINOR}
     APP_VERSION_BUILD=${APP_VERSION_BUILD}
     APP_GIT_HASH="${APP_GIT_HASH}"
     APP_VERSION_STRING="${APP_VERSION_STRING}"
-    MAXIMUM_PAYLOAD_SIZE=${MAXIMUM_PAYLOAD_SIZE}
-    MAXIMUM_PENDING_FRAMES=${MAXIMUM_PENDING_FRAMES}
-    DEFAULT_DUPLICATE_HISTORY_SIZE=${DEFAULT_DUPLICATE_HISTORY_SIZE}
 )
 
 # create core library
@@ -151,6 +156,7 @@ add_library(${PROJECT_NAME}_app_lib
 )
 target_link_libraries(${PROJECT_NAME}_app_lib PRIVATE
     ${PROJECT_NAME}_settings
+    ${PROJECT_NAME}_version
     ${PROJECT_NAME}_core_lib
 )
 
