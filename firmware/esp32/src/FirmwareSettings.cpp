@@ -14,6 +14,12 @@ constexpr int8_t SerialReceivePin = UART0_RECEIVE_PIN;
 constexpr int8_t SerialTransmitPin = UART0_TRANSMIT_PIN;
 #endif
 
+#if defined(LET_RUN_CONTROLLER)
+constexpr bool ControllerRun = true;
+constexpr std::string_view ApplicationName = "DeviceClient";
+#else
+constexpr bool ControllerRun = false;
 constexpr std::string_view ApplicationName = "DeviceApplication";
+#endif
 
 } // namespace sercom::FirmwareSettings
