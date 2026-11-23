@@ -14,7 +14,13 @@ constexpr uint32_t SerialReceivePin = USART2_RECEIVE_PIN;
 constexpr uint32_t SerialTransmitPin = USART2_TRANSMIT_PIN;
 #endif
 
+#if defined(LET_RUN_CONTROLLER)
+constexpr bool ControllerRun = true;
+constexpr std::string_view ApplicationName = "DeviceClient";
+#else
+constexpr bool ControllerRun = false;
 constexpr std::string_view ApplicationName = "DeviceApplication";
+#endif
 
 #if defined(LET_RUN_ON_QEMU)
 constexpr uint32_t SystemClockFrequency = QEMU_CLOCK_FREQUENCY;

@@ -13,6 +13,7 @@ namespace sercom::FirmwareSettings {
 using namespace std::chrono_literals;
 
 extern const bool ConsolePrinted;              // console on USART2 and protocol on USART1
+extern const bool ControllerRun;               // controller role instead of the device role
 extern const std::string_view ApplicationName; // name of the application on the protocol serial port
 extern const std::string_view SerialPortName;  // name of the protocol serial port
 extern const uint32_t SerialReceivePin;        // port A pin of the protocol receive pin
