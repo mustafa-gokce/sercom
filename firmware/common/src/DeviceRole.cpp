@@ -5,15 +5,28 @@ namespace sercom::DeviceRole {
 DeviceRole::DeviceRole(Transport::Transport &transport,
                        const Clock::Clock &clock,
                        FirmwarePlatform::FirmwarePlatform &firmwarePlatform,
-                       Console::Console &console)
+                       Console::Console &console,
+                       const Router::RouterConfiguration &routerConfiguration)
+    : DeviceRole(transport, nullptr, clock, firmwarePlatform, console, routerConfiguration)
+{}
+
+DeviceRole::DeviceRole(Transport::Transport &transport,
+                       Transport::Transport *secondaryTransport,
+                       const Clock::Clock &clock,
+                       FirmwarePlatform::FirmwarePlatform &firmwarePlatform,
+                       Console::Console &console,
+                       const Router::RouterConfiguration &routerConfiguration)
     : console(console)
     , frameTracer(console, clock, FrameTracer::TraceDirectionType::DEVICE_TO_HOST)
     , traceTransport(transport, this->frameTracer)
     , deviceApplication(console.getPrinted()
                             ? static_cast<Transport::Transport &>(this->traceTransport)
                             : transport,
+                        secondaryTransport,
                         clock,
-                        firmwarePlatform)
+                        firmwarePlatform,
+                        Link::LinkConfiguration(),
+                        routerConfiguration)
     , activityLed(firmwarePlatform, clock)
     , lastIncomingFrameCounter(0)
 {}
@@ -29,6 +42,12 @@ void DeviceRole::onReceivedData(const uint8_t *data, const size_t size)
 
     // feed the received bytes to the device application
     this->deviceApplication.onReceivedData(data, size);
+}
+
+void DeviceRole::onReceivedSecondaryData(const uint8_t *data, const size_t size)
+{
+    // feed the received bytes of the secondary port to the device application
+    this->deviceApplication.onReceivedSecondaryData(data, size);
 }
 
 void DeviceRole::reportLog(const Messages::LogLevelType logLevelType, const std::string_view text)
@@ -49,9 +68,10 @@ void DeviceRole::maintain()
         this->frameTracer.maintain();
     }
 
-    // start an activity blink after a valid received frame
-    const uint64_t currentIncomingFrameCounter = this->deviceApplication.getLinkStatistics()
-                                                     .incomingFrameCounter;
+    // start an activity blink after a valid received frame of either port
+    const uint64_t currentIncomingFrameCounter
+        = this->deviceApplication.getLinkStatistics().incomingFrameCounter
+          + this->deviceApplication.getSecondaryLinkStatistics().incomingFrameCounter;
     if (currentIncomingFrameCounter != this->lastIncomingFrameCounter) {
         this->lastIncomingFrameCounter = currentIncomingFrameCounter;
         this->activityLed.startBlink();
@@ -63,8 +83,14 @@ void DeviceRole::maintain()
 
 Link::LinkStatistics DeviceRole::getLinkStatistics() const
 {
-    // expose the link statistics of the device application
+    // expose the link statistics of the primary port of the device application
     return this->deviceApplication.getLinkStatistics();
+}
+
+Router::RouterStatistics DeviceRole::getRouterStatistics() const
+{
+    // expose the router statistics of the device application
+    return this->deviceApplication.getRouterStatistics();
 }
 
 } // namespace sercom::DeviceRole
