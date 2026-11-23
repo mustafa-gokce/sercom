@@ -51,6 +51,7 @@ public:
 private:
     /*
      * Listen for a traced frame and print it on one line.
+     * The line of a routed frame ends with its route and its time to live.
      */
     void onReceivedTracedFrame(FrameTracer::TraceDirectionType traceDirectionType,
                                const Frame::Frame &frame,

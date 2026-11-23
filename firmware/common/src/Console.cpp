@@ -225,6 +225,7 @@ void Console::onReceivedTracedFrame(const FrameTracer::TraceDirectionType traceD
                    Definitions::FrameFlagType::RETRANSMISSION,
                    flagsAsText,
                    flagsAsTextLength);
+    appendFlagName(flags, Definitions::FrameFlagType::ROUTE_CAPABLE, flagsAsText, flagsAsTextLength);
 
     // name a FLAGS field without a set flag
     if (flagsAsTextLength == 0) {
@@ -245,6 +246,19 @@ void Console::onReceivedTracedFrame(const FrameTracer::TraceDirectionType traceD
                   payloadAsText.size(),
                   payloadAsTextLength);
 
+    // get the route of a routed frame
+    std::array<char, CommonSettings::CONSOLE_FIELD_SIZE> routeAsText
+        = std::array<char, CommonSettings::CONSOLE_FIELD_SIZE>();
+    if (frame.getRouted()) {
+        [[maybe_unused]] const int routeAsTextLength
+            = std::snprintf(routeAsText.data(),
+                            routeAsText.size(),
+                            "  route %" PRIu32 ">%" PRIu32 " ttl %" PRIu32,
+                            static_cast<uint32_t>(frame.getSourceAddress()),
+                            static_cast<uint32_t>(frame.getDestinationAddress()),
+                            static_cast<uint32_t>(frame.getTimeToLive()));
+    }
+
     // get the time and the direction of the frame
     std::array<char, CommonSettings::CONSOLE_FIELD_SIZE> timeAsText
         = std::array<char, CommonSettings::CONSOLE_FIELD_SIZE>();
@@ -258,7 +272,7 @@ void Console::onReceivedTracedFrame(const FrameTracer::TraceDirectionType traceD
     const int lineLength = std::snprintf(line.data(),
                                          line.size(),
                                          "%s %.*s #%-*" PRIu32 " %-*s %-*s len %*" PRIu32
-                                         "%s%s%s  CRC %s\r\n",
+                                         "%s%s%s  CRC %s%s\r\n",
                                          timeAsText.data(),
                                          static_cast<int>(traceDirectionTypeAsText.size()),
                                          traceDirectionTypeAsText.data(),
@@ -273,7 +287,8 @@ void Console::onReceivedTracedFrame(const FrameTracer::TraceDirectionType traceD
                                          payloadLength > 0 ? "  " : "",
                                          payloadAsText.data(),
                                          tracedPayloadSize < payloadLength ? " .." : "",
-                                         frame.getCRCValid() ? "ok" : "bad");
+                                         frame.getCRCValid() ? "ok" : "bad",
+                                         routeAsText.data());
     this->printLine(line.data(), lineLength);
 }
 
