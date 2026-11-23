@@ -107,7 +107,7 @@ TEST_CASE_METHOD(TestDefinitions,
             == Definitions::MessageStatusType::MALFORMED_PAYLOAD);
     REQUIRE(Definitions::toMessageStatusType(4) == Definitions::MessageStatusType::BUSY);
     REQUIRE(Definitions::toMessageStatusType(5) == Definitions::MessageStatusType::INVALID_ARGUMENT);
-    REQUIRE(Definitions::toMessageStatusType(6) == Definitions::MessageStatusType::UNKNOWN);
+    REQUIRE(Definitions::toMessageStatusType(8) == Definitions::MessageStatusType::UNKNOWN);
     REQUIRE(Definitions::toMessageStatusType(200) == Definitions::MessageStatusType::UNKNOWN);
 }
 
