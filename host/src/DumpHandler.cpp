@@ -34,12 +34,20 @@ void DumpHandler::onReceivedFrame(const Frame::Frame &frame)
         = HostUtils::getLeftJustifiedText(std::to_string(frame.getPayloadLength()),
                                           payloadLengthWidth);
 
+    // get the frame line with every field
+    std::string line = "FRAME counter=" + messageCounterAsText + " type=0x" + messageTypeAsText
+                       + " flags=" + HostUtils::getLeftJustifiedText(flagsAsText, flagsWidth)
+                       + " length=" + payloadLengthAsText + " payload="
+                       + HostUtils::toHexString(frame.getPayload(), frame.getPayloadLength());
+
+    // add the route of a routed frame
+    if (frame.getRouted()) {
+        line += " source=" + std::to_string(frame.getSourceAddress())
+                + " destination=" + std::to_string(frame.getDestinationAddress())
+                + " ttl=" + std::to_string(frame.getTimeToLive());
+    }
+
     // print the frame
-    const std::string line = "FRAME counter=" + messageCounterAsText + " type=0x"
-                             + messageTypeAsText
-                             + " flags=" + HostUtils::getLeftJustifiedText(flagsAsText, flagsWidth)
-                             + " length=" + payloadLengthAsText + " payload="
-                             + HostUtils::toHexString(frame.getPayload(), frame.getPayloadLength());
     HostUtils::printLine(line);
 }
 
