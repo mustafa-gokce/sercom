@@ -21,7 +21,8 @@ constexpr std::chrono::milliseconds DEFAULT_TELEMETRY_PERIOD_MSEC
 constexpr std::chrono::milliseconds MINIMUM_TELEMETRY_PERIOD_MSEC
     = 20ms; // minimum telemetry period in milliseconds
 
-constexpr size_t PING_HISTORY_SIZE = 8; // number of remembered ping requests
+constexpr size_t PING_HISTORY_SIZE = 8;    // number of remembered ping requests
+constexpr size_t REQUEST_HISTORY_SIZE = 8; // number of remembered requests for route failure reports
 
 } // namespace sercom::AppSettings
 
