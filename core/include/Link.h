@@ -55,6 +55,8 @@ struct LinkStatistics
 struct PendingMessage
 {
     bool used = false;                             // slot holds a message
+    bool routed = false;                           // message travels in a routed frame
+    Frame::RouteHeader routeHeader;                // route header of a routed message
     uint16_t messageCounter = 0;                   // message counter of the message
     uint16_t messageType = 0;                      // message type of the message
     uint8_t payloadLength = 0;                     // payload length in bytes
@@ -150,6 +152,19 @@ public:
                                                           uint16_t &messageCounter);
 
     /*
+     * Send a routed message with the route header and store the message counter it carries.
+     * A link that is not route capable refuses it with an invalid argument.
+     * So does a route header with an unassigned address or a time to live of zero.
+     * An acknowledged message for a node that the peer answers with BUSY is retransmitted later.
+     */
+    [[nodiscard]] Definitions::SendStatusType sendRoutedMessage(const Frame::RouteHeader &routeHeader,
+                                                                uint16_t messageType,
+                                                                const uint8_t *payload,
+                                                                size_t payloadLength,
+                                                                bool acknowledged,
+                                                                uint16_t &messageCounter);
+
+    /*
      * Listen for received data and hand it to the decoder.
      */
     void onReceivedData(const uint8_t *data, size_t size);
@@ -199,6 +214,17 @@ private:
 
 private:
     /*
+     * Send a message in a direct or a routed frame and store the message counter it carries.
+     */
+    [[nodiscard]] Definitions::SendStatusType sendMessageFrame(bool routed,
+                                                               const Frame::RouteHeader &routeHeader,
+                                                               uint16_t messageType,
+                                                               const uint8_t *payload,
+                                                               size_t payloadLength,
+                                                               bool acknowledged,
+                                                               uint16_t &messageCounter);
+
+    /*
      * Get whether the oldest pending message still allows a new acknowledged message.
      */
     [[nodiscard]] bool getWithinSpread() const;
@@ -223,6 +249,12 @@ private:
      * Handle the ACK or NACK frame of a pending message.
      */
     void handleAcknowledgement(const Frame::Frame &frame);
+
+    /*
+     * Hold a routed message for a node that the peer answered with BUSY until its next retransmission.
+     * Get whether the message is held, which needs a retransmission that is left.
+     */
+    [[nodiscard]] bool holdBusyMessage(const Frame::Frame &frame, PendingMessage &pendingMessage);
 
     /*
      * Find a recently received acknowledged message with its message counter and message type.

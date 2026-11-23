@@ -4,6 +4,40 @@
 
 namespace sercom::Link {
 
+namespace {
+
+/*
+ * Get a frame of a message, a routed frame with the route header or a direct frame without it.
+ */
+[[nodiscard]] Frame::Frame getMessageFrame(const bool routed,
+                                           const uint8_t flags,
+                                           const uint16_t messageCounter,
+                                           const uint16_t messageType,
+                                           const Frame::RouteHeader &routeHeader,
+                                           const uint8_t *payload,
+                                           const size_t payloadLength)
+{
+    // expose a routed frame with its route header
+    if (routed) {
+        return Frame::Frame(flags, messageCounter, messageType, routeHeader, payload, payloadLength);
+    }
+
+    // expose a direct frame
+    return Frame::Frame(flags, messageCounter, messageType, payload, payloadLength);
+}
+
+/*
+ * Get whether a message is routed to a node, so a BUSY of a hop means that the hop took nothing.
+ * A broadcast copy may have left the hop already, so its BUSY ends the delivery as in version 1.
+ */
+[[nodiscard]] bool getRoutedToNode(const bool routed, const Frame::RouteHeader &routeHeader)
+{
+    // expose whether the message is routed to one node
+    return routed && routeHeader.destinationAddress != Definitions::BROADCAST_ADDRESS;
+}
+
+} // namespace
+
 LinkHandler::~LinkHandler() {}
 
 Link::Link(Transport::Transport &transport,
@@ -32,60 +66,47 @@ Definitions::SendStatusType Link::sendMessage(const uint16_t messageType,
                                               const bool acknowledged,
                                               uint16_t &messageCounter)
 {
-    // payload must fit into a frame of this build
-    if (payloadLength > Settings::MaximumPayloadSize) {
-        return Definitions::SendStatusType::PAYLOAD_TOO_LONG;
-    }
+    // send the message in a direct frame
+    return this->sendMessageFrame(false,
+                                  Frame::RouteHeader(),
+                                  messageType,
+                                  payload,
+                                  payloadLength,
+                                  acknowledged,
+                                  messageCounter);
+}
 
-    // payload must exist when it is not empty
-    if (payloadLength > 0 && payload == nullptr) {
+Definitions::SendStatusType Link::sendRoutedMessage(const Frame::RouteHeader &routeHeader,
+                                                    const uint16_t messageType,
+                                                    const uint8_t *payload,
+                                                    const size_t payloadLength,
+                                                    const bool acknowledged,
+                                                    uint16_t &messageCounter)
+{
+    // link must be route capable
+    if (!this->configuration.routeCapable) {
         return Definitions::SendStatusType::INVALID_ARGUMENT;
     }
 
-    // acknowledged message must get a free pending message within the spread
-    const std::array<PendingMessage, Settings::MaximumPendingFrames>::iterator &iterator
-        = std::find_if(this->pendingMessages.begin(),
-                       this->pendingMessages.end(),
-                       [](const PendingMessage &pendingMessage) { return !pendingMessage.used; });
-    if (acknowledged && (iterator == this->pendingMessages.end() || !this->getWithinSpread())) {
-        return Definitions::SendStatusType::WINDOW_FULL;
+    // route header must name the source and the destination
+    if (routeHeader.sourceAddress == Definitions::UNASSIGNED_ADDRESS
+        || routeHeader.destinationAddress == Definitions::UNASSIGNED_ADDRESS) {
+        return Definitions::SendStatusType::INVALID_ARGUMENT;
     }
 
-    // assign the message counter that wraps from 65535 to 0
-    const uint16_t assignedMessageCounter = this->nextMessageCounter;
-    ++this->nextMessageCounter;
-
-    // frame must be sent
-    const uint8_t flags = acknowledged ? Definitions::fromFrameFlagType(
-                                             Definitions::FrameFlagType::ACK_REQUEST)
-                                       : static_cast<uint8_t>(0);
-    const Frame::Frame frame(this->getFrameFlags(flags),
-                             assignedMessageCounter,
-                             messageType,
-                             payload,
-                             payloadLength);
-    if (!this->sendFrame(frame)) {
-        return Definitions::SendStatusType::TRANSPORT_ERROR;
+    // time to live must allow the frame to cross this link
+    if (routeHeader.timeToLive == 0) {
+        return Definitions::SendStatusType::INVALID_ARGUMENT;
     }
 
-    // keep a copy for retransmissions
-    if (acknowledged) {
-        iterator->used = true;
-        iterator->messageCounter = assignedMessageCounter;
-        iterator->messageType = messageType;
-        iterator->payloadLength = static_cast<uint8_t>(payloadLength);
-        iterator->retransmissionCount = 0;
-        iterator->lastSentTimestamp = this->clock.getTime();
-        iterator->sendSequence = this->acknowledgedSendSequence;
-        std::copy_n(payload, payloadLength, iterator->payload.begin());
-        ++this->acknowledgedSendSequence;
-    }
-
-    // store the message counter
-    messageCounter = assignedMessageCounter;
-
-    // message sent successfully
-    return Definitions::SendStatusType::SENT;
+    // send the message in a routed frame
+    return this->sendMessageFrame(true,
+                                  routeHeader,
+                                  messageType,
+                                  payload,
+                                  payloadLength,
+                                  acknowledged,
+                                  messageCounter);
 }
 
 void Link::onReceivedData(const uint8_t *data, const size_t size)
@@ -123,6 +144,11 @@ void Link::maintain()
                           // free the slot
                           pendingMessage.used = false;
 
+                          // forget the version of a peer that never answered a routed message
+                          if (pendingMessage.routed) {
+                              this->peerVersionType = Definitions::PeerVersionType::UNKNOWN;
+                          }
+
                           // keep track of failed deliveries
                           ++this->statistics.failedDeliveryCounter;
 
@@ -146,11 +172,13 @@ void Link::maintain()
                           Definitions::fromFrameFlagType(Definitions::FrameFlagType::ACK_REQUEST)
                           | Definitions::fromFrameFlagType(
                               Definitions::FrameFlagType::RETRANSMISSION));
-                      const Frame::Frame frame(this->getFrameFlags(flags),
-                                               pendingMessage.messageCounter,
-                                               pendingMessage.messageType,
-                                               pendingMessage.payload.data(),
-                                               pendingMessage.payloadLength);
+                      const Frame::Frame frame = getMessageFrame(pendingMessage.routed,
+                                                                 this->getFrameFlags(flags),
+                                                                 pendingMessage.messageCounter,
+                                                                 pendingMessage.messageType,
+                                                                 pendingMessage.routeHeader,
+                                                                 pendingMessage.payload.data(),
+                                                                 pendingMessage.payloadLength);
                       [[maybe_unused]] const bool frameSent = this->sendFrame(frame);
                   });
 }
@@ -223,13 +251,17 @@ void Link::onReceivedFrame(const Frame::Frame &frame)
         return;
     }
 
-    // message must not be a retransmission of a delivered message
+    // message must not be a retransmission of a delivered message, a busy hop took nothing
     const ReceivedMessage *receivedMessage
         = frame.getFlag(Definitions::FrameFlagType::RETRANSMISSION)
               ? this->getReceivedMessageWithMessageCounter(frame.getMessageCounter(),
                                                            frame.getMessageType())
               : nullptr;
-    if (receivedMessage != nullptr) {
+    const bool busyRoutedMessage = receivedMessage != nullptr
+                                   && receivedMessage->messageStatusType
+                                          == Definitions::MessageStatusType::BUSY
+                                   && getRoutedToNode(frame.getRouted(), frame.getRouteHeader());
+    if (receivedMessage != nullptr && !busyRoutedMessage) {
         // keep track of duplicate frames
         ++this->statistics.duplicateFrameCounter;
 
@@ -254,6 +286,74 @@ void Link::onReceivedFrame(const Frame::Frame &frame)
 }
 
 void Link::onDecodeError([[maybe_unused]] const Definitions::DecodeErrorType decodeErrorType) {}
+
+Definitions::SendStatusType Link::sendMessageFrame(const bool routed,
+                                                   const Frame::RouteHeader &routeHeader,
+                                                   const uint16_t messageType,
+                                                   const uint8_t *payload,
+                                                   const size_t payloadLength,
+                                                   const bool acknowledged,
+                                                   uint16_t &messageCounter)
+{
+    // payload must fit into a frame of this build
+    if (payloadLength > Settings::MaximumPayloadSize) {
+        return Definitions::SendStatusType::PAYLOAD_TOO_LONG;
+    }
+
+    // payload must exist when it is not empty
+    if (payloadLength > 0 && payload == nullptr) {
+        return Definitions::SendStatusType::INVALID_ARGUMENT;
+    }
+
+    // acknowledged message must get a free pending message within the spread
+    const std::array<PendingMessage, Settings::MaximumPendingFrames>::iterator &iterator
+        = std::find_if(this->pendingMessages.begin(),
+                       this->pendingMessages.end(),
+                       [](const PendingMessage &pendingMessage) { return !pendingMessage.used; });
+    if (acknowledged && (iterator == this->pendingMessages.end() || !this->getWithinSpread())) {
+        return Definitions::SendStatusType::WINDOW_FULL;
+    }
+
+    // assign the message counter that wraps from 65535 to 0
+    const uint16_t assignedMessageCounter = this->nextMessageCounter;
+    ++this->nextMessageCounter;
+
+    // frame must be sent
+    const uint8_t flags = acknowledged ? Definitions::fromFrameFlagType(
+                                             Definitions::FrameFlagType::ACK_REQUEST)
+                                       : static_cast<uint8_t>(0);
+    const Frame::Frame frame = getMessageFrame(routed,
+                                               this->getFrameFlags(flags),
+                                               assignedMessageCounter,
+                                               messageType,
+                                               routeHeader,
+                                               payload,
+                                               payloadLength);
+    if (!this->sendFrame(frame)) {
+        return Definitions::SendStatusType::TRANSPORT_ERROR;
+    }
+
+    // keep a copy for retransmissions
+    if (acknowledged) {
+        iterator->used = true;
+        iterator->routed = routed;
+        iterator->routeHeader = routeHeader;
+        iterator->messageCounter = assignedMessageCounter;
+        iterator->messageType = messageType;
+        iterator->payloadLength = static_cast<uint8_t>(payloadLength);
+        iterator->retransmissionCount = 0;
+        iterator->lastSentTimestamp = this->clock.getTime();
+        iterator->sendSequence = this->acknowledgedSendSequence;
+        std::copy_n(payload, payloadLength, iterator->payload.begin());
+        ++this->acknowledgedSendSequence;
+    }
+
+    // store the message counter
+    messageCounter = assignedMessageCounter;
+
+    // message sent successfully
+    return Definitions::SendStatusType::SENT;
+}
 
 bool Link::getWithinSpread() const
 {
@@ -364,6 +464,11 @@ void Link::handleAcknowledgement(const Frame::Frame &frame)
         return;
     }
 
+    // keep a routed message that a busy hop did not take for its next retransmission
+    if (this->holdBusyMessage(frame, *iterator)) {
+        return;
+    }
+
     // free the slot of the pending message
     iterator->used = false;
 
@@ -393,6 +498,35 @@ void Link::handleAcknowledgement(const Frame::Frame &frame)
                                    iterator->messageType,
                                    Definitions::DeliveryFailureType::REJECTED,
                                    remoteMessageStatusType);
+}
+
+bool Link::holdBusyMessage(const Frame::Frame &frame, PendingMessage &pendingMessage)
+{
+    // answer must be a NACK with the busy status
+    if (!frame.getFlag(Definitions::FrameFlagType::NACK) || frame.getPayloadLength() == 0
+        || Definitions::toMessageStatusType(frame.getPayload()[0])
+               != Definitions::MessageStatusType::BUSY) {
+        return false;
+    }
+
+    // message must be routed to a node
+    if (!getRoutedToNode(pendingMessage.routed, pendingMessage.routeHeader)) {
+        return false;
+    }
+
+    // message must have a retransmission left
+    if (pendingMessage.retransmissionCount >= this->configuration.maximumRetransmissions) {
+        return false;
+    }
+
+    // retransmit the message one retransmit timeout after the busy answer
+    pendingMessage.lastSentTimestamp = this->clock.getTime();
+
+    // keep track of rejections
+    ++this->statistics.incomingRejectionCounter;
+
+    // message held successfully
+    return true;
 }
 
 const ReceivedMessage *Link::getReceivedMessageWithMessageCounter(const uint16_t messageCounter,
