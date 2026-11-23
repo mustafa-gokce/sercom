@@ -51,6 +51,7 @@ enum class FrameFlagType : uint8_t {
     ACK = 1 << 1,            // frame confirms a message
     NACK = 1 << 2,           // frame rejects a message
     RETRANSMISSION = 1 << 3, // frame repeats an earlier transmission
+    ROUTE_CAPABLE = 1 << 4,  // sender reads routed frames
 };
 
 /*

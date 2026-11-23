@@ -174,6 +174,9 @@ std::string_view getFrameFlagTypeText(const FrameFlagType frameFlagType)
     case FrameFlagType::RETRANSMISSION: {
         return {"RETRANSMISSION"};
     }
+    case FrameFlagType::ROUTE_CAPABLE: {
+        return {"ROUTE_CAPABLE"};
+    }
     default: {
         return {"UNKNOWN"};
     }
