@@ -517,6 +517,18 @@ if (SERCOM_BUILD_BINARIES)
         ${PROJECT_NAME}_host_lib
         Qt${QT_VERSION_MAJOR}::Core
     )
+
+    # create routed frame example executable
+    add_executable(${PROJECT_NAME}_example_26_routed_frame
+        examples/26_routed_frame.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_example_26_routed_frame PRIVATE
+        ${PROJECT_NAME}_settings
+        ${PROJECT_NAME}_core_lib
+        ${PROJECT_NAME}_app_lib
+        ${PROJECT_NAME}_host_lib
+        Qt${QT_VERSION_MAJOR}::Core
+    )
 endif()
 
 # copy the Qt libraries and the MinGW runtime next to the Windows executables on a Windows build host
