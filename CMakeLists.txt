@@ -118,6 +118,7 @@ add_library(${PROJECT_NAME}_core_lib
     core/include/Link.h core/src/Link.cpp
     core/include/FrameTracer.h core/src/FrameTracer.cpp
     core/include/TraceTransport.h core/src/TraceTransport.cpp
+    core/include/NullTransport.h core/src/NullTransport.cpp
 )
 target_link_libraries(${PROJECT_NAME}_core_lib PRIVATE
     ${PROJECT_NAME}_settings
