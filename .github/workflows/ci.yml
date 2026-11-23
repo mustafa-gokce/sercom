@@ -1,0 +1,441 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 20 * * *'
+    - cron: '0 0 * * *'
+    - cron: '0 4 * * *'
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  host:
+    name: host (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cxx: g++
+            cxx-flags: ''
+          - compiler: clang
+            cxx: clang++
+            cxx-flags: '-Wno-unknown-warning-option'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build socat gdb
+      - name: Build Debug
+        run: |
+          cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} "-DCMAKE_CXX_FLAGS=${{ matrix.cxx-flags }}"
+          cmake --build build-debug
+      - name: Show the help of every program
+        run: |
+          build-debug/sercom_cli --help
+          build-debug/sercom_device_sim --help
+          build-debug/sercom_dump --help
+      - name: Unit tests under the debugger
+        run: |
+          gdb --batch -ex 'set pagination off' -ex run -ex bt -ex "quit \$_exitcode" \
+            --args ./build-debug/sercom_test --order decl \
+            --reporter "JUnit::out=$PWD/test_results_junit.xml" \
+            --reporter "xml::out=$PWD/test_results.xml" \
+            --reporter console
+      - name: Run every example
+        run: tools/run_examples.sh build-debug
+      - name: Unit tests with a small payload limit
+        env:
+          CXX: ${{ matrix.cxx }}
+          CXXFLAGS: ${{ matrix.cxx-flags }}
+        run: tools/run_small_limit_test.sh --build-dir build-small-limit
+      - name: Python reference self test
+        run: python3 tools/sercom_frame.py self-test
+      - name: End to end over a noisy virtual link
+        run: tests/e2e/noisy_link_test.sh build-debug/sercom_cli build-debug/sercom_device_sim
+      - name: Build Release
+        run: |
+          cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} "-DCMAKE_CXX_FLAGS=${{ matrix.cxx-flags }}"
+          cmake --build build-release
+      - name: Archive executables and test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sercom-${{ matrix.compiler }}-build-${{ github.run_number }}
+          path: |
+            build-release/sercom_cli
+            build-release/sercom_device_sim
+            build-release/sercom_dump
+            test_results_junit.xml
+            test_results.xml
+          if-no-files-found: ignore
+      - name: Publish test results
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: test_results_junit.xml
+          check_name: unit tests (${{ matrix.compiler }})
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
+      - name: Unit tests with AddressSanitizer and UndefinedBehaviorSanitizer
+        run: tools/run_sanitizer_test.sh --build-dir build-sanitizers
+
+  static-analysis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang-format clang-tidy
+      - name: Restore cppcheck 2.22.0
+        uses: actions/cache@v6
+        with:
+          path: ~/cppcheck-2.22.0
+          key: cppcheck-2.22.0-${{ runner.os }}
+      - name: Install cppcheck 2.22.0
+        run: tools/analysis/install_cppcheck.sh --prefix "$HOME/cppcheck-2.22.0"
+      - name: Configure with a compile database
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSERCOM_BUILD_TESTS=OFF
+      - name: Layout, comments, idioms, cppcheck and clang-tidy
+        run: |
+          # report the findings as annotations, so they show on the run page
+          set +e
+          CPPCHECK="$HOME/cppcheck-2.22.0/bin/cppcheck" tools/run_static_analysis.sh build 2>&1 | tee analysis.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            sed "s#^$GITHUB_WORKSPACE/##" analysis.log | grep -E '^[^ :]+:[0-9]+:' | head -50 \
+              | sed -E 's/^([^:]+):([0-9]+):(.*)$/::error file=\1,line=\2::\3/'
+          fi
+          exit "$status"
+
+  tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare the version numbers
+        run: python3 tools/check_versions.py
+      - name: Show the help of every tool
+        run: |
+          tools/noisy_link.sh --help
+          tools/run_static_analysis.sh --help
+          tools/analysis/check_format.sh --help
+          tools/analysis/install_cppcheck.sh --help
+          tools/run_small_limit_test.sh --help
+          tools/run_sanitizer_test.sh --help
+          tools/run_examples.sh --help
+          tests/e2e/noisy_link_test.sh --help
+          fuzz/run_fuzzers.sh --help
+          python3 tools/noise.py --help
+          python3 tools/sercom_frame.py --help
+          python3 tools/check_versions.py --help
+          python3 tools/analysis/check_style.py --help
+          python3 fuzz/make_corpus.py --help
+          pwsh -NoProfile -File tools/noisy_link.ps1 --help
+          pwsh -NoProfile -File tools/run_examples.ps1 --help
+          pwsh -NoProfile -File tests/e2e/noisy_link_test.ps1 --help
+
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
+      - name: Fuzz for one minute each
+        run: fuzz/run_fuzzers.sh --build-dir build-fuzz --seconds 60
+
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install PlatformIO
+        run: pip install platformio==6.1.19
+      - name: Build ESP32 firmware
+        run: pio run -d firmware/esp32 -e esp32dev -e esp32dev-console
+      - name: Build ESP32 controller firmware
+        run: pio run -d firmware/esp32 -e esp32dev-controller
+      - name: Build STM32F4 firmware
+        run: |
+          pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console \
+            -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller
+
+  emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ARM_QEMU_VERSION: 9.2.4-1
+      ARM_QEMU_SHA256: 203dc2c71e25fcf97b95181328e9b888cc8092ff404bffd4d267b9defabcb698
+      ESP32_QEMU_RELEASE: esp-develop-9.2.2-20260417
+      ESP32_QEMU_ARCHIVE: qemu-xtensa-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
+      ESP32_QEMU_SHA256: 0eecb2a34a5586c0e59110f77b9343b7b336e82fdb0e1a30e1dc1bab8a547e35
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build socat libgcrypt20 libglib2.0-0t64 libpixman-1-0 libsdl2-2.0-0 libslirp0
+      - name: Install PlatformIO
+        run: pip install platformio==6.1.19
+      - name: Download the pinned QEMU releases
+        run: |
+          mkdir -p "$RUNNER_TEMP/qemu"
+          cd "$RUNNER_TEMP/qemu"
+          curl -fsSLO "https://github.com/xpack-dev-tools/qemu-arm-xpack/releases/download/v${ARM_QEMU_VERSION}/xpack-qemu-arm-${ARM_QEMU_VERSION}-linux-x64.tar.gz"
+          curl -fsSLO "https://github.com/espressif/qemu/releases/download/${ESP32_QEMU_RELEASE}/${ESP32_QEMU_ARCHIVE}"
+          echo "${ARM_QEMU_SHA256}  xpack-qemu-arm-${ARM_QEMU_VERSION}-linux-x64.tar.gz" | sha256sum -c
+          echo "${ESP32_QEMU_SHA256}  ${ESP32_QEMU_ARCHIVE}" | sha256sum -c
+          tar xzf "xpack-qemu-arm-${ARM_QEMU_VERSION}-linux-x64.tar.gz"
+          tar xJf "${ESP32_QEMU_ARCHIVE}"
+          echo "ARM_QEMU=$RUNNER_TEMP/qemu/xpack-qemu-arm-${ARM_QEMU_VERSION}/bin/qemu-system-arm" >> "$GITHUB_ENV"
+          echo "ESP32_QEMU=$RUNNER_TEMP/qemu/qemu/bin/qemu-system-xtensa" >> "$GITHUB_ENV"
+      - name: Show the emulator versions and the help of the emulator tools
+        run: |
+          "$ARM_QEMU" --version
+          "$ESP32_QEMU" --version
+          tools/run_emulator.sh --help
+          tests/e2e/emulator_test.sh --help
+          python3 tools/uart_bridge.py --help
+      - name: Build the command line tool
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSERCOM_BUILD_TESTS=OFF
+          cmake --build build --target sercom_cli
+      - name: Build the firmware of the emulated chips
+        run: |
+          pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller
+          pio run -d firmware/stm32f4 -e netduinoplus2-qemu -e netduinoplus2-qemu-controller
+      - name: Both targets with the command line tool and with each other in QEMU
+        run: |
+          WORK_DIRECTORY="$RUNNER_TEMP/emulator" tests/e2e/emulator_test.sh build/sercom_cli \
+            firmware/esp32/.pio/build firmware/stm32f4/.pio/build
+      - name: Archive the emulator logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sercom-emulator-logs-${{ github.run_number }}
+          path: ${{ runner.temp }}/emulator
+          if-no-files-found: ignore
+
+  windows:
+    name: windows (mingw 7.3)
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      # log the Qt messages to standard error also without a console window
+      QT_FORCE_STDERR_LOGGING: 1
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Install Qt 5.12.12 with MinGW 7.3.0 and Ninja
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: windows
+          target: desktop
+          arch: win64_mingw73
+          tools: 'tools_mingw,qt.tools.win64_mingw730 tools_ninja,qt.tools.ninja'
+          add-tools-to-path: true
+          cache: true
+      - name: Build Debug
+        run: |
+          # report the compiler errors as annotations, so they show on the run page
+          $compiler = "$env:IQTA_TOOLS/mingw730_64/bin/g++.exe"
+          & $compiler --version
+          cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_CXX_COMPILER=$compiler" "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -eq 0) {
+            cmake --build build-debug 2>&1 | Tee-Object -Variable output
+          }
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-String -Pattern 'error|Error|FAILED' | Select-Object -First 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+      - name: Show the help of every program without Qt and MinGW on the path
+        run: |
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          foreach ($program in 'sercom_cli', 'sercom_device_sim', 'sercom_dump') {
+            & "build-debug/$program.exe" --help
+            if ($LASTEXITCODE -ne 0) {
+              Write-Output "::error::$program.exe --help exited with $LASTEXITCODE"
+              exit 1
+            }
+          }
+      - name: Unit tests
+        run: |
+          build-debug/sercom_test.exe --order decl `
+            --reporter "JUnit::out=$PWD/test_results_junit.xml" `
+            --reporter "xml::out=$PWD/test_results.xml" `
+            --reporter console
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error::sercom_test.exe exited with $LASTEXITCODE"
+            exit 1
+          }
+      - uses: actions/setup-python@v7
+        with:
+          # put this Python ahead of the one that MinGW 7.3.0 brings for its debugger
+          python-version: '3.12'
+      - name: Install pyserial
+        run: |
+          python -m pip install pyserial 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-Object -Last 10 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+      - name: Install com0com with the pairs COM10 to COM11 and COM12 to COM13
+        run: |
+          # the signed com0com 3.0.0.0 installs on the runner, its publisher is trusted first to skip the prompt
+          curl.exe -sSL --retry 3 -o com0com.zip 'https://sourceforge.net/projects/com0com/files/com0com/3.0.0.0/com0com-3.0.0.0-i386-and-x64-signed.zip/download'
+          7z x com0com.zip -ocom0com | Out-Null
+          $installer = Get-ChildItem -Recurse com0com -Filter 'Setup_com0com*x64*.exe' | Select-Object -First 1
+          $certificate = (Get-AuthenticodeSignature $installer.FullName).SignerCertificate
+          Export-Certificate -Cert $certificate -FilePath "$env:RUNNER_TEMP\com0com.cer" | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\com0com.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+          $env:CNC_INSTALL_CNCA0_CNCB0_PORTS = 'NO'
+          $env:CNC_INSTALL_COMX_COMX_PORTS = 'NO'
+          Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait
+          Push-Location 'C:\Program Files (x86)\com0com'
+          ./setupc.exe --silent install PortName=COM10 PortName=COM11 | Out-Null
+          ./setupc.exe --silent install PortName=COM12 PortName=COM13 | Out-Null
+          Pop-Location
+
+          # bytes must cross both pairs
+          foreach ($pair in @(@('COM10', 'COM11'), @('COM13', 'COM12'))) {
+            $first = New-Object System.IO.Ports.SerialPort $pair[0], 115200
+            $second = New-Object System.IO.Ports.SerialPort $pair[1], 115200
+            $first.Open()
+            $second.Open()
+            $first.Write('hello')
+            Start-Sleep -Milliseconds 300
+            $received = $second.ReadExisting()
+            $first.Close()
+            $second.Close()
+            if ($received -ne 'hello') {
+              Write-Output "::error::$($pair[0]) to $($pair[1]) carried '$received' instead of hello, ports: $([System.IO.Ports.SerialPort]::GetPortNames() -join ',')"
+              exit 1
+            }
+          }
+      - name: Run every example, 01 and 24 on COM10 and COM11
+        run: |
+          pwsh -NoProfile -File tools/run_examples.ps1 build-debug 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-Object -Last 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+
+          # examples 01 and 24 must have run on the pair
+          if (-not ($output -match 'skipped: 0$')) {
+            Write-Output "::error::examples 01 and 24 did not run on COM10 and COM11: $($output | Select-Object -Last 1)"
+            exit 1
+          }
+      - name: End to end over a noisy link of COM10 to COM13
+        run: |
+          pwsh -NoProfile -File tests/e2e/noisy_link_test.ps1 build-debug/sercom_cli.exe build-debug/sercom_device_sim.exe 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-Object -Last 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+      - name: Python reference self test
+        run: python tools/sercom_frame.py self-test
+      - name: Show the help of every tool
+        run: |
+          tools/noisy_link.ps1 --help
+          tools/run_examples.ps1 --help
+          tests/e2e/noisy_link_test.ps1 --help
+          python tools/noise.py --help
+          python tests/e2e/late_ping_device.py --help
+      - name: Build Release
+        run: |
+          $compiler = "$env:IQTA_TOOLS/mingw730_64/bin/g++.exe"
+          cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_CXX_COMPILER=$compiler" "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -eq 0) {
+            cmake --build build-release 2>&1 | Tee-Object -Variable output
+          }
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-String -Pattern 'error|Error|FAILED' | Select-Object -First 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+      - name: Archive executables and test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sercom-windows-build-${{ github.run_number }}
+          path: |
+            build-release/*.exe
+            build-release/*.dll
+            test_results_junit.xml
+            test_results.xml
+          if-no-files-found: ignore
+      - name: Publish test results
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: test_results_junit.xml
+          check_name: unit tests (windows)
