@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -25,6 +26,8 @@ enum class OptionType : uint8_t {
     BAUD = 1,    // baud rate of the serial port
     HELP = 2,    // request of the usage text
     TRACE = 3,   // print of every frame on the serial port
+    TO = 4,      // destination node of the requests
+    TTL = 5,     // links a request may cross
 };
 
 /*
@@ -69,6 +72,13 @@ void printUsage(std::string_view programName);
                                     sercom::CliApplication::CommandLine &commandLine);
 
 /*
+ * Parse one option with its value, warn the user and get false on any error.
+ */
+[[nodiscard]] bool parseOption(const std::string &option,
+                               const std::string &value,
+                               sercom::CliApplication::CommandLine &commandLine);
+
+/*
  * Check the number of arguments of a command, warn the user and get false when it is out of range.
  */
 [[nodiscard]] bool checkParameterCount(const std::vector<std::string> &parameters,
@@ -110,6 +120,12 @@ void printUsage(std::string_view programName);
  */
 [[nodiscard]] bool parseStressArguments(const std::vector<std::string> &parameters,
                                         sercom::CliApplication::CommandLine &commandLine);
+
+/*
+ * Parse the arguments of the discover command.
+ */
+[[nodiscard]] bool parseDiscoverArguments(const std::vector<std::string> &parameters,
+                                          sercom::CliApplication::CommandLine &commandLine);
 
 /*
  * Main entry point of the executable.
@@ -156,6 +172,12 @@ std::string_view fromOptionType(const OptionType optionType)
     case OptionType::TRACE: {
         return {"--trace"};
     }
+    case OptionType::TO: {
+        return {"--to"};
+    }
+    case OptionType::TTL: {
+        return {"--ttl"};
+    }
     case OptionType::UNKNOWN:
     default: {
         return {};
@@ -173,6 +195,12 @@ OptionType toOptionType(const std::string_view optionType)
     }
     if (optionType == std::string_view("--trace")) {
         return OptionType::TRACE;
+    }
+    if (optionType == std::string_view("--to")) {
+        return OptionType::TO;
+    }
+    if (optionType == std::string_view("--ttl")) {
+        return OptionType::TTL;
     }
     return OptionType::UNKNOWN;
 }
@@ -211,12 +239,15 @@ void printUsage(const std::string_view programName)
     // print the usage text
     const std::string usage
         = std::string("Usage: ") + std::string(programName)
-          + " <port> [--baud N] [--trace] <command> [arguments]\n"
+          + " <port> [--baud N] [--to ADDRESS] [--ttl COUNT] [--trace] <command> [arguments]\n"
             "Port:\n"
             "  <port>                               device path such as /dev/ttyUSB0 on Linux,\n"
             "                                       COM port such as COM3 on Windows\n"
             "Options:\n"
             "  --baud N                             baud rate of the serial port\n"
+            "  --to ADDRESS                         send to the node 2 to 254 of a daisy chain\n"
+            "  --ttl COUNT                          links a request may cross, 1 to 255 (default "
+            "8)\n"
             "  --trace                              print every frame in both directions\n"
             "Commands:\n"
             "  ping [count]                         measure round trip time\n"
@@ -224,7 +255,8 @@ void printUsage(const std::string_view programName)
             "  led on|off                           switch the device LED\n"
             "  telemetry <milliseconds> [seconds]   set the period and print telemetry\n"
             "  monitor [seconds]                    print telemetry and device logs\n"
-            "  stress <count> [payload] [window]    echo test, exit code 1 on any loss";
+            "  stress <count> [payload] [window]    echo test, exit code 1 on any loss\n"
+            "  discover [seconds]                   ping every node of a daisy chain";
     HostUtils::printLine(usage);
 }
 
@@ -254,18 +286,31 @@ bool parseCommandLine(const int argc, char *argv[], sercom::CliApplication::Comm
     // set the serial port name
     commandLine.portName = arguments.at(0);
 
-    // baud rate must be valid when given
-    static constexpr size_t baudRateIndex = 1;
-    const bool baudRateGiven = baudRateIndex + 1 < arguments.size()
-                               && toOptionType(arguments.at(baudRateIndex)) == OptionType::BAUD;
-    if (baudRateGiven
-        && !HostUtils::parseBaudRateArgument(arguments.at(baudRateIndex + 1),
-                                             commandLine.baudRate)) {
-        return false;
+    // iterate over the options in front of the command
+    size_t commandIndex = 1;
+    while (commandIndex < arguments.size()
+           && toOptionType(arguments.at(commandIndex)) != OptionType::UNKNOWN) {
+        // option must have a value
+        const std::string &option = arguments.at(commandIndex);
+        if (commandIndex + 1 >= arguments.size()) {
+            // warn the user
+            const std::string warningMessage = "Missing value of the option " + option;
+            HostUtils::logWarning(warningMessage);
+
+            // do not proceed further
+            return false;
+        }
+
+        // option must be valid
+        if (!parseOption(option, arguments.at(commandIndex + 1), commandLine)) {
+            return false;
+        }
+
+        // continue with the next argument
+        commandIndex += 2;
     }
 
     // command argument must be given
-    const size_t commandIndex = baudRateGiven ? baudRateIndex + 2 : baudRateIndex;
     if (commandIndex >= arguments.size()) {
         HostUtils::logWarning("Missing command argument");
         return false;
@@ -309,11 +354,68 @@ bool parseCommandLine(const int argc, char *argv[], sercom::CliApplication::Comm
         return parseStressArguments(parameters, commandLine);
     }
 
+    // parse the arguments of the discover command
+    case CliApplication::CommandType::DISCOVER: {
+        return parseDiscoverArguments(parameters, commandLine);
+    }
+
     // reject an unknown command
     case CliApplication::CommandType::UNKNOWN:
     default: {
         // warn the user
         const std::string warningMessage = "Unknown command " + arguments.at(commandIndex);
+        HostUtils::logWarning(warningMessage);
+
+        // do not proceed further
+        return false;
+    }
+    }
+}
+
+bool parseOption(const std::string &option,
+                 const std::string &value,
+                 sercom::CliApplication::CommandLine &commandLine)
+{
+    using namespace sercom;
+
+    // parse the option by its type
+    switch (toOptionType(option)) {
+    // parse the baud rate option
+    case OptionType::BAUD: {
+        return HostUtils::parseBaudRateArgument(value, commandLine.baudRate);
+    }
+
+    // parse the destination option
+    case OptionType::TO: {
+        return HostUtils::parseAddressArgument(value, "destination", commandLine.destinationAddress);
+    }
+
+    // parse the time to live option
+    case OptionType::TTL: {
+        // time to live must allow one link at least
+        uint32_t timeToLive = 0;
+        if (!HostUtils::parseArgument(value,
+                                      "time to live",
+                                      1,
+                                      std::numeric_limits<uint8_t>::max(),
+                                      timeToLive)) {
+            return false;
+        }
+
+        // set the time to live
+        commandLine.timeToLive = static_cast<uint8_t>(timeToLive);
+
+        // option parsed successfully
+        return true;
+    }
+
+    // reject an unknown option
+    case OptionType::HELP:
+    case OptionType::TRACE:
+    case OptionType::UNKNOWN:
+    default: {
+        // warn the user
+        const std::string warningMessage = "Unknown option " + option;
         HostUtils::logWarning(warningMessage);
 
         // do not proceed further
@@ -542,6 +644,33 @@ bool parseStressArguments(const std::vector<std::string> &parameters,
                                      1,
                                      static_cast<uint32_t>(Settings::MaximumPendingFrames),
                                      commandLine.echoWindowSize)) {
+        return false;
+    }
+
+    // arguments parsed successfully
+    return true;
+}
+
+bool parseDiscoverArguments(const std::vector<std::string> &parameters,
+                            sercom::CliApplication::CommandLine &commandLine)
+{
+    using namespace sercom;
+
+    // discover command must have at most one argument
+    if (!checkParameterCount(parameters, 0, 1, CliApplication::CommandType::DISCOVER)) {
+        return false;
+    }
+
+    // wait for the answers for the default discover duration
+    commandLine.duration = HostSettings::DEFAULT_DISCOVER_DURATION_MSEC;
+
+    // duration must be valid when given
+    if (!parameters.empty()
+        && !HostUtils::parseDurationArgument(parameters.at(0),
+                                             "duration",
+                                             HostSettings::DURATION_ARGUMENT_UNIT_MSEC,
+                                             HostSettings::MAXIMUM_COMMAND_DURATION_MSEC,
+                                             commandLine.duration)) {
         return false;
     }
 
