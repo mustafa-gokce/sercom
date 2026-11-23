@@ -116,6 +116,9 @@ target_compile_definitions(${PROJECT_NAME}_settings INTERFACE
 # include directory of the libraries for the consumers
 target_include_directories(${PROJECT_NAME}_settings INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
+# require C++ 2017 of the consumers of the libraries
+target_compile_features(${PROJECT_NAME}_settings INTERFACE cxx_std_17)
+
 # version numbers of the application library only
 add_library(${PROJECT_NAME}_version INTERFACE)
 target_compile_definitions(${PROJECT_NAME}_version INTERFACE
