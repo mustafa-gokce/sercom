@@ -2,6 +2,18 @@
 
 namespace sercom::FirmwareSettings {
 
+#if defined(LET_PRINT_CONSOLE)
+constexpr bool ConsolePrinted = true;
+constexpr std::string_view SerialPortName = USART1_PORT_NAME;
+constexpr uint32_t SerialReceivePin = USART1_RECEIVE_PIN;
+constexpr uint32_t SerialTransmitPin = USART1_TRANSMIT_PIN;
+#else
+constexpr bool ConsolePrinted = false;
+constexpr std::string_view SerialPortName = USART2_PORT_NAME;
+constexpr uint32_t SerialReceivePin = USART2_RECEIVE_PIN;
+constexpr uint32_t SerialTransmitPin = USART2_TRANSMIT_PIN;
+#endif
+
 constexpr std::string_view ApplicationName = "DeviceApplication";
 
 #if defined(LET_RUN_ON_QEMU)
