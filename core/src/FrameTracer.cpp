@@ -154,9 +154,10 @@ void TraceChannel::onDecodeError(const Definitions::DecodeErrorType decodeErrorT
         return;
     }
 
-    // whole candidate must be buffered
+    // whole candidate of its version must be buffered
     const Frame::Frame frameHeader(this->buffer.data(), Definitions::HEADER_SIZE);
-    const size_t frameSize = Definitions::FRAME_OVERHEAD + frameHeader.getPayloadLength();
+    const size_t frameSize = Definitions::getHeaderSize(frameHeader.getVersion())
+                             + Definitions::CRC_SIZE + frameHeader.getPayloadLength();
     if (frameSize > this->bufferedSize) {
         return;
     }
