@@ -438,7 +438,7 @@ TEST_CASE_METHOD(TestFrameDecoder,
     // receive the header of a frame with another version
     static constexpr size_t versionOffset = Definitions::SYNC_SIZE;
     std::vector<uint8_t> frameData = getFrameData(0, 1, 1, std::vector<uint8_t>({0x01, 0x02}));
-    frameData.at(versionOffset) = Definitions::PROTOCOL_VERSION + 1;
+    frameData.at(versionOffset) = Definitions::ROUTED_PROTOCOL_VERSION + 1;
     testFrameDecoder->onReceivedData(frameData.data(), Definitions::HEADER_SIZE, 0ms);
 
     // check the decode error
