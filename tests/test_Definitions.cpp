@@ -30,6 +30,7 @@ TEST_CASE_METHOD(TestDefinitions,
     REQUIRE(Definitions::fromFrameFlagType(Definitions::FrameFlagType::ACK) == 0x02);
     REQUIRE(Definitions::fromFrameFlagType(Definitions::FrameFlagType::NACK) == 0x04);
     REQUIRE(Definitions::fromFrameFlagType(Definitions::FrameFlagType::RETRANSMISSION) == 0x08);
+    REQUIRE(Definitions::fromFrameFlagType(Definitions::FrameFlagType::ROUTE_CAPABLE) == 0x10);
 }
 
 TEST_CASE_METHOD(TestDefinitions,
@@ -40,6 +41,7 @@ TEST_CASE_METHOD(TestDefinitions,
     REQUIRE(Definitions::toFrameFlagType(0x02) == Definitions::FrameFlagType::ACK);
     REQUIRE(Definitions::toFrameFlagType(0x04) == Definitions::FrameFlagType::NACK);
     REQUIRE(Definitions::toFrameFlagType(0x08) == Definitions::FrameFlagType::RETRANSMISSION);
+    REQUIRE(Definitions::toFrameFlagType(0x10) == Definitions::FrameFlagType::ROUTE_CAPABLE);
 }
 
 TEST_CASE_METHOD(TestDefinitions,
@@ -200,5 +202,46 @@ TEST_CASE_METHOD(TestDefinitions,
     REQUIRE(Definitions::getFrameFlagTypeText(Definitions::FrameFlagType::NACK) == "NACK");
     REQUIRE(Definitions::getFrameFlagTypeText(Definitions::FrameFlagType::RETRANSMISSION)
             == "RETRANSMISSION");
+    REQUIRE(Definitions::getFrameFlagTypeText(Definitions::FrameFlagType::ROUTE_CAPABLE)
+            == "ROUTE_CAPABLE");
     REQUIRE(Definitions::getFrameFlagTypeText(Definitions::toFrameFlagType(0x20)) == "UNKNOWN");
+}
+
+TEST_CASE_METHOD(TestDefinitions,
+                 "A routed frame keeps the direct header and adds three routing bytes",
+                 "[Definitions][testRoutedFrameSizes]")
+{
+    // check the versions of both frame formats
+    REQUIRE(Definitions::PROTOCOL_VERSION == 1);
+    REQUIRE(Definitions::ROUTED_PROTOCOL_VERSION == 2);
+
+    // check the sizes of the routed frame
+    REQUIRE(Definitions::ROUTE_HEADER_SIZE == static_cast<size_t>(3));
+    REQUIRE(Definitions::ROUTED_HEADER_SIZE
+            == Definitions::HEADER_SIZE + Definitions::ROUTE_HEADER_SIZE);
+    REQUIRE(Definitions::ROUTED_HEADER_SIZE == static_cast<size_t>(12));
+    REQUIRE(Definitions::ROUTED_FRAME_OVERHEAD == static_cast<size_t>(16));
+
+    // check the addresses
+    REQUIRE(Definitions::UNASSIGNED_ADDRESS == 0x00);
+    REQUIRE(Definitions::HOST_ADDRESS == 0x01);
+    REQUIRE(Definitions::MINIMUM_NODE_ADDRESS == 0x02);
+    REQUIRE(Definitions::MAXIMUM_NODE_ADDRESS == 0xFE);
+    REQUIRE(Definitions::BROADCAST_ADDRESS == 0xFF);
+}
+
+TEST_CASE_METHOD(TestDefinitions,
+                 "The header size follows the version of a frame",
+                 "[Definitions][getHeaderSize]")
+{
+    // check the header sizes of both versions
+    REQUIRE(Definitions::getHeaderSize(Definitions::PROTOCOL_VERSION) == Definitions::HEADER_SIZE);
+    REQUIRE(Definitions::getHeaderSize(Definitions::ROUTED_PROTOCOL_VERSION)
+            == Definitions::ROUTED_HEADER_SIZE);
+
+    // check that an unknown version has no header size
+    REQUIRE(Definitions::getHeaderSize(0) == static_cast<size_t>(0));
+    REQUIRE(Definitions::getHeaderSize(Definitions::ROUTED_PROTOCOL_VERSION + 1)
+            == static_cast<size_t>(0));
+    REQUIRE(Definitions::getHeaderSize(0xFF) == static_cast<size_t>(0));
 }
