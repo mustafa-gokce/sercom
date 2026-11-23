@@ -25,6 +25,7 @@ struct PendingPing
 {
     bool used = false;                            // slot holds a ping request
     std::chrono::milliseconds requestTimestamp{}; // time the ping request was sent
+    bool broadcast = false;                       // ping request went to every node
 };
 
 class DeviceClientHandler
@@ -162,6 +163,16 @@ public:
 
 public:
     /*
+     * Get the destination address of the requests, unassigned for the neighbour.
+     */
+    [[nodiscard]] uint8_t getDestinationAddress() const;
+
+    /*
+     * Set the destination address of the requests, the broadcast address pings every node.
+     */
+    void setDestinationAddress(uint8_t destinationAddress);
+
+    /*
      * Get whether a request can be sent now.
      */
     [[nodiscard]] bool getSendRequestAllowed() const;
@@ -208,6 +219,7 @@ private:
 private:
     /*
      * Handle a ping response and measure the round trip time of its ping request.
+     * A ping request to every node stays pending for the ping responses of the other nodes.
      * A ping response to a ping request of another client is accepted and counted only.
      * NOTE: The request timestamp travels in 32 bits, so only its lower 32 bits are compared.
      */
@@ -256,6 +268,7 @@ private:
     const Clock::Clock &clock;           // reference for clock
     DeviceClientHandler &handler;        // reference to handler
     Router::Router router;               // network layer towards the device
+    uint8_t destinationAddress;          // destination of the requests
     size_t nextPendingPingIndex;         // pending ping to overwrite next
     uint64_t ignoredPingResponseCounter; // ping responses without a pending ping
     std::array<PendingPing, AppSettings::PING_HISTORY_SIZE> pendingPings; // sent ping requests

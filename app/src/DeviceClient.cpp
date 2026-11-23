@@ -16,6 +16,7 @@ DeviceClient::DeviceClient(Transport::Transport &transport,
     : clock(clock)
     , handler(handler)
     , router(transport, nullptr, *this, clock, linkConfiguration, routerConfiguration)
+    , destinationAddress(Definitions::UNASSIGNED_ADDRESS)
     , nextPendingPingIndex(0)
     , ignoredPingResponseCounter(0)
     , pendingPings()
@@ -123,10 +124,22 @@ void DeviceClient::maintain()
     this->router.maintain();
 }
 
+uint8_t DeviceClient::getDestinationAddress() const
+{
+    // expose the destination address
+    return this->destinationAddress;
+}
+
+void DeviceClient::setDestinationAddress(const uint8_t destinationAddress)
+{
+    // set the destination address
+    this->destinationAddress = destinationAddress;
+}
+
 bool DeviceClient::getSendRequestAllowed() const
 {
-    // expose whether the router allows an acknowledged message
-    return this->router.getSendAcknowledgedAllowed(Definitions::UNASSIGNED_ADDRESS);
+    // expose whether the router allows an acknowledged message to the destination
+    return this->router.getSendAcknowledgedAllowed(this->destinationAddress);
 }
 
 size_t DeviceClient::getPendingCount() const
@@ -244,8 +257,8 @@ Definitions::MessageStatusType DeviceClient::handlePingResponse(const Frame::Fra
         return Definitions::MessageStatusType::ACCEPTED;
     }
 
-    // forget the answered ping request
-    iterator->used = false;
+    // forget the answered ping request unless every node answers it
+    iterator->used = iterator->broadcast;
 
     // notify listeners about the ping response and its round trip time
     this->handler.onReceivedPingResponse(pingResponse,
@@ -332,8 +345,8 @@ Definitions::SendStatusType DeviceClient::sendRequest(const Messages::MessageTyp
                                                       const size_t payloadLength,
                                                       uint16_t &messageCounter)
 {
-    // send the request acknowledged
-    return this->router.sendMessage(Definitions::UNASSIGNED_ADDRESS,
+    // send the request acknowledged to the destination
+    return this->router.sendMessage(this->destinationAddress,
                                     Messages::fromMessageType(messageType),
                                     payload,
                                     payloadLength,
@@ -347,6 +360,7 @@ void DeviceClient::rememberPendingPing(const std::chrono::milliseconds requestTi
     PendingPing &pendingPing = this->pendingPings[this->nextPendingPingIndex];
     pendingPing.used = true;
     pendingPing.requestTimestamp = requestTimestamp;
+    pendingPing.broadcast = this->destinationAddress == Definitions::BROADCAST_ADDRESS;
 
     // move to the next pending ping of the ring
     this->nextPendingPingIndex = (this->nextPendingPingIndex + 1) % this->pendingPings.size();
