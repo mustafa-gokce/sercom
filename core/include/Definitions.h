@@ -7,9 +7,10 @@
 
 namespace sercom::Definitions {
 
-constexpr uint8_t SYNC_BYTE_1 = 0xA5;   // first byte of the sync word
-constexpr uint8_t SYNC_BYTE_2 = 0xC3;   // second byte of the sync word
-constexpr uint8_t PROTOCOL_VERSION = 1; // version of the frame format
+constexpr uint8_t SYNC_BYTE_1 = 0xA5;          // first byte of the sync word
+constexpr uint8_t SYNC_BYTE_2 = 0xC3;          // second byte of the sync word
+constexpr uint8_t PROTOCOL_VERSION = 1;        // version of the direct frame format
+constexpr uint8_t ROUTED_PROTOCOL_VERSION = 2; // version of the routed frame format
 
 constexpr size_t SYNC_SIZE = 2;            // sync word size in bytes
 constexpr size_t VERSION_SIZE = 1;         // version field size in bytes
@@ -21,6 +22,22 @@ constexpr size_t CRC_SIZE = 4;             // CRC32 field size in bytes
 constexpr size_t HEADER_SIZE = SYNC_SIZE + VERSION_SIZE + FLAGS_SIZE + MESSAGE_COUNTER_SIZE
                                + MESSAGE_TYPE_SIZE + PAYLOAD_LENGTH_SIZE; // header size in bytes
 constexpr size_t FRAME_OVERHEAD = HEADER_SIZE + CRC_SIZE; // frame size without payload in bytes
+
+constexpr size_t SOURCE_ADDRESS_SIZE = 1;      // source address field size in bytes
+constexpr size_t DESTINATION_ADDRESS_SIZE = 1; // destination address field size in bytes
+constexpr size_t TIME_TO_LIVE_SIZE = 1;        // time to live field size in bytes
+constexpr size_t ROUTE_HEADER_SIZE = SOURCE_ADDRESS_SIZE + DESTINATION_ADDRESS_SIZE
+                                     + TIME_TO_LIVE_SIZE; // route header size in bytes
+constexpr size_t ROUTED_HEADER_SIZE = HEADER_SIZE
+                                      + ROUTE_HEADER_SIZE; // routed frame header size in bytes
+constexpr size_t ROUTED_FRAME_OVERHEAD = ROUTED_HEADER_SIZE
+                                         + CRC_SIZE; // routed frame size without payload in bytes
+
+constexpr uint8_t UNASSIGNED_ADDRESS = 0x00;   // address of a node without an address
+constexpr uint8_t HOST_ADDRESS = 0x01;         // address of the host at the top of a chain
+constexpr uint8_t MINIMUM_NODE_ADDRESS = 0x02; // lowest address of a node
+constexpr uint8_t MAXIMUM_NODE_ADDRESS = 0xFE; // highest address of a node
+constexpr uint8_t BROADCAST_ADDRESS = 0xFF;    // address of every node of a chain
 
 constexpr uint32_t CRC32_POLYNOMIAL = 0xEDB88320U;      // reflected polynomial of CRC-32/ISO-HDLC
 constexpr uint32_t CRC32_INITIAL_VALUE = 0xFFFFFFFFU;   // CRC32 register before the first byte
@@ -140,10 +157,18 @@ DeliveryFailureType toDeliveryFailureType(std::string_view deliveryFailureType);
  */
 [[nodiscard]] std::string_view getFrameFlagTypeText(FrameFlagType frameFlagType);
 
+/*
+ * Get the header size of a frame version in bytes, zero for an unknown version.
+ */
+[[nodiscard]] size_t getHeaderSize(uint8_t version);
+
 } // namespace sercom::Definitions
 
 // check definitions
 static_assert(sercom::Definitions::HEADER_SIZE == 9, "Header size must be 9 bytes");
 static_assert(sercom::Definitions::FRAME_OVERHEAD == 13, "Frame overhead must be 13 bytes");
+static_assert(sercom::Definitions::ROUTED_HEADER_SIZE == 12, "Routed header size must be 12 bytes");
+static_assert(sercom::Definitions::ROUTED_FRAME_OVERHEAD == 16,
+              "Routed frame overhead must be 16 bytes");
 
 #endif // SERCOM_DEFINITIONS_H

@@ -180,4 +180,20 @@ std::string_view getFrameFlagTypeText(const FrameFlagType frameFlagType)
     }
 }
 
+size_t getHeaderSize(const uint8_t version)
+{
+    // expose the header size of a direct frame
+    if (version == PROTOCOL_VERSION) {
+        return HEADER_SIZE;
+    }
+
+    // expose the header size of a routed frame
+    if (version == ROUTED_PROTOCOL_VERSION) {
+        return ROUTED_HEADER_SIZE;
+    }
+
+    // expose no header size for an unknown version
+    return 0;
+}
+
 } // namespace sercom::Definitions
