@@ -46,3 +46,26 @@ host then talks to device B end to end, with the link layer of both ends intact,
 device A is invisible, exactly like the USB-serial adapter of section 2 of
 [HARDWARE.md](HARDWARE.md). This is the right tool for reaching a board without a USB
 port; it gives no access to device A itself.
+
+## What version 2 chose
+
+Version 2 of the protocol solves the same problem with a header change instead of the
+envelope, [PROTOCOL.md](PROTOCOL.md#8-version-2-routed-frames) section 8 specifies it.
+The envelope types above were never assigned, so version 2 uses `0x0008` for the
+route failure report instead.
+
+- An address in every frame: a routed frame carries its source, its destination and a
+  time to live behind `PAYLOAD_LENGTH`. An envelope would carry only requests of the
+  host, but the responses, the log and telemetry reports of a far node and the
+  failure reports of the nodes on the way must travel through the chain too, and
+  every node must read the destination without parsing a payload.
+- Custody per hop instead of a table of late responses: each node answers the
+  previous hop at once, holds an acknowledged frame in the window of its next link
+  and retransmits it there. The response of the destination confirms the request
+  end to end, and a node whose next hop fails a frame sends a route failure report
+  back to the source of the frame.
+- The device role with a second port: a router is the device application of one
+  node with a primary port towards the host and a secondary port away from it, not
+  a device and a controller in one object. A router can also stand in for one
+  neighbour without an address, so a device of version 1 can be the last node of a
+  chain.
