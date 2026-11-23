@@ -1,7 +1,7 @@
 # 29 Consume with FetchContent
 
 This example is a host tool of its own that uses sercom as a library. Its CMake project fetches
-sercom with `FetchContent`, pinned to a tag, turns on sercom's host library and links it together
+sercom with `FetchContent`, pinned to the release tag `v2.0.0`, turns on sercom's host library and links it together
 with Qt. The program opens a serial port, waits until the device answers a ping and prints the
 round trip time; with `--to ADDRESS` it pings the node of that address through a chain. In the
 repository the build takes this checkout of sercom; in a project of your own CMake downloads the
@@ -49,8 +49,9 @@ change sercom itself and want your tool to build against your checkout.
 
 Open `examples/29_consume_with_fetch_content/CMakeLists.txt`.
 
-- `set(SERCOM_GIT_REPOSITORY ...)` and `set(SERCOM_GIT_TAG L115)` stand above the banner: the tag
-  is the pin of this project. A lecture tag fits the course; a tool of your own pins a release.
+- `set(SERCOM_GIT_REPOSITORY ...)` and `set(SERCOM_GIT_TAG v2.0.0)` stand above the banner: the
+  tag is the pin of this project, the release 2.0 of sercom. A tool of your own pins a release
+  tag like this one; a lecture tag such as `L115` pins a step of the course.
 - `set(SERCOM_BUILD_HOST ON)` before `FetchContent_MakeAvailable` turns on the host library,
   which a subproject does not build by default. It is a normal variable, and the `option()` of
   sercom keeps its value: `cmake_minimum_required(VERSION 3.16)` makes the policy CMP0077 new in
@@ -217,7 +218,7 @@ the CMake 3.16 of this project.
    one ping and ends with exit code `1`, where a new ping every 2 ms would only flood the link.
 5. Download sercom for real. Configure a new build directory without
    `FETCHCONTENT_SOURCE_DIR_SERCOM`: `cmake -S . -B build-download -G Ninja -DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64`.
-   CMake clones the tag `L115` from GitHub into `build-download/_deps/sercom-src`, without
+   CMake clones the tag `v2.0.0` from GitHub into `build-download/_deps/sercom-src`, without
    `dep/Catch2`.
 
 Stop the simulator and the cable with Ctrl+C when you are done.
