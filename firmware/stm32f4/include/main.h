@@ -5,10 +5,18 @@
 
 #include <sys/types.h>
 
+#include "../../../core/include/Router.h"
+
 /*
  * Configure the board, open the serial ports and run the firmware role in a superloop.
+ * A router also opens its secondary serial port and feeds the bytes of both ports.
  */
 int main();
+
+/*
+ * Get the router configuration with the node address and the proxy address of the build.
+ */
+[[nodiscard]] sercom::Router::RouterConfiguration getRouterConfiguration();
 
 /*
  * Print the boot banner with the name and the version of the device and its serial ports.
@@ -22,6 +30,7 @@ void writeConsoleLine(const char *line, int lineLength);
 
 /*
  * Report the free memory and the dropped received bytes through the firmware role.
+ * A router also reports its forwarded, expired and unreachable frames and the dropped bytes of USART6.
  */
 void reportHeartbeat();
 
@@ -41,6 +50,11 @@ void USART1_IRQHandler();
  * Serve the receive and transmit interrupts of USART2.
  */
 void USART2_IRQHandler();
+
+/*
+ * Serve the receive and transmit interrupts of USART6.
+ */
+void USART6_IRQHandler();
 
 /*
  * Refuse every heap request of the C library, because the firmware has no heap.

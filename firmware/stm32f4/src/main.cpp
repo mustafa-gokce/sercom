@@ -13,6 +13,7 @@
 
 #include "../../../app/include/AppSettings.h"
 #include "../../../app/include/Messages.h"
+#include "../../../core/include/Router.h"
 #include "../../common/include/CommonSettings.h"
 #include "../../common/include/Console.h"
 #include "../../common/include/ControllerRole.h"
@@ -38,6 +39,11 @@ static sercom::UsartPort::UsartPort usart2Port(USART2,
                                                USART2_IRQn,
                                                sercom::FirmwareSettings::USART2_RECEIVE_PIN,
                                                sercom::FirmwareSettings::USART2_TRANSMIT_PIN);
+static sercom::UsartPort::UsartPort usart6Port(USART6,
+                                               USART6_IRQn,
+                                               sercom::FirmwareSettings::USART6_RECEIVE_PIN,
+                                               sercom::FirmwareSettings::USART6_TRANSMIT_PIN,
+                                               sercom::FirmwareSettings::USART6_ALTERNATE_FUNCTION);
 static sercom::UsartPort::UsartPort &protocolPort = sercom::FirmwareSettings::ConsolePrinted
                                                         ? usart1Port
                                                         : usart2Port;
@@ -49,7 +55,13 @@ static sercom::Stm32Platform::Stm32Platform stm32Platform(stm32Clock,
 static sercom::Console::Console console(consolePort,
                                         stm32Clock,
                                         sercom::FirmwareSettings::ConsolePrinted);
-static sercom::DeviceRole::DeviceRole deviceRole(protocolPort, stm32Clock, stm32Platform, console);
+static sercom::DeviceRole::DeviceRole deviceRole(protocolPort,
+                                                 sercom::FirmwareSettings::RouterRun ? &usart6Port
+                                                                                     : nullptr,
+                                                 stm32Clock,
+                                                 stm32Platform,
+                                                 console,
+                                                 getRouterConfiguration());
 static sercom::ControllerRole::ControllerRole controllerRole(protocolPort,
                                                              stm32Clock,
                                                              stm32Platform,
@@ -92,6 +104,11 @@ int main()
     // open the serial port 8N1 without flow control on its pins
     protocolPort.begin(CommonSettings::SERIAL_BAUD_RATE);
 
+    // open the secondary serial port of a router the same way
+    if (FirmwareSettings::RouterRun) {
+        usart6Port.begin(CommonSettings::SERIAL_BAUD_RATE);
+    }
+
     // notify the user
     std::array<char, CommonSettings::LOG_LINE_SIZE> startedDebugMessage
         = std::array<char, CommonSettings::LOG_LINE_SIZE>();
@@ -110,6 +127,24 @@ int main()
                         AppSettings::AppVersionString.data());
     firmwareRole.reportLog(Messages::LogLevelType::DEBUG, startedDebugMessage.data());
 
+    // notify the user of the ports and addresses of a router
+    if (FirmwareSettings::RouterRun) {
+        std::array<char, CommonSettings::LOG_LINE_SIZE> routingDebugMessage
+            = std::array<char, CommonSettings::LOG_LINE_SIZE>();
+        [[maybe_unused]] const int routingDebugMessageLength
+            = std::snprintf(routingDebugMessage.data(),
+                            routingDebugMessage.size(),
+                            "Routing as node %" PRIu32
+                            " between %.*s and %.*s, proxy address %" PRIu32,
+                            static_cast<uint32_t>(FirmwareSettings::NodeAddress),
+                            static_cast<int>(FirmwareSettings::SerialPortName.size()),
+                            FirmwareSettings::SerialPortName.data(),
+                            static_cast<int>(FirmwareSettings::SecondaryPortName.size()),
+                            FirmwareSettings::SecondaryPortName.data(),
+                            static_cast<uint32_t>(FirmwareSettings::ProxyAddress));
+        firmwareRole.reportLog(Messages::LogLevelType::DEBUG, routingDebugMessage.data());
+    }
+
     // run the firmware role in the superloop
     std::array<uint8_t, CommonSettings::PROTOCOL_CHUNK_SIZE> chunk
         = std::array<uint8_t, CommonSettings::PROTOCOL_CHUNK_SIZE>();
@@ -119,6 +154,14 @@ int main()
         const size_t receivedSize = protocolPort.receiveData(chunk.data(), chunk.size());
         if (receivedSize > 0) {
             firmwareRole.onReceivedData(chunk.data(), receivedSize);
+        }
+
+        // feed the received bytes of the secondary serial port of a router to the device role
+        const size_t secondaryReceivedSize = FirmwareSettings::RouterRun
+                                                 ? usart6Port.receiveData(chunk.data(), chunk.size())
+                                                 : 0;
+        if (secondaryReceivedSize > 0) {
+            deviceRole.onReceivedSecondaryData(chunk.data(), secondaryReceivedSize);
         }
 
         // report the health of the device periodically
@@ -134,6 +177,19 @@ int main()
         // sleep until the next interrupt, the SysTick timer wakes the loop every millisecond
         __WFI();
     }
+}
+
+sercom::Router::RouterConfiguration getRouterConfiguration()
+{
+    using namespace sercom;
+
+    // create router configuration
+    Router::RouterConfiguration routerConfiguration;
+    routerConfiguration.nodeAddress = FirmwareSettings::NodeAddress;
+    routerConfiguration.proxyAddress = FirmwareSettings::ProxyAddress;
+
+    // expose the router configuration
+    return routerConfiguration;
 }
 
 void printBanner()
@@ -177,6 +233,25 @@ void printBanner()
                                                 FirmwareSettings::USART2_PORT_NAME.data(),
                                                 CommonSettings::CONSOLE_BAUD_RATE);
     writeConsoleLine(line.data(), consoleLineLength);
+
+    // router must name its secondary serial port
+    if (!FirmwareSettings::RouterRun) {
+        return;
+    }
+
+    // print the secondary serial port of a router
+    const int secondaryLineLength = std::snprintf(line.data(),
+                                                  line.size(),
+                                                  "secondary port on %.*s at %" PRIu32
+                                                  " baud, receive pin PA%" PRIu32
+                                                  ", transmit pin PA%" PRIu32 "\r\n",
+                                                  static_cast<int>(
+                                                      FirmwareSettings::SecondaryPortName.size()),
+                                                  FirmwareSettings::SecondaryPortName.data(),
+                                                  CommonSettings::SERIAL_BAUD_RATE,
+                                                  FirmwareSettings::SecondaryReceivePin,
+                                                  FirmwareSettings::SecondaryTransmitPin);
+    writeConsoleLine(line.data(), secondaryLineLength);
 }
 
 void writeConsoleLine(const char *line, const int lineLength)
@@ -208,6 +283,26 @@ void reportHeartbeat()
                         stm32Platform.getFreeHeapSize(),
                         protocolPort.getDroppedByteCounter());
     firmwareRole.reportLog(Messages::LogLevelType::DEBUG, debugMessage.data());
+
+    // router must report its router statistics
+    if (!FirmwareSettings::RouterRun) {
+        return;
+    }
+
+    // notify the user
+    const Router::RouterStatistics routerStatistics = deviceRole.getRouterStatistics();
+    std::array<char, CommonSettings::LOG_LINE_SIZE> routerDebugMessage
+        = std::array<char, CommonSettings::LOG_LINE_SIZE>();
+    [[maybe_unused]] const int routerDebugMessageLength
+        = std::snprintf(routerDebugMessage.data(),
+                        routerDebugMessage.size(),
+                        "Heartbeat: forwarded %" PRIu32 ", expired %" PRIu32
+                        ", unreachable %" PRIu32 ", dropped secondary bytes %" PRIu32,
+                        static_cast<uint32_t>(routerStatistics.forwardedFrameCounter),
+                        static_cast<uint32_t>(routerStatistics.expiredFrameCounter),
+                        static_cast<uint32_t>(routerStatistics.unreachableFrameCounter),
+                        usart6Port.getDroppedByteCounter());
+    firmwareRole.reportLog(Messages::LogLevelType::DEBUG, routerDebugMessage.data());
 }
 
 void SysTick_Handler()
@@ -226,6 +321,12 @@ void USART2_IRQHandler()
 {
     // serve the interrupt of USART2
     usart2Port.processInterrupt();
+}
+
+void USART6_IRQHandler()
+{
+    // serve the interrupt of USART6
+    usart6Port.processInterrupt();
 }
 
 void *_sbrk([[maybe_unused]] const ptrdiff_t increment)
