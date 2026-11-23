@@ -49,7 +49,7 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 
 ### As a dependency
 1. A CMake project of your own uses sercom as a library with CMake 3.16 or newer and a C++17 compiler; `sercom::settings` requires C++17 of every target that links it, also without `set(CMAKE_CXX_STANDARD 17)` in your project
-2. Add sercom as a git submodule and pin it to a tag: `git submodule add https://github.com/mustafa-gokce/sercom.git dep/sercom` and `git -C dep/sercom checkout <tag>`
+2. Add sercom as a git submodule and pin it to a release tag such as `v2.0.0`: `git submodule add https://github.com/mustafa-gokce/sercom.git dep/sercom` and `git -C dep/sercom checkout v2.0.0`
 3. Add the submodule in the `CMakeLists.txt` of your project: `add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/dep/sercom)`
 4. Or fetch sercom at a tag without a submodule: `include(FetchContent)`, `FetchContent_Declare(sercom GIT_REPOSITORY https://github.com/mustafa-gokce/sercom.git GIT_TAG <tag> GIT_SHALLOW ON GIT_SUBMODULES "")` and `FetchContent_MakeAvailable(sercom)`
 5. Build a fetched sercom from a local checkout in place of the download: `-DFETCHCONTENT_SOURCE_DIR_SERCOM=<checkout>`
@@ -61,6 +61,8 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 11. sercom has no install step and no `find_package(sercom)`, a project takes it as a submodule or with `FetchContent`.
 12. Examples 28 and 29 are two such projects with their guides, [examples/README.md](examples/README.md) lists them under "Consumer projects".
 13. Build and run both against this checkout: `tools/run_consumers.sh build/sercom_device_sim`, on Windows `tools/run_consumers.ps1 build/sercom_device_sim.exe`
+14. A PlatformIO project of your own adds the submodule the same way and lists `symlink://dep/sercom/core`, `symlink://dep/sercom/app` and `symlink://dep/sercom/firmware/common` in `lib_deps`, with `extra_scripts = pre:dep/sercom/firmware/common/build_settings.py` and `custom_sercom_directory = dep/sercom` for the build values of sercom.
+15. Example 30 is such a firmware with its guide; build it from the source directory: `pio run -d examples/30_consume_with_platformio`
 
 ## Run tests
 ### Linux
@@ -79,6 +81,9 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 13. Run the layout, comment, idiom, cppcheck and clang-tidy gates: `CPPCHECK=~/.local/cppcheck-2.22.0/bin/cppcheck tools/run_static_analysis.sh build`
 14. Run the tests with AddressSanitizer and UndefinedBehaviorSanitizer in `build-sanitizers`: `tools/run_sanitizer_test.sh`
 15. Fuzz the frame decoder, the link layer and the router for one minute each in `build-fuzz`: `fuzz/run_fuzzers.sh`
+16. Run the daisy chain of three device simulators over noisy virtual links: `tests/e2e/chain_test.sh build/sercom_cli build/sercom_device_sim`
+17. Build and run the consumer projects of examples 28 and 29 against this checkout, without the warning flags of sercom: `tools/run_consumers.sh build/sercom_device_sim`
+18. Build and run them with Qt 6.8.3 too, installed as the guide of example 29 shows: `CMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/gcc_64 tools/run_consumers.sh build/sercom_device_sim --build-dir build-consumers-qt6`
 
 ### Windows
 1. Open PowerShell 7 with the path of the build steps.
@@ -88,9 +93,13 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 5. Run the Python reference self test: `python tools/sercom_frame.py self-test`
 6. Run every example of the build directory, examples 01 and 24 on the com0com pair `COM10` and `COM11` of [tools/COM0COM.md](tools/COM0COM.md): `tools/run_examples.ps1 build`
 7. Run the end to end test over a noisy link of the com0com pairs `COM10` to `COM13`: `tests/e2e/noisy_link_test.ps1 build/sercom_cli.exe build/sercom_device_sim.exe`
+8. Run the daisy chain of three device simulators over the com0com pairs `COM10` to `COM17`: `tests/e2e/chain_test.ps1 build/sercom_cli.exe build/sercom_device_sim.exe`
+9. Build and run the consumer projects with MinGW 7.3.0, example 29 on the pair `COM10` and `COM11`: `tools/run_consumers.ps1 build/sercom_device_sim.exe`
+10. Build and run them with Qt 6.8.3 and its MinGW 13.1 too, installed as the guide of example 29 shows and first on the path: `$env:CXX = 'C:/Qt/Tools/mingw1310_64/bin/g++.exe'; $env:CMAKE_PREFIX_PATH = 'C:/Qt/6.8.3/mingw_64'; tools/run_consumers.ps1 build/sercom_device_sim.exe --build-dir build-consumers-qt6`
 
 ### ESP32
 1. Build the firmware as above, the protocol code is tested on Linux and Windows.
+2. Build the PlatformIO consumer project of example 30 on the same libraries: `pio run -d examples/30_consume_with_platformio`
 
 ### STM32F4
 1. Build the firmware as above, the protocol code and `firmware/common` are tested on Linux and Windows.
@@ -100,6 +109,9 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 2. Install socat, xPack QEMU Arm and Espressif QEMU as in [docs/HARDWARE.md](docs/HARDWARE.md) section 13.
 3. Name both emulators: `export ARM_QEMU=<path>/qemu-system-arm ESP32_QEMU=<path>/qemu-system-xtensa`
 4. Run both targets against the tools and against each other: `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
+5. Start the PlatformIO consumer of example 30, built as in "ESP32": `tools/run_emulator.sh start esp32 examples/30_consume_with_platformio/.pio/build/esp32dev /tmp/consumer`
+6. Ping it: `build/sercom_cli /tmp/consumer/uart0 ping 3`
+7. Stop it: `tools/run_emulator.sh stop /tmp/consumer`
 
 ### Daisy chain
 1. Build the host as the Linux steps show, the test needs `socat` and Python 3 on Linux.
