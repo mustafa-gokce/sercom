@@ -12,6 +12,7 @@
 
 #include <catch2/catch_all.hpp>
 
+#include "../app/include/AppSettings.h"
 #include "../app/include/Messages.h"
 #include "../core/include/Clock.h"
 #include "../core/include/Settings.h"
@@ -524,9 +525,11 @@ TEST_CASE_METHOD(TestControllerRole,
 
     // check the result lines of the controller console
     const std::string controllerText = controllerConsoleOutput.getText();
+    const std::string deviceInfoText = "log DEBUG: Device info: unit-under-test, firmware "
+                                       + std::to_string(AppSettings::AppVersionMajor) + "."
+                                       + std::to_string(AppSettings::AppVersionMinor) + ", uptime ";
     REQUIRE(getTextFound(controllerText, "log DEBUG: Device answered after 1 ms\r\n"));
-    REQUIRE(getTextFound(controllerText,
-                         "log DEBUG: Device info: unit-under-test, firmware 1.0, uptime "));
+    REQUIRE(getTextFound(controllerText, deviceInfoText));
     REQUIRE(getTextFound(controllerText, "temperature no reading\r\n"));
     REQUIRE(getTextFound(controllerText,
                          "log DEBUG: Stress report: echo responses verified 300, corrupted 0, "
