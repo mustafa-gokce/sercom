@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <cinttypes>
 #include <cstdint>
 #include <cstdio>
@@ -104,11 +105,19 @@ int main()
     // run the firmware role in the superloop
     std::array<uint8_t, CommonSettings::PROTOCOL_CHUNK_SIZE> chunk
         = std::array<uint8_t, CommonSettings::PROTOCOL_CHUNK_SIZE>();
+    std::chrono::milliseconds lastHeartbeatTimestamp = stm32Clock.getTime();
     while (true) {
         // feed the received bytes to the firmware role
         const size_t receivedSize = protocolPort.receiveData(chunk.data(), chunk.size());
         if (receivedSize > 0) {
             firmwareRole.onReceivedData(chunk.data(), receivedSize);
+        }
+
+        // report the health of the device periodically
+        const std::chrono::milliseconds currentTime = stm32Clock.getTime();
+        if (currentTime - lastHeartbeatTimestamp >= CommonSettings::HEARTBEAT_PERIOD_MSEC) {
+            lastHeartbeatTimestamp = currentTime;
+            reportHeartbeat();
         }
 
         // maintain the firmware role
@@ -175,6 +184,22 @@ void writeConsoleLine(const char *line, const int lineLength)
     consolePort.writeText(line,
                           std::min(static_cast<size_t>(lineLength),
                                    CommonSettings::CONSOLE_LINE_SIZE - 1));
+}
+
+void reportHeartbeat()
+{
+    using namespace sercom;
+
+    // notify the user
+    std::array<char, CommonSettings::LOG_LINE_SIZE> debugMessage
+        = std::array<char, CommonSettings::LOG_LINE_SIZE>();
+    [[maybe_unused]] const int debugMessageLength
+        = std::snprintf(debugMessage.data(),
+                        debugMessage.size(),
+                        "Heartbeat: free memory %" PRIu32 " bytes, dropped received bytes %" PRIu32,
+                        stm32Platform.getFreeHeapSize(),
+                        protocolPort.getDroppedByteCounter());
+    firmwareRole.reportLog(Messages::LogLevelType::DEBUG, debugMessage.data());
 }
 
 void SysTick_Handler()

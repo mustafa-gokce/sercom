@@ -20,6 +20,11 @@ void printBanner();
  */
 void writeConsoleLine(const char *line, int lineLength);
 
+/*
+ * Report the free memory and the dropped received bytes through the firmware role.
+ */
+void reportHeartbeat();
+
 extern "C" {
 
 /*
