@@ -22,6 +22,7 @@
 #include "../core/include/Definitions.h"
 #include "../core/include/Frame.h"
 #include "../core/include/Link.h"
+#include "../core/include/Router.h"
 #include "../core/include/Settings.h"
 #include "../core/include/Transport.h"
 
@@ -561,6 +562,67 @@ private:
     std::vector<FailedRequest> failedRequests;                // failed requests
 };
 
+class MockHostHandler final : public Link::LinkHandler
+{
+public:
+    /*
+     * Mock link handler of a host without a device client that records every received message.
+     */
+    MockHostHandler() = default;
+    ~MockHostHandler() final {}
+
+    // delete copy constructor and copy assignment operator
+    MockHostHandler(const MockHostHandler &) = delete;
+    MockHostHandler &operator=(const MockHostHandler &) = delete;
+
+    // delete move constructor and move assignment operator
+    MockHostHandler(MockHostHandler &&) = delete;
+    MockHostHandler &operator=(MockHostHandler &&) = delete;
+
+public:
+    /*
+     * Listen for a received message, record it and accept it.
+     */
+    [[nodiscard]] Definitions::MessageStatusType onReceivedMessage(const Frame::Frame &frame) final
+    {
+        // record the message
+        this->messages.push_back(frame);
+
+        // accept the message
+        return Definitions::MessageStatusType::ACCEPTED;
+    }
+
+    /*
+     * Listen for a confirmed delivery that needs no work.
+     */
+    void onDeliveryConfirmed([[maybe_unused]] const uint16_t messageCounter,
+                             [[maybe_unused]] const uint16_t messageType) final
+    {}
+
+    /*
+     * Listen for a failed delivery that needs no work.
+     */
+    void onDeliveryFailed(
+        [[maybe_unused]] const uint16_t messageCounter,
+        [[maybe_unused]] const uint16_t messageType,
+        [[maybe_unused]] const Definitions::DeliveryFailureType deliveryFailureType,
+        [[maybe_unused]] const Definitions::MessageStatusType remoteMessageStatusType) final
+    {}
+
+public:
+    /*
+     * Get the received messages in arrival order.
+     */
+    [[nodiscard]] std::vector<Frame::Frame> getMessages() const
+    {
+        // expose the received messages
+        return this->messages;
+    }
+
+private:
+    std::vector<Frame::Frame> messages; // received messages
+};
+
 } // namespace
 
 class TestDeviceApplication
@@ -595,9 +657,36 @@ public:
         // initialize host link
         this->hostLink.reset(
             new Link::Link(this->hostLinkTransport, this->hostLinkHandler, this->clock));
+
+        // initialize the chain of a host, node 2 with two ports and node 3 at the end
+        this->chainHostRouter.reset(
+            new Router::Router(this->chainHostTransport,
+                               nullptr,
+                               this->chainHostHandler,
+                               this->clock,
+                               Link::LinkConfiguration(),
+                               getRouterConfiguration(Definitions::HOST_ADDRESS)));
+        this->nodeApplication.reset(
+            new DeviceApplication::DeviceApplication(this->nodePrimaryTransport,
+                                                     &this->nodeSecondaryTransport,
+                                                     this->clock,
+                                                     this->nodePlatform,
+                                                     Link::LinkConfiguration(),
+                                                     getRouterConfiguration(NodeAddress)));
+        this->endApplication.reset(
+            new DeviceApplication::DeviceApplication(this->endTransport,
+                                                     this->clock,
+                                                     this->endPlatform,
+                                                     Link::LinkConfiguration(),
+                                                     getRouterConfiguration(EndNodeAddress)));
     }
     ~TestDeviceApplication()
     {
+        // close the chain
+        this->endApplication.reset(nullptr);
+        this->nodeApplication.reset(nullptr);
+        this->chainHostRouter.reset(nullptr);
+
         // close host link
         this->hostLink.reset(nullptr);
 
@@ -607,6 +696,68 @@ public:
         // close device client and device application
         this->deviceApplication.reset(nullptr);
         this->deviceClient.reset(nullptr);
+    }
+
+    /*
+     * Get the configuration of a router with a node address.
+     */
+    [[nodiscard]] static Router::RouterConfiguration getRouterConfiguration(const uint8_t nodeAddress)
+    {
+        // create router configuration
+        Router::RouterConfiguration routerConfiguration;
+        routerConfiguration.nodeAddress = nodeAddress;
+
+        // expose the router configuration
+        return routerConfiguration;
+    }
+
+    /*
+     * Deliver the data of the chain of the host, node 2 and node 3 until no data waits.
+     */
+    void pumpChain()
+    {
+        // deliver the sent data a bounded number of rounds
+        static constexpr int maximumAttemptCount = 1000;
+        for (int attempt = 0; attempt < maximumAttemptCount; ++attempt) {
+            // data must wait in a transport
+            if (this->chainHostTransport.getEmpty() && this->nodePrimaryTransport.getEmpty()
+                && this->nodeSecondaryTransport.getEmpty() && this->endTransport.getEmpty()) {
+                return;
+            }
+
+            // deliver the data of every link of the chain in both directions
+            std::vector<uint8_t> data;
+            while (this->chainHostTransport.receiveData(data)) {
+                this->nodeApplication->onReceivedData(data.data(), data.size());
+            }
+            while (this->nodePrimaryTransport.receiveData(data)) {
+                this->chainHostRouter->onReceivedData(Definitions::PortType::PRIMARY,
+                                                      data.data(),
+                                                      data.size());
+            }
+            while (this->nodeSecondaryTransport.receiveData(data)) {
+                this->endApplication->onReceivedData(data.data(), data.size());
+            }
+            while (this->endTransport.receiveData(data)) {
+                this->nodeApplication->onReceivedSecondaryData(data.data(), data.size());
+            }
+        }
+    }
+
+    /*
+     * Send a ping request of the host of the chain to a destination.
+     */
+    [[nodiscard]] Definitions::SendStatusType sendChainPingRequest(const uint8_t destinationAddress)
+    {
+        // send the ping request with the current time acknowledged
+        const Messages::PingRequest pingRequest(this->clock.getTime());
+        return this->chainHostRouter->sendMessage(destinationAddress,
+                                                  Messages::fromMessageType(
+                                                      Messages::MessageType::PING_REQUEST),
+                                                  pingRequest.getPayload(),
+                                                  pingRequest.getPayloadLength(),
+                                                  true,
+                                                  this->messageCounter);
     }
 
     /*
@@ -732,6 +883,22 @@ protected:
     std::unique_ptr<DeviceClient::DeviceClient> previousDeviceClient; // host side of an old process
     std::unique_ptr<Link::Link> hostLink; // host side without a device client
     uint16_t messageCounter;              // message counter of the latest request
+
+protected:
+    static constexpr uint8_t NodeAddress = 2;    // address of node 2 with two ports
+    static constexpr uint8_t EndNodeAddress = 3; // address of node 3 at the end of the chain
+
+protected:
+    MockTransport chainHostTransport;                // data sent by the host of the chain
+    MockTransport nodePrimaryTransport;              // data sent up by node 2
+    MockTransport nodeSecondaryTransport;            // data sent down by node 2
+    MockTransport endTransport;                      // data sent up by node 3
+    MockDevicePlatform nodePlatform;                 // hardware of node 2
+    MockDevicePlatform endPlatform;                  // hardware of node 3
+    MockHostHandler chainHostHandler;                // messages of the host of the chain
+    std::unique_ptr<Router::Router> chainHostRouter; // host of the chain without a device client
+    std::unique_ptr<DeviceApplication::DeviceApplication> nodeApplication; // node 2 with two ports
+    std::unique_ptr<DeviceApplication::DeviceApplication> endApplication;  // node 3 at the end
 };
 
 TEST_CASE_METHOD(TestDeviceApplication,
@@ -1161,4 +1328,122 @@ TEST_CASE_METHOD(TestDeviceApplication,
             REQUIRE(echoResponseCounts.at(identifier) <= timedOutResendCounts.at(identifier) + 1);
         }
     }
+}
+
+TEST_CASE_METHOD(
+    TestDeviceApplication,
+    "A device with an address answers the source of a request in the version of the request",
+    "[DeviceApplication][testAddressedAnswer]")
+{
+    // send a routed and a direct ping request of the host to node 2
+    REQUIRE(sendChainPingRequest(NodeAddress) == Definitions::SendStatusType::SENT);
+    pumpChain();
+    REQUIRE(sendChainPingRequest(Definitions::UNASSIGNED_ADDRESS)
+            == Definitions::SendStatusType::SENT);
+    pumpChain();
+
+    // check the routed answer to the host and the direct answer, both with the route capable flag
+    const std::vector<Frame::Frame> messages = chainHostHandler.getMessages();
+    REQUIRE(messages.size() == static_cast<size_t>(2));
+    REQUIRE(messages.at(0).getMessageType()
+            == Messages::fromMessageType(Messages::MessageType::PING_RESPONSE));
+    REQUIRE(messages.at(0).getRouted());
+    REQUIRE(messages.at(0).getSourceAddress() == NodeAddress);
+    REQUIRE(messages.at(0).getDestinationAddress() == Definitions::HOST_ADDRESS);
+    REQUIRE_FALSE(messages.at(1).getRouted());
+    REQUIRE(messages.at(1).getFlag(Definitions::FrameFlagType::ROUTE_CAPABLE));
+    REQUIRE(Messages::PingResponse(messages.at(1)).getLikelyValid());
+}
+
+TEST_CASE_METHOD(
+    TestDeviceApplication,
+    "A device with an address reports to the host at start and then to the last requester",
+    "[DeviceApplication][testReportAddress]")
+{
+    // send a log report response of node 2 before any request
+    REQUIRE(nodeApplication->sendLogReportResponse(Messages::LogLevelType::DEBUG, "start"));
+    pumpChain();
+
+    // send a log report response after a direct and after a routed request
+    REQUIRE(sendChainPingRequest(Definitions::UNASSIGNED_ADDRESS)
+            == Definitions::SendStatusType::SENT);
+    pumpChain();
+    REQUIRE(nodeApplication->sendLogReportResponse(Messages::LogLevelType::DEBUG, "direct"));
+    pumpChain();
+    REQUIRE(sendChainPingRequest(NodeAddress) == Definitions::SendStatusType::SENT);
+    pumpChain();
+    REQUIRE(nodeApplication->sendLogReportResponse(Messages::LogLevelType::DEBUG, "routed"));
+    pumpChain();
+
+    // check the log report responses between the ping responses
+    const std::vector<Frame::Frame> messages = chainHostHandler.getMessages();
+    REQUIRE(messages.size() == static_cast<size_t>(5));
+    REQUIRE(Messages::LogReportResponse(messages.at(0)).getText() == "start");
+    REQUIRE(messages.at(0).getDestinationAddress() == Definitions::HOST_ADDRESS);
+    REQUIRE(Messages::LogReportResponse(messages.at(2)).getText() == "direct");
+    REQUIRE_FALSE(messages.at(2).getRouted());
+    REQUIRE(Messages::LogReportResponse(messages.at(4)).getText() == "routed");
+    REQUIRE(messages.at(4).getRouted());
+    REQUIRE(messages.at(4).getSourceAddress() == NodeAddress);
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "Only a device with an address appends its version and address to the device info",
+                 "[DeviceApplication][testDeviceInfoRoute]")
+{
+    // ask node 2 for its device info
+    const Messages::DeviceInfoRequest deviceInfoRequest;
+    REQUIRE(chainHostRouter->sendMessage(NodeAddress,
+                                         Messages::fromMessageType(
+                                             Messages::MessageType::DEVICE_INFO_REQUEST),
+                                         deviceInfoRequest.getPayload(),
+                                         deviceInfoRequest.getPayloadLength(),
+                                         true,
+                                         messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pumpChain();
+
+    // check the appended fields of the device with an address
+    const std::vector<Frame::Frame> messages = chainHostHandler.getMessages();
+    REQUIRE(messages.size() == static_cast<size_t>(1));
+    const Messages::DeviceInfoResponse routedResponse(messages.at(0));
+    REQUIRE(routedResponse.getLikelyValid());
+    REQUIRE(routedResponse.getProtocolVersion() == Definitions::ROUTED_PROTOCOL_VERSION);
+    REQUIRE(routedResponse.getNodeAddress() == NodeAddress);
+
+    // check the device info of the device without an address
+    REQUIRE(deviceClient->sendDeviceInfoRequest(messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+    const std::vector<Messages::DeviceInfoResponse> directResponses = clientHandler
+                                                                          .getDeviceInfoResponses();
+    REQUIRE(directResponses.size() == static_cast<size_t>(1));
+    REQUIRE(directResponses.at(0).getPayloadLength()
+            == Messages::DEVICE_INFO_RESPONSE_SIZE + devicePlatform.getDeviceName().size());
+    REQUIRE(directResponses.at(0).getProtocolVersion() == Definitions::PROTOCOL_VERSION);
+    REQUIRE(directResponses.at(0).getNodeAddress() == Definitions::UNASSIGNED_ADDRESS);
+}
+
+TEST_CASE_METHOD(TestDeviceApplication,
+                 "A device with two ports passes the frames of the host to the next node and back",
+                 "[DeviceApplication][testTwoPorts]")
+{
+    // send a ping request of the host to node 3 behind node 2
+    REQUIRE(sendChainPingRequest(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pumpChain();
+
+    // check the ping response of node 3 that node 2 passed up
+    const std::vector<Frame::Frame> messages = chainHostHandler.getMessages();
+    REQUIRE(messages.size() == static_cast<size_t>(1));
+    REQUIRE(messages.at(0).getSourceAddress() == EndNodeAddress);
+    REQUIRE(messages.at(0).getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE - 1);
+    REQUIRE(Messages::PingResponse(messages.at(0)).getLikelyValid());
+
+    // check the counters of node 2
+    REQUIRE(nodeApplication->getRouterStatistics().forwardedFrameCounter
+            == static_cast<uint64_t>(2));
+    REQUIRE(nodeApplication->getRouterStatistics().localFrameCounter == static_cast<uint64_t>(0));
+    REQUIRE(nodeApplication->getSecondaryLinkStatistics().incomingFrameCounter
+            >= static_cast<uint64_t>(2));
+    REQUIRE(endApplication->getLinkStatistics().deliveredMessageCounter == static_cast<uint64_t>(1));
 }
