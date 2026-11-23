@@ -590,6 +590,7 @@ if (SERCOM_BUILD_TESTS)
         tests/test_ControllerRole.cpp
         tests/test_NullTransport.cpp
         tests/test_RoutePort.cpp
+        tests/test_Router.cpp
     )
     target_link_libraries(${PROJECT_NAME}_test PRIVATE
         ${PROJECT_NAME}_settings
