@@ -2,9 +2,13 @@
 
     pio run -d firmware/esp32
     pio run -d firmware/stm32f4
+    pio run -d <project with custom_sercom_directory = dep/sercom in its platformio.ini>
 
 The platformio.ini of every firmware project runs this script before the build, so every firmware and the host tools
 share one set of build values.
+The project option custom_sercom_directory names the sercom directory relative to the project directory.
+A PlatformIO project of its own sets it to its sercom checkout, for example the git submodule dep/sercom.
+Without the option the sercom directory lies two levels up, as for the firmware projects of sercom itself.
 The protocol limits and the version numbers are the set() lines at the top of CMakeLists.txt.
 The build number is GITHUB_RUN_NUMBER when it is set and the value of CMakeLists.txt otherwise, as in the CMake build.
 The git hash is GITHUB_SHA when it is set, then the hash of git rev-parse HEAD and unknown otherwise, as in CMake.
@@ -22,8 +26,11 @@ Import('env')
 # set() line of a plain value at the start of a line
 SET_LINE_PATTERN = re.compile(r'^set\((\w+) (\w+)\)$', re.MULTILINE)
 
+# sercom directory of the project, two levels up without the project option
+SERCOM_DIRECTORY = env.GetProjectOption('custom_sercom_directory', os.path.join('..', '..'))
+
 # path of the CMake file that holds the build values
-CMAKE_LISTS_PATH = os.path.join(env.subst('$PROJECT_DIR'), '..', '..', 'CMakeLists.txt')
+CMAKE_LISTS_PATH = os.path.join(env.subst('$PROJECT_DIR'), SERCOM_DIRECTORY, 'CMakeLists.txt')
 
 # protocol limits that must match on both peers
 PROTOCOL_LIMIT_NAMES = ('MAXIMUM_PAYLOAD_SIZE', 'MAXIMUM_PENDING_FRAMES', 'DEFAULT_DUPLICATE_HISTORY_SIZE')
