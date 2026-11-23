@@ -21,13 +21,24 @@ extern const uint32_t SerialTransmitPin;       // port A pin of the protocol tra
 extern const uint32_t SystemClockFrequency;    // frequency of the system clock in hertz
 extern const uint32_t TemperatureChannel;      // ADC1 channel of the internal temperature sensor
 
+extern const bool RouterRun;                     // device role as a router between two serial ports
+extern const uint8_t NodeAddress;                // address of the node, unassigned without one
+extern const uint8_t ProxyAddress;               // address of the neighbour below without one
+extern const std::string_view SecondaryPortName; // name of the secondary serial port of a router
+extern const uint32_t SecondaryReceivePin;       // port A pin of the secondary receive pin
+extern const uint32_t SecondaryTransmitPin;      // port A pin of the secondary transmit pin
+
 constexpr std::string_view USART1_PORT_NAME = "USART1"; // name of the serial port on PA9 and PA10
 constexpr uint32_t USART1_RECEIVE_PIN = 10;             // port A pin of the USART1 receive pin
 constexpr uint32_t USART1_TRANSMIT_PIN = 9;             // port A pin of the USART1 transmit pin
 constexpr std::string_view USART2_PORT_NAME = "USART2"; // name of the serial port of the ST-LINK
 constexpr uint32_t USART2_RECEIVE_PIN = 3;              // port A pin of the USART2 receive pin
 constexpr uint32_t USART2_TRANSMIT_PIN = 2;             // port A pin of the USART2 transmit pin
-constexpr uint32_t USART_ALTERNATE_FUNCTION = 7; // alternate function of both USARTs on port A
+constexpr std::string_view USART6_PORT_NAME = "USART6"; // name of the serial port on PA11 and PA12
+constexpr uint32_t USART6_RECEIVE_PIN = 12;             // port A pin of the USART6 receive pin
+constexpr uint32_t USART6_TRANSMIT_PIN = 11;            // port A pin of the USART6 transmit pin
+constexpr uint32_t USART_ALTERNATE_FUNCTION = 7; // alternate function of USART1 and USART2 on port A
+constexpr uint32_t USART6_ALTERNATE_FUNCTION = 8; // alternate function of USART6 on port A
 
 constexpr uint32_t LED_PIN = 5;                            // port A pin of the user LED LD2
 constexpr std::string_view DEVICE_NAME = "sercom-stm32f4"; // reported device name
