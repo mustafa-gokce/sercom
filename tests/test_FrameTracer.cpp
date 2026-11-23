@@ -292,6 +292,30 @@ public:
     }
 
     /*
+     * Get the bytes of a routed frame from the host to node 3 built from its fields.
+     */
+    [[nodiscard]] static std::vector<uint8_t> getRoutedFrameBytes(const uint16_t messageCounter,
+                                                                  const uint16_t messageType,
+                                                                  const std::vector<uint8_t> &payload)
+    {
+        // build the routed frame
+        static constexpr uint8_t destinationAddress = 3;
+        Frame::RouteHeader routeHeader;
+        routeHeader.sourceAddress = Definitions::HOST_ADDRESS;
+        routeHeader.destinationAddress = destinationAddress;
+        routeHeader.timeToLive = Settings::DEFAULT_TIME_TO_LIVE;
+        const Frame::Frame frame(0x11,
+                                 messageCounter,
+                                 messageType,
+                                 routeHeader,
+                                 payload.data(),
+                                 payload.size());
+
+        // expose a copy of the frame bytes
+        return std::vector<uint8_t>(frame.getData(), frame.getData() + frame.getSize());
+    }
+
+    /*
      * Get the bytes of a text.
      */
     [[nodiscard]] static std::vector<uint8_t> getTextBytes(const std::string_view text)
@@ -706,4 +730,66 @@ TEST_CASE_METHOD(TestFrameTracer,
     REQUIRE(secondFrame.getMessageCounter() == messageCounter);
     REQUIRE(secondFrame.getFlag(Definitions::FrameFlagType::RETRANSMISSION));
     REQUIRE(traceEvents.at(1).timestamp == Settings::DEFAULT_RETRANSMIT_TIMEOUT_MSEC);
+}
+
+TEST_CASE_METHOD(TestFrameTracer,
+                 "Routed frames are traced between direct frames and boot text",
+                 "[FrameTracer][testRoutedFrames]")
+{
+    // trace boot text, a routed frame, a direct frame and a routed frame
+    const std::vector<uint8_t> bootText = getTextBytes("boot\r\n");
+    const std::vector<uint8_t> firstRoutedFrame
+        = getRoutedFrameBytes(1, 0x0001, std::vector<uint8_t>({0xE8, 0x03, 0x00, 0x00}));
+    const std::vector<uint8_t> directFrame = getFrameBytes(0x02, 1, 0x0001, std::vector<uint8_t>());
+    const std::vector<uint8_t> secondRoutedFrame = getRoutedFrameBytes(2,
+                                                                       0x0003,
+                                                                       std::vector<uint8_t>());
+    const std::vector<uint8_t> data = getJoinedBytes(getJoinedBytes(bootText, firstRoutedFrame),
+                                                     getJoinedBytes(directFrame, secondRoutedFrame));
+    frameTracer->onReceivedData(data.data(), data.size());
+    advanceSilence();
+
+    // check the text and every frame with its version
+    const std::vector<TraceEvent> traceEvents = handler.getTraceEvents();
+    REQUIRE(traceEvents.size() == static_cast<size_t>(4));
+    REQUIRE_FALSE(traceEvents.at(0).framed);
+    REQUIRE(traceEvents.at(0).data == bootText);
+    REQUIRE(traceEvents.at(1).framed);
+    REQUIRE(traceEvents.at(1).data == firstRoutedFrame);
+    REQUIRE(traceEvents.at(2).framed);
+    REQUIRE(traceEvents.at(2).data == directFrame);
+    REQUIRE(traceEvents.at(3).framed);
+    REQUIRE(traceEvents.at(3).data == secondRoutedFrame);
+    const Frame::Frame tracedFrame(traceEvents.at(3).data.data(), traceEvents.at(3).data.size());
+    REQUIRE(tracedFrame.getRouted());
+    REQUIRE(tracedFrame.getCRCValid());
+}
+
+TEST_CASE_METHOD(TestFrameTracer,
+                 "A routed frame with a wrong CRC32 is reported once with all its bytes",
+                 "[FrameTracer][testRoutedCRCMismatch]")
+{
+    // trace a routed frame with a damaged time to live followed by a valid routed frame
+    static constexpr size_t timeToLiveOffset = Definitions::ROUTED_HEADER_SIZE - 1;
+    std::vector<uint8_t> corruptedFrame = getRoutedFrameBytes(4,
+                                                              0x0006,
+                                                              std::vector<uint8_t>({1, 2, 3, 4}));
+    corruptedFrame[timeToLiveOffset] ^= 0x01;
+    const std::vector<uint8_t> validFrame = getRoutedFrameBytes(5,
+                                                                0x0006,
+                                                                std::vector<uint8_t>({1, 2, 3, 4}));
+    const std::vector<uint8_t> data = getJoinedBytes(corruptedFrame, validFrame);
+    frameTracer->onReceivedData(data.data(), data.size());
+    advanceSilence();
+
+    // check the corrupted routed frame without its bytes as unframed data
+    const std::vector<TraceEvent> traceEvents = handler.getTraceEvents();
+    REQUIRE(traceEvents.size() == static_cast<size_t>(2));
+    REQUIRE(traceEvents.at(0).framed);
+    REQUIRE(traceEvents.at(0).data == corruptedFrame);
+    const Frame::Frame tracedCorruptedFrame(traceEvents.at(0).data.data(),
+                                            traceEvents.at(0).data.size());
+    REQUIRE_FALSE(tracedCorruptedFrame.getCRCValid());
+    REQUIRE(traceEvents.at(1).framed);
+    REQUIRE(traceEvents.at(1).data == validFrame);
 }
