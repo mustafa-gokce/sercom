@@ -7,7 +7,8 @@
 #
 # The esp32 target boots a merged flash image of an ESP32 build directory on Espressif's QEMU machine esp32.
 # The stm32f4 target boots the firmware.elf of an STM32F4 build directory on the QEMU machine netduinoplus2.
-# Every serial port becomes a link to its pseudo terminal in the run directory: uart0 and uart2, or usart1 and usart2.
+# Every serial port becomes a link to its pseudo terminal in the run directory: uart0 and uart2, or usart1, usart2 and
+# usart6, the secondary port of a router.
 # QEMU serves each port on a unix socket and tools/uart_bridge.py gives it a pseudo terminal like a USB bridge.
 # Both run inside the run directory and name the socket relative to it, because a socket path holds at most 107 bytes.
 # QEMU also writes the output of every port into <port>.log of the run directory, from the first byte of the chip on.
@@ -39,7 +40,8 @@ print_usage() {
     echo "       tools/run_emulator.sh stop <run directory>"
     echo "  build directory  firmware/esp32/.pio/build/<environment> or firmware/stm32f4/.pio/build/<environment>"
     echo "  run directory    directory of the port links, the log files, the flash image and the process ids"
-    echo "  --log PORT       give the port uart0, uart2, usart1 or usart2 no pseudo terminal, only <run directory>/PORT.log"
+    echo "  --log PORT       give the port uart0, uart2, usart1, usart2 or usart6 no pseudo terminal, only"
+    echo "                   <run directory>/PORT.log"
     echo "  ESP32_QEMU selects qemu-system-xtensa (default ${ESP32_QEMU}), ARM_QEMU qemu-system-arm"
     echo "  (default ${ARM_QEMU}), PLATFORMIO_PACKAGES the PlatformIO packages (default ${PLATFORMIO_PACKAGES})"
     echo "  BOOT_TIMEOUT_SECONDS sets the longest wait for the start line of the firmware, 0 skips the wait"
@@ -128,9 +130,11 @@ start_esp32() {
 
 # boot an STM32F4 build directory on the QEMU machine netduinoplus2
 start_stm32f4() {
-    # boot the image with USART1 and USART2 in this order
+    # boot the image with USART1, USART2, the three unconnected ports USART3, UART4 and UART5, then USART6
     add_serial_options usart1
     add_serial_options usart2
+    serial_options+=(-serial null -serial null -serial null)
+    add_serial_options usart6
     (cd "${RUN_DIRECTORY}" && exec "${ARM_QEMU}" -nographic -machine netduinoplus2 -monitor none \
         -kernel "${BUILD_DIRECTORY}/firmware.elf" \
         "${serial_options[@]}" -pidfile qemu.pid > qemu.log 2>&1 < /dev/null) &
