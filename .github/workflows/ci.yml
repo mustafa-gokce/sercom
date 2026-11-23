@@ -96,6 +96,196 @@ jobs:
           report_paths: test_results_junit.xml
           check_name: unit tests (${{ matrix.compiler }})
 
+  consumers:
+    name: consumers (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cxx: g++
+            cxx-flags: ''
+          - compiler: clang
+            cxx: clang++
+            cxx-flags: '-Wno-unknown-warning-option'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt 5.12.12
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build socat
+      - name: Build the device simulator
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSERCOM_BUILD_TESTS=OFF \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} "-DCMAKE_CXX_FLAGS=${{ matrix.cxx-flags }}"
+          cmake --build build --target sercom_device_sim
+      - name: Build and run the consumer projects against this checkout
+        env:
+          CXX: ${{ matrix.cxx }}
+          CMAKE_GENERATOR: Ninja
+        run: tools/run_consumers.sh build/sercom_device_sim --build-dir build-consumers
+
+  consumers-qt:
+    name: consumers (gcc, qt ${{ matrix.qt }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - qt: '5.15.2'
+            arch: gcc_64
+            modules: ''
+            archives: 'qtbase qtserialport icu'
+          - qt: '6.8.3'
+            arch: linux_gcc_64
+            modules: 'qtserialport'
+            archives: 'qtbase icu'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt 5.12.12 for the device simulator
+        id: simulator-qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          install-deps: 'false'
+          cache: true
+          set-env: 'false'
+      - name: Install Qt ${{ matrix.qt }} for the consumer projects
+        id: consumer-qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt }}
+          host: linux
+          target: desktop
+          arch: ${{ matrix.arch }}
+          modules: ${{ matrix.modules }}
+          archives: ${{ matrix.archives }}
+          dir: ${{ runner.temp }}
+          install-deps: 'false'
+          cache: true
+          set-env: 'false'
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build socat
+      - name: Build the device simulator with Qt 5.12.12
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSERCOM_BUILD_TESTS=OFF \
+            "-DCMAKE_PREFIX_PATH=${{ steps.simulator-qt.outputs.qt-root-dir }}"
+          cmake --build build --target sercom_device_sim
+      - name: Build and run the consumer projects against this checkout with Qt ${{ matrix.qt }}
+        env:
+          CXX: g++
+          CMAKE_GENERATOR: Ninja
+          CMAKE_PREFIX_PATH: ${{ steps.consumer-qt.outputs.qt-root-dir }}
+        run: |
+          set -o pipefail
+          tools/run_consumers.sh build/sercom_device_sim --build-dir build-consumers 2>&1 | tee consumers.log
+
+          # example 29 must have been built with the Qt of the job
+          grep -E 'QT_VERSION +: ${{ matrix.qt }} ' consumers.log
+
+  consumers-windows:
+    name: consumers (windows, qt 6.8.3)
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt 5.12.12 with MinGW 7.3.0 and Ninja for the device simulator
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.12.12'
+          host: windows
+          target: desktop
+          arch: win64_mingw73
+          tools: 'tools_mingw,qt.tools.win64_mingw730 tools_ninja,qt.tools.ninja'
+          add-tools-to-path: true
+          cache: true
+      - name: Build the device simulator with MinGW 7.3 and Qt 5.12.12
+        run: |
+          # sercom_cli runs windeployqt, which puts the Qt and MinGW DLLs next to the simulator too
+          $compiler = "$env:IQTA_TOOLS/mingw730_64/bin/g++.exe"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSERCOM_BUILD_TESTS=OFF "-DCMAKE_CXX_COMPILER=$compiler" "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -eq 0) {
+            cmake --build build --target sercom_cli --target sercom_device_sim 2>&1 | Tee-Object -Variable output
+          }
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-String -Pattern 'error|Error|FAILED' | Select-Object -First 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+      - name: Install Qt 6.8.3 with MinGW 13.1 for the consumer projects
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          modules: 'qtserialport'
+          tools: 'tools_mingw1310,qt.tools.win64_mingw1310'
+          add-tools-to-path: true
+          dir: ${{ runner.temp }}
+          cache: true
+      - name: Install com0com with the pair COM10 to COM11
+        run: |
+          # the signed com0com 3.0.0.0 installs on the runner, its publisher is trusted first to skip the prompt
+          curl.exe -sSL --retry 3 -o com0com.zip 'https://sourceforge.net/projects/com0com/files/com0com/3.0.0.0/com0com-3.0.0.0-i386-and-x64-signed.zip/download'
+          7z x com0com.zip -ocom0com | Out-Null
+          $installer = Get-ChildItem -Recurse com0com -Filter 'Setup_com0com*x64*.exe' | Select-Object -First 1
+          $certificate = (Get-AuthenticodeSignature $installer.FullName).SignerCertificate
+          Export-Certificate -Cert $certificate -FilePath "$env:RUNNER_TEMP\com0com.cer" | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\com0com.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+          $env:CNC_INSTALL_CNCA0_CNCB0_PORTS = 'NO'
+          $env:CNC_INSTALL_COMX_COMX_PORTS = 'NO'
+          Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait
+          Push-Location 'C:\Program Files (x86)\com0com'
+          ./setupc.exe --silent install PortName=COM10 PortName=COM11 | Out-Null
+          Pop-Location
+
+          # bytes must cross the pair
+          $first = New-Object System.IO.Ports.SerialPort 'COM10', 115200
+          $second = New-Object System.IO.Ports.SerialPort 'COM11', 115200
+          $first.Open()
+          $second.Open()
+          $first.Write('hello')
+          Start-Sleep -Milliseconds 300
+          $received = $second.ReadExisting()
+          $first.Close()
+          $second.Close()
+          if ($received -ne 'hello') {
+            Write-Output "::error::COM10 to COM11 carried '$received' instead of hello, ports: $([System.IO.Ports.SerialPort]::GetPortNames() -join ',')"
+            exit 1
+          }
+      - name: Consumer projects with MinGW 13.1 and Qt 6.8.3
+        run: |
+          # build the consumers with the MinGW 13.1 and the Qt 6.8.3 of the job, the pair COM10 and COM11 carries example 29
+          $env:CXX = "$env:IQTA_TOOLS/mingw1310_64/bin/g++.exe"
+          $env:CMAKE_PREFIX_PATH = $env:QT_ROOT_DIR
+          pwsh -NoProfile -File tools/run_consumers.ps1 build/sercom_device_sim.exe --build-dir build-consumers 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-Object -Last 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+
+          # example 29 must have run on the pair with Qt 6.8.3
+          if (-not ($output -match 'skipped: 0$') -or -not ($output -match 'QT_VERSION +: 6\.8\.3')) {
+            Write-Output "::error::example 29 did not run with Qt 6.8.3 on COM10 and COM11: $($output | Select-Object -Last 1)"
+            exit 1
+          }
+
   sanitizers:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -168,6 +358,7 @@ jobs:
           tools/run_small_limit_test.sh --help
           tools/run_sanitizer_test.sh --help
           tools/run_examples.sh --help
+          tools/run_consumers.sh --help
           tests/e2e/noisy_link_test.sh --help
           tests/e2e/chain_test.sh --help
           tests/e2e/emulator_chain_test.sh --help
@@ -179,6 +370,7 @@ jobs:
           python3 fuzz/make_corpus.py --help
           pwsh -NoProfile -File tools/noisy_link.ps1 --help
           pwsh -NoProfile -File tools/run_examples.ps1 --help
+          pwsh -NoProfile -File tools/run_consumers.ps1 --help
           pwsh -NoProfile -File tests/e2e/noisy_link_test.ps1 --help
           pwsh -NoProfile -File tests/e2e/chain_test.ps1 --help
 
@@ -221,6 +413,8 @@ jobs:
             -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller
       - name: Build STM32F4 router firmware
         run: pio run -d firmware/stm32f4 -e nucleo_f401re-router -e netduinoplus2-qemu-router
+      - name: Build the PlatformIO consumer project
+        run: pio run -d examples/30_consume_with_platformio
 
   emulator:
     runs-on: ubuntu-24.04
@@ -288,6 +482,15 @@ jobs:
         run: |
           WORK_DIRECTORY="$RUNNER_TEMP/emulator-chain" tests/e2e/emulator_chain_test.sh build/sercom_cli \
             build/sercom_dump firmware/esp32/.pio/build firmware/stm32f4/.pio/build
+      - name: The PlatformIO consumer in QEMU
+        run: |
+          pio run -d examples/30_consume_with_platformio
+          tools/run_emulator.sh start esp32 examples/30_consume_with_platformio/.pio/build/esp32dev \
+            "$RUNNER_TEMP/emulator-consumer"
+          status=0
+          build/sercom_cli "$RUNNER_TEMP/emulator-consumer/uart0" ping 3 || status=$?
+          tools/run_emulator.sh stop "$RUNNER_TEMP/emulator-consumer"
+          exit "$status"
       - name: Archive the emulator logs
         if: always()
         uses: actions/upload-artifact@v7
@@ -296,6 +499,7 @@ jobs:
           path: |
             ${{ runner.temp }}/emulator
             ${{ runner.temp }}/emulator-chain
+            ${{ runner.temp }}/emulator-consumer
           if-no-files-found: ignore
 
   windows:
@@ -428,12 +632,29 @@ jobs:
             $output | Select-Object -Last 30 | ForEach-Object { Write-Output "::error::$_" }
             exit 1
           }
+      - name: Consumer projects with MinGW 7.3
+        run: |
+          # build the consumers with the MinGW 7.3.0 and the Qt of the build, the pair COM10 and COM11 carries example 29
+          $env:CXX = "$env:IQTA_TOOLS/mingw730_64/bin/g++.exe"
+          $env:CMAKE_PREFIX_PATH = $env:QT_ROOT_DIR
+          pwsh -NoProfile -File tools/run_consumers.ps1 build-debug/sercom_device_sim.exe --build-dir build-consumers 2>&1 | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) {
+            $output | Select-Object -Last 30 | ForEach-Object { Write-Output "::error::$_" }
+            exit 1
+          }
+
+          # example 29 must have run on the pair
+          if (-not ($output -match 'skipped: 0$')) {
+            Write-Output "::error::example 29 did not run on COM10 and COM11: $($output | Select-Object -Last 1)"
+            exit 1
+          }
       - name: Python reference self test
         run: python tools/sercom_frame.py self-test
       - name: Show the help of every tool
         run: |
           tools/noisy_link.ps1 --help
           tools/run_examples.ps1 --help
+          tools/run_consumers.ps1 --help
           tests/e2e/noisy_link_test.ps1 --help
           tests/e2e/chain_test.ps1 --help
           python tools/noise.py --help
