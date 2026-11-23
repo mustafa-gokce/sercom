@@ -45,6 +45,7 @@ because its messages travel over the link layer of example 18.
 | S12 | L81 (also L65, L78) | 21 | Device in One Process | The device application and the host client in one program: a ping and the LED on | [guide](21_device_in_one_process.md), [source](21_device_in_one_process.cpp) |
 | S12 | L79 (also L82, L91) | 22 | Trace a Conversation | The frame tracer of `sercom_cli --trace` prints every frame of a ping and a device info request in both directions | [guide](22_trace_a_conversation.md), [source](22_trace_a_conversation.cpp) |
 | S12 | L77, L78 (also L19, L20, L79, L89) | 24 | Serial Ping | Opens a serial port, waits for the device to boot, measures one ping and prints the round trip time | [guide](24_serial_ping.md), [source](24_serial_ping.cpp) |
+| S16 | L110 (also L109, L45) | 26 | Routed Frame | Builds the golden ping as a direct and as a routed frame side by side, forwards it with TTL 7 and fails a damaged TTL on the CRC32 | [guide](26_routed_frame.md), [source](26_routed_frame.cpp) |
 
 ## Building the examples
 1. Open a terminal, on Windows PowerShell 7 with the path of the README.
