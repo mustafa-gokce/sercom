@@ -344,7 +344,9 @@ device role of `firmware/common` as the ESP32 in a superloop. Its environments:
 | `nucleo_f401re` | Nucleo-F401RE | USART2, the ST-LINK virtual COM port | none | the virtual COM port, for example `/dev/ttyACM0` or `COM5` on Windows |
 | `nucleo_f411re` | Nucleo-F411RE | USART2, the ST-LINK virtual COM port | none | the virtual COM port, for example `/dev/ttyACM0` or `COM5` on Windows |
 | `nucleo_f401re-console` | Nucleo-F401RE | USART1, PA9 transmits (D8), PA10 receives (D2) | USART2, the virtual COM port | a 3.3 V USB-serial adapter on PA9 and PA10, for example `/dev/ttyUSB0` or `COM4` on Windows |
+| `nucleo_f401re-controller` | Nucleo-F401RE | controller of a device on USART1 | USART2, the virtual COM port | none, the controller talks to a device (section 12) |
 | `netduinoplus2-qemu` | STM32F405 of the QEMU machine `netduinoplus2` | USART2 | none | the link `usart2` of `tools/run_emulator.sh` on Linux (section 13) |
+| `netduinoplus2-qemu-controller` | STM32F405 of the QEMU machine `netduinoplus2` | controller on USART1 | USART2 | none, the controller talks to a device (section 13) |
 
 The ST-LINK of a Nucleo-64 board carries USART2 (PA2 transmits, PA3 receives) to the
 host as a virtual COM port, `/dev/ttyACM0` on Linux and a COM port such as `COM5` on
@@ -352,7 +354,7 @@ Windows (section 10). Opening it does not reset the chip and the chip prints no 
 text, so the first frame of the host is answered at once. The user LED LD2 is PA5
 (`LED_PIN` in `firmware/stm32f4/include/FirmwareSettings.h`).
 
-1. Build every environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e netduinoplus2-qemu`.
+1. Build every environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller`.
 2. Connect the ST-LINK USB connector of the board.
 3. Flash the device firmware through the ST-LINK: `pio run -d firmware/stm32f4 -e nucleo_f401re -t upload`.
 4. Print the device information with every frame: `build/sercom_cli /dev/ttyACM0 --trace info`, on Windows `build/sercom_cli.exe COM5 --trace info`.
@@ -374,6 +376,48 @@ How the firmware uses the chip:
 The heartbeat log line of the STM32F4 is `Heartbeat: free memory <bytes> bytes, dropped
 received bytes <count>`.
 
+## 12. Device to device
+
+The controller role of `firmware/common/include/ControllerRole.h` runs the
+`DeviceClient` on a microcontroller: it waits for the device, sends 3 ping requests,
+asks for the device information, collects 3 telemetry reports at 200 ms, runs an echo
+stress test of 300 requests with 32 byte payloads and 2 requests in flight, and prints
+every result on its console. A request answered with NACK `BUSY` is sent again, any
+other failed request fails the step. The last two lines are the result:
+
+```text
+[     2.746] log DEBUG: Controller passed every step
+[     2.746] log DEBUG: Controller report: pings 3, info 1, telemetry 3, echoes 300 of 300, busy 0, failed 0
+```
+
+Wire the protocol ports of two boards to each other:
+
+| Controller | Device | Purpose |
+|---|---|---|
+| ESP32 `esp32dev-controller`, GPIO17 (TX2) | Nucleo `nucleo_f401re-console`, PA10 (D2, USART1 RX) | controller to device |
+| ESP32 `esp32dev-controller`, GPIO16 (RX2) | Nucleo `nucleo_f401re-console`, PA9 (D8, USART1 TX) | device to controller |
+| GND | GND | common ground |
+
+or the other way round:
+
+| Controller | Device | Purpose |
+|---|---|---|
+| Nucleo `nucleo_f401re-controller`, PA9 (D8, USART1 TX) | ESP32 `esp32dev-console`, GPIO16 (RX2) | controller to device |
+| Nucleo `nucleo_f401re-controller`, PA10 (D2, USART1 RX) | ESP32 `esp32dev-console`, GPIO17 (TX2) | device to controller |
+| GND | GND | common ground |
+
+- Transmit goes to receive in both directions; two transmit pins on one wire drive
+  against each other.
+- Both boards share ground and nothing else; each one is powered over its own USB port.
+- Both chips use 3.3 V levels. Never connect a 5 V signal or an RS-232 port (±12 V)
+  to a 3.3 V pin; an RS-232 device needs a level shifter such as a MAX3232.
+- The device console runs on USART2, so the Nucleo device uses `nucleo_f401re-console`:
+  PA2 and PA3 of `nucleo_f401re` are wired to the ST-LINK by the solder bridges SB13
+  and SB14.
+- Watch the controller on its console: the USB port of the ESP32 at 115200 baud, or
+  the virtual COM port of the Nucleo controller, `/dev/ttyACM0` or `COM5` on Windows.
+  Each start runs the steps once; press reset to run them again.
+
 ## 13. Both targets in QEMU without a board
 
 Both targets also run in QEMU: the ESP32 on Espressif's QEMU, the STM32F4 on the
@@ -385,11 +429,12 @@ emulator tools need a Linux host: `tools/run_emulator.sh` is a Bash script and
 2. Install socat and the libraries of Espressif's QEMU: `sudo apt install socat libgcrypt20 libglib2.0-0t64 libpixman-1-0 libsdl2-2.0-0 libslirp0`
 3. Download and unpack [xPack QEMU Arm 9.2.4-1](https://github.com/xpack-dev-tools/qemu-arm-xpack/releases/tag/v9.2.4-1) and [Espressif QEMU esp-develop-9.2.2-20260417](https://github.com/espressif/qemu/releases/tag/esp-develop-9.2.2-20260417), the versions of the CI.
 4. Name both emulators: `export ARM_QEMU=<xpack directory>/bin/qemu-system-arm ESP32_QEMU=<espressif directory>/qemu/bin/qemu-system-xtensa`
-5. Build the emulated firmware: `pio run -d firmware/stm32f4 -e netduinoplus2-qemu` and `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console`
+5. Build the emulated firmware: `pio run -d firmware/stm32f4 -e netduinoplus2-qemu -e netduinoplus2-qemu-controller` and `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller`
 6. Start the STM32F4 device: `tools/run_emulator.sh start stm32f4 firmware/stm32f4/.pio/build/netduinoplus2-qemu /tmp/stm32f4 --log usart1`
 7. Talk to it like to a board: `build/sercom_cli /tmp/stm32f4/usart2 --trace info`, `build/sercom_cli /tmp/stm32f4/usart2 stress 300 32 2`; give the link with its directory, `QSerialPort` reads a bare `usart2` as `/dev/usart2`
 8. Stop it: `tools/run_emulator.sh stop /tmp/stm32f4`
 9. Start the ESP32 device the same way and use `/tmp/esp32/uart0`: `tools/run_emulator.sh start esp32 firmware/esp32/.pio/build/esp32dev /tmp/esp32 --log uart2`
+10. Wire an emulated controller to an emulated device and run every check of the CI: `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
 
 `tools/run_emulator.sh` serves each serial port of QEMU on a unix socket and starts
 `tools/uart_bridge.py` for it, which links a pseudo terminal of its own into the run
@@ -423,6 +468,11 @@ to 22.0 s. On such a busy host the second core of the emulated ESP32 can panic i
 start code (`Cache disabled but cached memory region accessed` in `uart0.log`) and the
 chip boots again; `start` waits for that boot too, up to `BOOT_TIMEOUT_SECONDS` (60 by
 default).
+
+Two emulated chips are wired with socat between their pseudo terminals:
+`socat /tmp/esp32/uart2,raw,echo=0 /tmp/stm32f4/usart2,raw,echo=0`; two
+`tools/noise.py` processes in its place, or one with `--duplex`, add the noise of
+`tools/noisy_link.sh`.
 
 What differs from a board:
 
