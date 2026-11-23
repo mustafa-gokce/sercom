@@ -16,6 +16,8 @@ constexpr size_t MaximumPendingFrames = MAXIMUM_PENDING_FRAMES; // maximum unack
 constexpr size_t DefaultDuplicateHistorySize
     = DEFAULT_DUPLICATE_HISTORY_SIZE; // default number of remembered acknowledged messages
 
+constexpr size_t MAXIMUM_DIRECT_FRAME_SIZE
+    = Definitions::FRAME_OVERHEAD + MaximumPayloadSize; // maximum direct frame size in bytes
 constexpr size_t MAXIMUM_FRAME_SIZE = Definitions::FRAME_OVERHEAD
                                       + MaximumPayloadSize; // maximum frame size in bytes
 constexpr size_t MAXIMUM_ACKNOWLEDGED_SPREAD = DefaultDuplicateHistorySize - MaximumPendingFrames
@@ -27,6 +29,7 @@ constexpr std::chrono::milliseconds DEFAULT_RETRANSMIT_TIMEOUT_MSEC
     = 250ms; // default wait for an answer in milliseconds
 
 constexpr uint8_t DEFAULT_MAXIMUM_RETRANSMISSIONS = 5; // default retransmissions of a message
+constexpr uint8_t DEFAULT_TIME_TO_LIVE = 8;            // default links a routed frame may cross
 
 constexpr size_t MAXIMUM_UNFRAMED_DATA_SIZE = 80;  // maximum unframed data size in bytes
 constexpr size_t MAXIMUM_TRACED_PAYLOAD_SIZE = 16; // maximum traced payload size in bytes
