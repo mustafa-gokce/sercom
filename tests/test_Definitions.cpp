@@ -200,5 +200,5 @@ TEST_CASE_METHOD(TestDefinitions,
     REQUIRE(Definitions::getFrameFlagTypeText(Definitions::FrameFlagType::NACK) == "NACK");
     REQUIRE(Definitions::getFrameFlagTypeText(Definitions::FrameFlagType::RETRANSMISSION)
             == "RETRANSMISSION");
-    REQUIRE(Definitions::getFrameFlagTypeText(Definitions::toFrameFlagType(0x10)) == "UNKNOWN");
+    REQUIRE(Definitions::getFrameFlagTypeText(Definitions::toFrameFlagType(0x20)) == "UNKNOWN");
 }
