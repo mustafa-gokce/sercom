@@ -38,13 +38,14 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 4. Go to the source directory.
 5. Build both firmware environments: `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console`
 6. Build the controller firmware: `pio run -d firmware/esp32 -e esp32dev-controller`
+7. Build the router and the end of a daisy chain: `pio run -d firmware/esp32 -e esp32dev-router -e esp32dev-chain`
 
 ### STM32F4
 1. Open a terminal, on Windows PowerShell 7.
 2. Install PlatformIO: `pip install platformio`
 3. Check that PlatformIO runs: `pio --version`; when PowerShell does not find `pio` on Windows, put the `Scripts` directory that pip names in its warning on the path or call `python -m platformio` in place of `pio`
 4. Go to the source directory.
-5. Build every firmware environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller`
+5. Build every firmware environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller -e nucleo_f401re-router -e netduinoplus2-qemu-router`
 
 ## Run tests
 ### Linux
@@ -91,6 +92,14 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 3. Run the chain of three device simulators with noise between node 2 and node 3: `tests/e2e/chain_test.sh build/sercom_cli build/sercom_device_sim`
 4. Run it with a device simulator of version 1 as the restarted node 4 behind the proxy: `END_DEVICE_SIMULATOR=<old build>/sercom_device_sim tests/e2e/chain_test.sh build/sercom_cli build/sercom_device_sim`
 5. On Windows create the com0com pairs `COM10` with `COM11`, `COM12` with `COM13`, `COM14` with `COM15` and `COM16` with `COM17` as [tools/COM0COM.md](tools/COM0COM.md) shows and run the PowerShell twin: `tests/e2e/chain_test.ps1 build/sercom_cli.exe build/sercom_device_sim.exe`
+
+### Daisy chain in QEMU
+1. Build the host with Qt 5.12.12 as the Linux steps show, the emulator tools need a Linux host.
+2. Install socat, xPack QEMU Arm and Espressif QEMU and name both emulators as in "Both targets in QEMU".
+3. Build the firmware of the chain: `pio run -d firmware/esp32 -e esp32dev-router -e esp32dev-chain -e esp32dev-console` and `pio run -d firmware/stm32f4 -e netduinoplus2-qemu-router`
+4. Run the ESP32 router node 2, the STM32F4 router node 3 and the ESP32 node 4 with noise between node 2 and node 3, then node 4 without an address behind the proxy of node 3: `tests/e2e/emulator_chain_test.sh build/sercom_cli build/sercom_dump firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
+5. Run it with a firmware of version 1 as the replaced node 4: `END_DEVICE_BUILD_DIRECTORY=<old tree>/firmware/esp32/.pio/build/esp32dev-console tests/e2e/emulator_chain_test.sh build/sercom_cli build/sercom_dump firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
+6. Follow the steps of [docs/HARDWARE.md](docs/HARDWARE.md) section 14 to start the three chips one by one and decode their port logs with `sercom_dump`.
 
 ## Run application
 ### Linux
@@ -163,6 +172,15 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 12. A node started with `--proxy N` and a downstream device without `--address` stands in for that device as node N.
 13. Stop the simulators and the links: `kill %4 %3 %2 %1`
 14. On Windows use com0com pairs in place of the `socat` links, as in the steps of "Run tests".
+
+### Daisy chain of boards
+1. Flash `esp32dev-router` to an ESP32 as node 2, `nucleo_f401re-router` to a Nucleo-F401RE board as node 3 and `esp32dev-chain` to a second ESP32 as node 4.
+2. Wire ESP32 node 2 GPIO17 to PA10 and GPIO16 to PA9 of node 3, PA11 of node 3 to GPIO16 and PA12 to GPIO17 of ESP32 node 4, and GND of every board together, 3.3 V levels only, as in [docs/HARDWARE.md](docs/HARDWARE.md) section 14.
+3. Find every node of the chain on the USB port of node 2: `build/sercom_cli /dev/ttyUSB0 discover`, on Windows with the COM port of the board: `build/sercom_cli.exe COM3 discover`
+4. Print the device information of node 4 through node 2 and node 3: `build/sercom_cli /dev/ttyUSB0 --to 4 info`
+5. Run the echo stress test over three links: `build/sercom_cli /dev/ttyUSB0 --to 4 stress 300 32 2`
+6. Watch the console of node 3 on its ST-LINK port: `pio device monitor -d firmware/stm32f4 -e nucleo_f401re-router -p /dev/ttyACM0`, on Windows with `-p COM5`
+7. Flash `esp32dev-console` to node 4 to make it a device without an address, which node 3 reaches as the proxy of node 4: `build/sercom_cli /dev/ttyUSB0 --to 4 info`
 
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
