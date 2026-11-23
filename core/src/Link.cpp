@@ -58,7 +58,11 @@ Definitions::SendStatusType Link::sendMessage(const uint16_t messageType,
     const uint8_t flags = acknowledged ? Definitions::fromFrameFlagType(
                                              Definitions::FrameFlagType::ACK_REQUEST)
                                        : static_cast<uint8_t>(0);
-    const Frame::Frame frame(flags, assignedMessageCounter, messageType, payload, payloadLength);
+    const Frame::Frame frame(this->getFrameFlags(flags),
+                             assignedMessageCounter,
+                             messageType,
+                             payload,
+                             payloadLength);
     if (!this->sendFrame(frame)) {
         return Definitions::SendStatusType::TRANSPORT_ERROR;
     }
@@ -141,7 +145,7 @@ void Link::maintain()
                           Definitions::fromFrameFlagType(Definitions::FrameFlagType::ACK_REQUEST)
                           | Definitions::fromFrameFlagType(
                               Definitions::FrameFlagType::RETRANSMISSION));
-                      const Frame::Frame frame(flags,
+                      const Frame::Frame frame(this->getFrameFlags(flags),
                                                pendingMessage.messageCounter,
                                                pendingMessage.messageType,
                                                pendingMessage.payload.data(),
@@ -250,6 +254,18 @@ bool Link::getWithinSpread() const
                         });
 }
 
+uint8_t Link::getFrameFlags(const uint8_t flags) const
+{
+    // flags of a link without routes stay as they are
+    if (!this->configuration.routeCapable) {
+        return flags;
+    }
+
+    // expose the flags with the route capable flag
+    return static_cast<uint8_t>(
+        flags | Definitions::fromFrameFlagType(Definitions::FrameFlagType::ROUTE_CAPABLE));
+}
+
 bool Link::sendFrame(const Frame::Frame &frame)
 {
     // frame must be valid
@@ -283,8 +299,8 @@ void Link::sendAcknowledgement(const Frame::Frame &frame,
     // answer an accepted message with an empty ACK
     if (messageStatusType == Definitions::MessageStatusType::ACCEPTED) {
         // acknowledgement frame must be sent
-        const Frame::Frame acknowledgementFrame(Definitions::fromFrameFlagType(
-                                                    Definitions::FrameFlagType::ACK),
+        const Frame::Frame acknowledgementFrame(this->getFrameFlags(Definitions::fromFrameFlagType(
+                                                    Definitions::FrameFlagType::ACK)),
                                                 frame.getMessageCounter(),
                                                 frame.getMessageType(),
                                                 nullptr,
@@ -302,8 +318,8 @@ void Link::sendAcknowledgement(const Frame::Frame &frame,
 
     // rejection frame with the message status must be sent
     const uint8_t messageStatusTypeAsInteger = Definitions::fromMessageStatusType(messageStatusType);
-    const Frame::Frame rejectionFrame(Definitions::fromFrameFlagType(
-                                          Definitions::FrameFlagType::NACK),
+    const Frame::Frame rejectionFrame(this->getFrameFlags(Definitions::fromFrameFlagType(
+                                          Definitions::FrameFlagType::NACK)),
                                       frame.getMessageCounter(),
                                       frame.getMessageType(),
                                       &messageStatusTypeAsInteger,

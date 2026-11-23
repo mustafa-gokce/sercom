@@ -26,6 +26,7 @@ struct LinkConfiguration
         = Settings::DEFAULT_MAXIMUM_RETRANSMISSIONS; // retransmissions before a delivery fails
     std::chrono::milliseconds interByteTimeout
         = Settings::DEFAULT_INTER_BYTE_TIMEOUT_MSEC; // decoder silence limit in milliseconds
+    bool routeCapable = false; // every sent frame carries the route capable flag
 };
 
 /*
@@ -196,6 +197,11 @@ private:
      * Get whether the oldest pending message still allows a new acknowledged message.
      */
     [[nodiscard]] bool getWithinSpread() const;
+
+    /*
+     * Get the flags of a sent frame together with the route capable flag of a route capable link.
+     */
+    [[nodiscard]] uint8_t getFrameFlags(uint8_t flags) const;
 
     /*
      * Send a frame to the transport.
