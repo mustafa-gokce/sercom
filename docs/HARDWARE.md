@@ -102,7 +102,7 @@ marked `xx` depend on the boot time of the board. The ping request sent while th
 boots is lost and goes out again with the `RETRANSMISSION` flag every 250 ms. The first
 frames of the device are the two start-up log lines `Starting the DeviceApplication on
 UART0, 115200` and `Started the DeviceApplication on UART0, 115200 for the device
-sercom-esp32 version 1.0.0`; the next retransmission of the ping request is answered.
+sercom-esp32 version 2.0.0`; the next retransmission of the ping request is answered.
 The same command against the device simulator (section 8) prints the frames without
 the boot text.
 
@@ -169,12 +169,12 @@ frame in both directions, in the columns of the host trace. A ping at 12 seconds
 the two heartbeats of 5 and 10 seconds has this form:
 
 ```text
-sercom-esp32 version 1.0.0 git <hash of the build>
+sercom-esp32 version 2.0.0 git <hash of the build>
 protocol on UART2 at 115200 baud, receive pin GPIO16, transmit pin GPIO17
 console on UART0 at 115200 baud
 [     0.312] log DEBUG: Starting the DeviceApplication on UART2, 115200
 [     0.313] << #0     LOG_REPORT_RESPONSE          NONE                       len  49  01 2F 53 74 61 72 74 69 6E 67 20 74 68 65 20 44 ..  CRC ok
-[     0.313] log DEBUG: Started the DeviceApplication on UART2, 115200 for the device sercom-esp32 version 1.0.0
+[     0.313] log DEBUG: Started the DeviceApplication on UART2, 115200 for the device sercom-esp32 version 2.0.0
 [     0.314] << #1     LOG_REPORT_RESPONSE          NONE                       len  90  01 58 53 74 61 72 74 65 64 20 74 68 65 20 44 65 ..  CRC ok
 [     5.312] log DEBUG: Heartbeat: free heap ... bytes, protocol stack headroom ... bytes
 [     5.312] << #2     LOG_REPORT_RESPONSE          NONE                       len  xx  01 xx 48 65 61 72 74 62 65 61 74 3A 20 66 72 65 65 ..  CRC ok
