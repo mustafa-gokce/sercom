@@ -13,6 +13,7 @@
 #include "../core/include/Definitions.h"
 #include "../core/include/Frame.h"
 #include "../core/include/FrameTracer.h"
+#include "../core/include/Settings.h"
 #include "../host/include/HostUtils.h"
 
 using namespace std::chrono_literals;
@@ -135,6 +136,51 @@ TEST_CASE_METHOD(TestHostUtils,
     CAPTURE(line);
     REQUIRE(line
             == "[     0.512] >> #7     PING_REQUEST                 ACK_REQUEST                len "
+               "  4  E8 03 00 00  CRC ok");
+}
+
+TEST_CASE_METHOD(TestHostUtils,
+                 "The route capable flag is shown by name after the other flags",
+                 "[HostUtils][testRouteCapableFlagsText]")
+{
+    // check the route capable flag alone and together with the other flags
+    REQUIRE(HostUtils::getFrameFlagsText(0x10) == "ROUTE_CAPABLE");
+    REQUIRE(HostUtils::getFrameFlagsText(0x11) == "ACK_REQUEST|ROUTE_CAPABLE");
+    REQUIRE(HostUtils::getFrameFlagsText(0x19) == "ACK_REQUEST|RETRANSMISSION|ROUTE_CAPABLE");
+    REQUIRE(HostUtils::getFrameFlagsText(0xFF)
+            == "ACK_REQUEST|ACK|NACK|RETRANSMISSION|ROUTE_CAPABLE");
+}
+
+TEST_CASE_METHOD(TestHostUtils,
+                 "A traced routed frame ends with its route and a direct frame does not",
+                 "[HostUtils][testTracedFrameLineRoute]")
+{
+    // get the lines of the golden routed ping request and of its direct twin
+    static constexpr std::chrono::milliseconds tracedTime = 512ms;
+    static constexpr uint8_t destinationAddress = 3;
+    const std::vector<uint8_t> payload = {0xE8, 0x03, 0x00, 0x00};
+    Frame::RouteHeader routeHeader;
+    routeHeader.sourceAddress = Definitions::HOST_ADDRESS;
+    routeHeader.destinationAddress = destinationAddress;
+    routeHeader.timeToLive = Settings::DEFAULT_TIME_TO_LIVE;
+    const Frame::Frame routedFrame(0x11, 7, 0x0001, routeHeader, payload.data(), payload.size());
+    const std::string routedLine
+        = HostUtils::getTracedFrameLine(FrameTracer::TraceDirectionType::HOST_TO_DEVICE,
+                                        routedFrame,
+                                        tracedTime);
+    const std::string directLine
+        = HostUtils::getTracedFrameLine(FrameTracer::TraceDirectionType::HOST_TO_DEVICE,
+                                        getFrame(0x11, 7, 0x0001, payload),
+                                        tracedTime);
+
+    // check the route behind the CRC32 check of the routed frame only
+    CAPTURE(routedLine);
+    CAPTURE(directLine);
+    REQUIRE(routedLine
+            == "[     0.512] >> #7     PING_REQUEST                 ACK_REQUEST|ROUTE_CAPABLE  len "
+               "  4  E8 03 00 00  CRC ok  route 1>3 ttl 8");
+    REQUIRE(directLine
+            == "[     0.512] >> #7     PING_REQUEST                 ACK_REQUEST|ROUTE_CAPABLE  len "
                "  4  E8 03 00 00  CRC ok");
 }
 
