@@ -85,6 +85,13 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 3. Name both emulators: `export ARM_QEMU=<path>/qemu-system-arm ESP32_QEMU=<path>/qemu-system-xtensa`
 4. Run both targets against the tools and against each other: `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
 
+### Daisy chain
+1. Build the host as the Linux steps show, the test needs `socat` and Python 3 on Linux.
+2. Go to the source directory.
+3. Run the chain of three device simulators with noise between node 2 and node 3: `tests/e2e/chain_test.sh build/sercom_cli build/sercom_device_sim`
+4. Run it with a device simulator of version 1 as the restarted node 4 behind the proxy: `END_DEVICE_SIMULATOR=<old build>/sercom_device_sim tests/e2e/chain_test.sh build/sercom_cli build/sercom_device_sim`
+5. On Windows create the com0com pairs `COM10` with `COM11`, `COM12` with `COM13`, `COM14` with `COM15` and `COM16` with `COM17` as [tools/COM0COM.md](tools/COM0COM.md) shows and run the PowerShell twin: `tests/e2e/chain_test.ps1 build/sercom_cli.exe build/sercom_device_sim.exe`
+
 ## Run application
 ### Linux
 1. Open a terminal.
@@ -140,6 +147,22 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 2. Wire ESP32 GPIO17 to PA10, GPIO16 to PA9 and GND to GND, 3.3 V levels only, as in [docs/HARDWARE.md](docs/HARDWARE.md) section 12.
 3. Open the console of the controller on the USB port of the ESP32: `pio device monitor -d firmware/esp32 -e esp32dev-controller -p /dev/ttyUSB0`, on Windows with `-p COM3`
 4. Wait for `Controller passed every step`, the reset button of the ESP32 runs every step again.
+
+### Daisy chain
+1. Open a terminal.
+2. Go to the source directory.
+3. Join the host with node 2: `socat PTY,raw,echo=0,link=/tmp/ttyH1 PTY,raw,echo=0,link=/tmp/ttyH2 &`
+4. Join node 2 with node 3: `socat PTY,raw,echo=0,link=/tmp/ttyN1 PTY,raw,echo=0,link=/tmp/ttyN2 &`
+5. Start node 3 at the end of the chain: `build/sercom_device_sim /tmp/ttyN2 --name node3 --address 3 &`
+6. Start node 2 with its downstream serial port: `build/sercom_device_sim /tmp/ttyH2 --name node2 --address 2 --downstream /tmp/ttyN1 &`
+7. Find every node of the chain: `build/sercom_cli /tmp/ttyH1 discover`
+8. Print the device information of node 3 through node 2: `build/sercom_cli /tmp/ttyH1 --to 3 info`
+9. Measure the round trip time to node 3: `build/sercom_cli /tmp/ttyH1 --to 3 ping 3`
+10. Let a request expire on the way with a time to live of 1: `build/sercom_cli /tmp/ttyH1 --to 3 --ttl 1 ping 1`
+11. Talk to node 2 alone, without an address, as to any device: `build/sercom_cli /tmp/ttyH1 ping 1`
+12. A node started with `--proxy N` and a downstream device without `--address` stands in for that device as node N.
+13. Stop the simulators and the links: `kill %4 %3 %2 %1`
+14. On Windows use com0com pairs in place of the `socat` links, as in the steps of "Run tests".
 
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
