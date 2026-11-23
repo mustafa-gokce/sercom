@@ -63,6 +63,12 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 ### STM32F4
 1. Build the firmware as above, the protocol code and `firmware/common` are tested on Linux and Windows.
 
+### Both targets in QEMU
+1. Build the host with Qt 5.12.12 as the Linux steps show and the firmware as above, the emulator tools need a Linux host.
+2. Install socat, xPack QEMU Arm and Espressif QEMU as in [docs/HARDWARE.md](docs/HARDWARE.md) section 13.
+3. Name both emulators: `export ARM_QEMU=<path>/qemu-system-arm ESP32_QEMU=<path>/qemu-system-xtensa`
+4. Run both targets against the tools and against each other: `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build`
+
 ## Run application
 ### Linux
 1. Open a terminal.
@@ -112,6 +118,12 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 4. Flash the firmware with the protocol on the virtual COM port of the ST-LINK: `pio run -d firmware/stm32f4 -e nucleo_f401re -t upload`
 5. Print the device information and every frame on the wire: `build/sercom_cli /dev/ttyACM0 --trace info`, on Windows with the COM port of the ST-LINK: `build/sercom_cli.exe COM5 --trace info`
 6. Run the echo stress test: `build/sercom_cli /dev/ttyACM0 stress 300 32 2`, on Windows `build/sercom_cli.exe COM5 stress 300 32 2`
+
+### Device to device
+1. Flash `esp32dev-controller` to an ESP32 and `nucleo_f401re-console` to a Nucleo-F401RE board.
+2. Wire ESP32 GPIO17 to PA10, GPIO16 to PA9 and GND to GND, 3.3 V levels only, as in [docs/HARDWARE.md](docs/HARDWARE.md) section 12.
+3. Open the console of the controller on the USB port of the ESP32: `pio device monitor -d firmware/esp32 -e esp32dev-controller -p /dev/ttyUSB0`, on Windows with `-p COM3`
+4. Wait for `Controller passed every step`, the reset button of the ESP32 runs every step again.
 
 ## Contribution guidelines
 Contributions follow the rules below, the layout of the repository and the tools are described in [docs/OVERVIEW.md](docs/OVERVIEW.md).
