@@ -9,22 +9,22 @@ namespace sercom::UsartPort {
 namespace {
 
 /*
- * Connect a pin of port A to the alternate function of the USARTs.
+ * Connect a pin of port A to the alternate function of its USART.
  */
-void connectPin(const uint32_t pin)
+void connectPin(const uint32_t pin, const uint32_t alternateFunction)
 {
     // switch the pin to its alternate function
     const uint32_t modeShift = pin * FirmwareSettings::GPIO_MODE_WIDTH;
     GPIOA->MODER = (GPIOA->MODER & ~(FirmwareSettings::GPIO_MODE_MASK << modeShift))
                    | (FirmwareSettings::GPIO_MODE_ALTERNATE << modeShift);
 
-    // select the alternate function of the USARTs
+    // select the alternate function of its USART
     const uint32_t alternateIndex = pin / FirmwareSettings::GPIO_ALTERNATE_PIN_COUNT;
     const uint32_t alternateShift = (pin % FirmwareSettings::GPIO_ALTERNATE_PIN_COUNT)
                                     * FirmwareSettings::GPIO_ALTERNATE_WIDTH;
     GPIOA->AFR[alternateIndex] = (GPIOA->AFR[alternateIndex]
                                   & ~(FirmwareSettings::GPIO_ALTERNATE_MASK << alternateShift))
-                                 | (FirmwareSettings::USART_ALTERNATE_FUNCTION << alternateShift);
+                                 | (alternateFunction << alternateShift);
 }
 
 } // namespace
@@ -32,11 +32,13 @@ void connectPin(const uint32_t pin)
 UsartPort::UsartPort(USART_TypeDef *usart,
                      const IRQn_Type interruptNumber,
                      const uint32_t serialReceivePin,
-                     const uint32_t serialTransmitPin)
+                     const uint32_t serialTransmitPin,
+                     const uint32_t alternateFunction)
     : usart(usart)
     , interruptNumber(interruptNumber)
     , serialReceivePin(serialReceivePin)
     , serialTransmitPin(serialTransmitPin)
+    , alternateFunction(alternateFunction)
     , receiveBuffer()
     , sendBuffer()
     , droppedByteCounter(0)
@@ -47,10 +49,10 @@ UsartPort::~UsartPort() {}
 void UsartPort::begin(const uint32_t baudRate)
 {
     // connect the receive and transmit pins
-    connectPin(this->serialReceivePin);
-    connectPin(this->serialTransmitPin);
+    connectPin(this->serialReceivePin, this->alternateFunction);
+    connectPin(this->serialTransmitPin, this->alternateFunction);
 
-    // NOTE: the bus clocks of both USARTs run at the system clock after reset
+    // NOTE: the bus clocks of the USARTs run at the system clock after reset
     static constexpr uint32_t roundingDivisor = 2;
     this->usart->BRR = (FirmwareSettings::SystemClockFrequency + baudRate / roundingDivisor)
                        / baudRate;

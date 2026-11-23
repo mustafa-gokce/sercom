@@ -11,6 +11,8 @@
 #include "../../common/include/ConsoleOutput.h"
 #include "../../common/include/RingBuffer.h"
 
+#include "../include/FirmwareSettings.h"
+
 namespace sercom::UsartPort {
 
 class UsartPort final : public Transport::Transport, public ConsoleOutput::ConsoleOutput
@@ -18,12 +20,14 @@ class UsartPort final : public Transport::Transport, public ConsoleOutput::Conso
 public:
     /*
      * USART on two pins of port A with a receive and a transmit ring buffer filled and emptied by its interrupt.
+     * The pins connect to the USART with its alternate function, 7 for USART1 and USART2, 8 for USART6.
      * It carries the frames as a transport and the console text as a console output.
      */
     explicit UsartPort(USART_TypeDef *usart,
                        IRQn_Type interruptNumber,
                        uint32_t serialReceivePin,
-                       uint32_t serialTransmitPin);
+                       uint32_t serialTransmitPin,
+                       uint32_t alternateFunction = FirmwareSettings::USART_ALTERNATE_FUNCTION);
     ~UsartPort() final;
 
     // delete copy constructor and copy assignment operator
@@ -85,6 +89,7 @@ private:
     const IRQn_Type interruptNumber;          // interrupt of the USART
     const uint32_t serialReceivePin;          // port A pin of the receive pin
     const uint32_t serialTransmitPin;         // port A pin of the transmit pin
+    const uint32_t alternateFunction;         // alternate function of both pins
     RingBuffer::RingBuffer receiveBuffer;     // received bytes for the main loop
     RingBuffer::RingBuffer sendBuffer;        // bytes for the transmit interrupt
     std::atomic<uint32_t> droppedByteCounter; // received bytes without room in the ring buffer
