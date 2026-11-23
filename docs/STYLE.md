@@ -2,10 +2,10 @@
 
 This document describes the coding and commenting style of sercom. Every C++ file in
 `core/`, `app/`, `host/`, `firmware/common/`, `firmware/esp32/`, `firmware/stm32f4/`,
-`tests/`, `examples/` and `fuzz/` follows it, and so does every change. The code is plain
-C++17 with the standard library; the ESP32 firmware adds the Arduino and FreeRTOS calls
-it needs, the STM32F4 firmware the CMSIS registers and intrinsics, the host Qt 5.12.12
-(section 19), and nothing else.
+`tests/`, `examples/` and `fuzz/` follows it, the consumer projects of section 20 included,
+and so does every change. The code is plain C++17 with the standard library; the ESP32
+firmware adds the Arduino and FreeRTOS calls it needs, the STM32F4 firmware the CMSIS
+registers and intrinsics, the host Qt 5.12.12 (section 19), and nothing else.
 
 Three tools check what a program can count:
 
@@ -45,7 +45,9 @@ Format first, then build: the formatter lays out broken code too.
   Each group is sorted (R-010, R-011). The host code has no platform group, Qt covers the
   systems.
 - sercom headers are included by a path relative to the including file, across libraries
-  too; CMake sets no include directory (R-012).
+  too (R-012). CMake sets one include directory, the top directory of sercom on
+  `${PROJECT_NAME}_settings`, for the consumer projects that cannot include by relative path
+  (section 20); sercom's own files never include through it.
 
 ```cpp
 #include "../include/SerialPort.h"
@@ -558,16 +560,27 @@ std::for_each(droppedOffsets.cbegin(), droppedOffsets.cend(), [this](const size_
 - Commands are lower case with four spaces; `if (`, `elseif (` and `foreach (` take a
   blank; source and link lists put one item per line with `)` alone (R-194).
 - Build values are UPPER_SNAKE `set()` lines (`set(MAXIMUM_PAYLOAD_SIZE 255)`); `option()`
-  is used only for `SERCOM_BUILD_BINARIES` and `SERCOM_BUILD_TESTS` (R-195, R-196).
+  is used only for `SERCOM_BUILD_BINARIES`, `SERCOM_BUILD_TESTS` and `SERCOM_BUILD_HOST`
+  (R-195, R-196).
 - Build values reach the code only through the `${PROJECT_NAME}_settings` interface target,
-  linked `PRIVATE` into every target (R-197, R-198).
+  linked `PRIVATE` into every target (R-197, R-198). The version numbers are the one
+  exception: they reach only the application library, through the second interface target
+  `${PROJECT_NAME}_version`, so that a consumer project may define its own `APP_*` macros.
+  The settings target also requires `cxx_std_17` of every target that links it, because
+  `CMAKE_CXX_STANDARD` reaches only the targets of its own directory.
 - Target names derive from `${PROJECT_NAME}`; sources are listed inline as
   `include/X.h src/X.cpp` per line, without globs or list variables (R-199 to R-203).
 - There is one test executable, registered once with the JUnit, XML and console reporters
   (R-205, R-206).
-- Dependencies are git submodules in `dep/` and are never changed (R-207, R-208).
+- Dependencies are git submodules in `dep/` and are never changed (R-207, R-208). The one
+  `FetchContent` of the repository is the consumer project of example 29, which fetches
+  sercom itself.
 - The warning flags are added with `add_compiler_flags` after the targets, `-Werror`
-  always; the build type comes from the command line (R-209, R-210).
+  always in the main project; the build type comes from the command line (R-209, R-210). As
+  a subproject sercom adds none of them and no optimizer flags, its libraries build with the
+  flags of the project around it.
+- The libraries have namespaced aliases for the consumer projects, `${PROJECT_NAME}::settings`,
+  `::core`, `::app`, `::firmware` and `::host`.
 - Every `target_link_libraries` call uses one keyword, `PRIVATE`, and an executable lists
   every library it uses (R-253).
 
@@ -675,3 +688,29 @@ public:
     SerialPort();
     ~SerialPort() final;
 ```
+
+## 20. Consumer projects
+
+- A consumer project is a CMake project of its own in a directory of `examples/`, outside
+  the main build: `examples/28_consume_with_add_subdirectory` and
+  `examples/29_consume_with_fetch_content`. Each one holds a `CMakeLists.txt` and one source
+  file named like its directory, with its guide next to the directory.
+- Its C++ file follows this document and its `CMakeLists.txt` section 15: the values to change
+  above the banner, the fixed C++17 block, one keyword per `target_link_libraries`. It links
+  `sercom::settings` and every library it uses by the namespaced names and defines no build
+  value of sercom; the protocol limits stay the `set()` lines of sercom, the contract with the
+  peer.
+- Three differences from the rules above are allowed, each in one project only:
+  1. Example 29 fetches sercom with `FetchContent`, pinned to a tag with
+     `GIT_SUBMODULES ""`, the one `FetchContent` of the repository (R-207).
+  2. Example 29 includes the sercom headers through the include directory of
+     `sercom::settings`, as `"core/include/Frame.h"`, because the fetched sources lie in its
+     build directory (R-012). Example 28 includes by relative path, as sercom does.
+  3. Example 28 builds without the host library and so without its log functions; it prints
+     with its own `printLine()` and `printWarning()` on `std::cout` and `std::cerr` (R-129).
+- A consumer project adds no warning flags of its own: `tools/run_consumers.sh` fails when a
+  compile command of either project holds `-Werror` or `-Wold-style-cast`, which would mean
+  that sercom passed its own flags on. It also builds the source of example 28 in a consumer
+  without a C++ standard of its own, which needs the `cxx_std_17` of the settings target.
+- `tools/analysis/check_format.sh` and `tools/analysis/check_style.py` check the consumer
+  projects, their `CMakeLists.txt` included, and skip the `build` directories inside them.
