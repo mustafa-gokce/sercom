@@ -180,6 +180,11 @@ public:
      */
     [[nodiscard]] LinkStatistics getStatistics() const;
 
+    /*
+     * Get the protocol version of the peer, learned from every valid frame of the peer.
+     */
+    [[nodiscard]] Definitions::PeerVersionType getPeerVersionType() const;
+
 private:
     /*
      * Listen for a received frame.
@@ -234,15 +239,16 @@ private:
                                  Definitions::MessageStatusType messageStatusType);
 
 private:
-    Transport::Transport &transport;         // reference for transport
-    LinkHandler &handler;                    // reference to handler
-    const Clock::Clock &clock;               // reference for clock
-    const LinkConfiguration configuration;   // link configuration
-    FrameDecoder::FrameDecoder frameDecoder; // decoder of the received bytes
-    size_t nextReceivedMessageIndex;         // history entry to overwrite next
-    uint16_t nextMessageCounter;             // message counter of the next message
-    uint32_t acknowledgedSendSequence;       // number of sent acknowledged messages
-    LinkStatistics statistics;               // link statistics
+    Transport::Transport &transport;              // reference for transport
+    LinkHandler &handler;                         // reference to handler
+    const Clock::Clock &clock;                    // reference for clock
+    const LinkConfiguration configuration;        // link configuration
+    FrameDecoder::FrameDecoder frameDecoder;      // decoder of the received bytes
+    size_t nextReceivedMessageIndex;              // history entry to overwrite next
+    uint16_t nextMessageCounter;                  // message counter of the next message
+    uint32_t acknowledgedSendSequence;            // number of sent acknowledged messages
+    Definitions::PeerVersionType peerVersionType; // protocol version of the peer
+    LinkStatistics statistics;                    // link statistics
     std::array<PendingMessage, Settings::MaximumPendingFrames> pendingMessages; // sent messages
     std::array<ReceivedMessage, Settings::DefaultDuplicateHistorySize>
         receivedMessages; // history of received messages

@@ -18,6 +18,7 @@ Link::Link(Transport::Transport &transport,
     , nextReceivedMessageIndex(0)
     , nextMessageCounter(0)
     , acknowledgedSendSequence(0)
+    , peerVersionType(Definitions::PeerVersionType::UNKNOWN)
     , statistics()
     , pendingMessages()
     , receivedMessages()
@@ -185,8 +186,20 @@ LinkStatistics Link::getStatistics() const
     return currentStatistics;
 }
 
+Definitions::PeerVersionType Link::getPeerVersionType() const
+{
+    // expose the protocol version of the peer
+    return this->peerVersionType;
+}
+
 void Link::onReceivedFrame(const Frame::Frame &frame)
 {
+    // learn the protocol version of the peer from every valid frame
+    this->peerVersionType = frame.getRouted()
+                                    || frame.getFlag(Definitions::FrameFlagType::ROUTE_CAPABLE)
+                                ? Definitions::PeerVersionType::VERSION_2
+                                : Definitions::PeerVersionType::VERSION_1;
+
     // keep track of frames
     ++this->statistics.incomingFrameCounter;
 
