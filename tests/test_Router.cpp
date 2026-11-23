@@ -1095,3 +1095,73 @@ TEST_CASE_METHOD(TestRouter,
             == static_cast<uint64_t>(0));
     REQUIRE(upperRouter->getStatistics().failedForwardCounter == static_cast<uint64_t>(0));
 }
+
+TEST_CASE_METHOD(TestRouter,
+                 "A broadcast is delivered by every node and passed on with one link less to live",
+                 "[Router][testBroadcast]")
+{
+    // send a broadcast message of the host
+    REQUIRE(sendHostMessage(Definitions::BROADCAST_ADDRESS) == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check one delivery on every node with the time to live of its hop
+    const std::vector<Frame::Frame> upperMessages = upperHandler.getMessages();
+    const std::vector<Frame::Frame> lowerMessages = lowerHandler.getMessages();
+    const std::vector<Frame::Frame> endMessages = endHandler.getMessages();
+    REQUIRE(upperMessages.size() == static_cast<size_t>(1));
+    REQUIRE(lowerMessages.size() == static_cast<size_t>(1));
+    REQUIRE(endMessages.size() == static_cast<size_t>(1));
+    REQUIRE(upperMessages.at(0).getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE);
+    REQUIRE(lowerMessages.at(0).getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE - 1);
+    REQUIRE(endMessages.at(0).getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE - 2);
+    REQUIRE(endMessages.at(0).getDestinationAddress() == Definitions::BROADCAST_ADDRESS);
+
+    // check the counters and the confirmation of the first hop
+    REQUIRE(upperRouter->getStatistics().broadcastFrameCounter == static_cast<uint64_t>(1));
+    REQUIRE(lowerRouter->getStatistics().broadcastFrameCounter == static_cast<uint64_t>(1));
+    REQUIRE(endRouter->getStatistics().broadcastFrameCounter == static_cast<uint64_t>(1));
+    REQUIRE(endRouter->getStatistics().forwardedFrameCounter == static_cast<uint64_t>(0));
+    REQUIRE(hostHandler.getDeliveryResults().size() == static_cast<size_t>(1));
+    REQUIRE(hostHandler.getDeliveryResults().at(0).confirmed);
+}
+
+TEST_CASE_METHOD(
+    TestRouter,
+    "A broadcast is answered by the node and passed on only while it has links to live",
+    "[Router][testBroadcastTimeToLive]")
+{
+    // hand the upper node a broadcast with two links to live and one with one link to live
+    upperHandler.setMessageStatusType(Definitions::MessageStatusType::INVALID_ARGUMENT);
+    const std::vector<uint8_t> twoLinksFrame = getRoutedFrameData(0x11,
+                                                                  1,
+                                                                  Definitions::HOST_ADDRESS,
+                                                                  Definitions::BROADCAST_ADDRESS,
+                                                                  2);
+    const std::vector<uint8_t> lastLinkFrame = getRoutedFrameData(0x11,
+                                                                  2,
+                                                                  Definitions::HOST_ADDRESS,
+                                                                  Definitions::BROADCAST_ADDRESS,
+                                                                  1);
+    upperRouter->onReceivedData(Definitions::PortType::PRIMARY,
+                                twoLinksFrame.data(),
+                                twoLinksFrame.size());
+    upperRouter->onReceivedData(Definitions::PortType::PRIMARY,
+                                lastLinkFrame.data(),
+                                lastLinkFrame.size());
+    pump();
+
+    // check the answers with the message status of the upper node
+    const std::vector<Frame::Frame> upperFrames = upperPrimaryTransport.getSentFrames();
+    REQUIRE(upperFrames.size() == static_cast<size_t>(2));
+    REQUIRE(getRejectionStatus(upperFrames.at(0))
+            == Definitions::MessageStatusType::INVALID_ARGUMENT);
+    REQUIRE(getRejectionStatus(upperFrames.at(1))
+            == Definitions::MessageStatusType::INVALID_ARGUMENT);
+
+    // check that only the first broadcast reached the lower node and went no further
+    REQUIRE(upperHandler.getMessages().size() == static_cast<size_t>(2));
+    REQUIRE(upperSecondaryTransport.getSentFrames().size() == static_cast<size_t>(1));
+    REQUIRE(lowerHandler.getMessages().size() == static_cast<size_t>(1));
+    REQUIRE(lowerSecondaryTransport.getSentFrames().empty());
+    REQUIRE(endHandler.getMessages().empty());
+}
