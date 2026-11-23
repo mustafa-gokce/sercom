@@ -208,6 +208,15 @@ if (SERCOM_BUILD_HOST)
     )
 endif()
 
+# namespaced aliases of the libraries for the consumers
+add_library(${PROJECT_NAME}::settings ALIAS ${PROJECT_NAME}_settings)
+add_library(${PROJECT_NAME}::core ALIAS ${PROJECT_NAME}_core_lib)
+add_library(${PROJECT_NAME}::app ALIAS ${PROJECT_NAME}_app_lib)
+add_library(${PROJECT_NAME}::firmware ALIAS ${PROJECT_NAME}_firmware_lib)
+if (SERCOM_BUILD_HOST)
+    add_library(${PROJECT_NAME}::host ALIAS ${PROJECT_NAME}_host_lib)
+endif()
+
 # create tool executables
 if (SERCOM_BUILD_BINARIES)
     # create command line executable
