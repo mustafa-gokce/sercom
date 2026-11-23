@@ -12,12 +12,29 @@ namespace sercom::DeviceSimulator {
 
 using namespace std::chrono_literals;
 
+Router::RouterConfiguration getRouterConfiguration(const CommandLine &commandLine)
+{
+    // take the addresses of the command line
+    Router::RouterConfiguration routerConfiguration;
+    routerConfiguration.nodeAddress = commandLine.nodeAddress;
+    routerConfiguration.proxyAddress = commandLine.proxyAddress;
+
+    // expose the router configuration
+    return routerConfiguration;
+}
+
 DeviceSimulator::DeviceSimulator(const CommandLine &commandLine)
     : commandLine(commandLine)
     , simulatedPlatform(this->clock, this->commandLine.deviceName)
     , frameTracer(*this, this->clock, FrameTracer::TraceDirectionType::DEVICE_TO_HOST)
     , traceTransport(this->serialPort, this->frameTracer)
-    , deviceApplication(this->traceTransport, this->clock, this->simulatedPlatform)
+    , deviceApplication(this->traceTransport,
+                        this->commandLine.downstreamPortName.empty() ? nullptr
+                                                                     : &this->downstreamSerialPort,
+                        this->clock,
+                        this->simulatedPlatform,
+                        Link::LinkConfiguration(),
+                        getRouterConfiguration(this->commandLine))
     , maintainTimer()
     , lastReconnectTimestamp(0)
     , lastHeartbeatTimestamp(0)
@@ -32,6 +49,14 @@ DeviceSimulator::DeviceSimulator(const CommandLine &commandLine)
                      &SerialPort::SerialPort::errorHappened,
                      this,
                      &DeviceSimulator::onErrorHappened);
+    QObject::connect(&this->downstreamSerialPort,
+                     &SerialPort::SerialPort::receivedData,
+                     this,
+                     &DeviceSimulator::onReceivedDownstreamData);
+    QObject::connect(&this->downstreamSerialPort,
+                     &SerialPort::SerialPort::errorHappened,
+                     this,
+                     &DeviceSimulator::onDownstreamErrorHappened);
 
     // maintain the device simulator once per maintenance period
     this->maintainTimer.setSingleShot(false);
@@ -55,11 +80,24 @@ int DeviceSimulator::run()
     // connect to the serial port
     this->attemptReconnect();
 
+    // name the node and its downstream serial port in the start line of a router
+    std::string nodeAsText;
+    if (this->commandLine.nodeAddress != Definitions::UNASSIGNED_ADDRESS) {
+        nodeAsText = " as node " + std::to_string(this->commandLine.nodeAddress);
+    }
+    if (!this->commandLine.downstreamPortName.empty()) {
+        nodeAsText += " with the downstream serial port on " + this->commandLine.downstreamPortName;
+    }
+    if (this->commandLine.proxyAddress != Definitions::UNASSIGNED_ADDRESS) {
+        nodeAsText += " for node " + std::to_string(this->commandLine.proxyAddress);
+    }
+
     // notify the user
     const std::string startedDebugMessage = "Started the DeviceSimulator on "
                                             + this->getSerialPortText() + " for the device "
                                             + this->commandLine.deviceName + " version "
-                                            + std::string(AppSettings::AppVersionString);
+                                            + std::string(AppSettings::AppVersionString)
+                                            + nodeAsText;
     HostUtils::logDebug(startedDebugMessage);
 
     // answer the host on the event loop until a stop signal arrives
@@ -126,6 +164,29 @@ void DeviceSimulator::onErrorHappened(const SerialPort::SerialPortStatusType ser
     this->serialPort.close();
 }
 
+void DeviceSimulator::onReceivedDownstreamData(const QByteArray &data)
+{
+    // hand the received data to the secondary port of the device application
+    const uint8_t *receivedData = reinterpret_cast<const uint8_t *>(data.constData());
+    const size_t size = static_cast<size_t>(data.size());
+    this->deviceApplication.onReceivedSecondaryData(receivedData, size);
+}
+
+void DeviceSimulator::onDownstreamErrorHappened(
+    const SerialPort::SerialPortStatusType serialPortStatusType)
+{
+    // warn the user
+    const std::string warningMessage
+        = "DeviceSimulator disconnected from downstream serial port on "
+          + HostUtils::getSerialPortText(this->commandLine.downstreamPortName,
+                                         this->commandLine.baudRate)
+          + " (" + std::string(SerialPort::fromSerialPortStatusType(serialPortStatusType)) + ")";
+    HostUtils::logWarning(warningMessage);
+
+    // close the downstream serial port until the next reconnect attempt
+    this->downstreamSerialPort.close();
+}
+
 void DeviceSimulator::maintain()
 {
     // stop the event loop when a stop signal arrived
@@ -170,8 +231,22 @@ void DeviceSimulator::cleanUp()
                       HostUtils::logDebug(linkStatisticsLine);
                   });
 
-    // close the serial port
+    // notify the user about the downstream link of a router
+    if (!this->commandLine.downstreamPortName.empty()) {
+        HostUtils::logDebug("Downstream link statistics");
+        const std::vector<std::string> downstreamLinkStatisticsLines
+            = HostUtils::getLinkStatisticsLines(
+                this->deviceApplication.getSecondaryLinkStatistics());
+        std::for_each(downstreamLinkStatisticsLines.cbegin(),
+                      downstreamLinkStatisticsLines.cend(),
+                      [](const std::string &linkStatisticsLine) {
+                          HostUtils::logDebug(linkStatisticsLine);
+                      });
+    }
+
+    // close the serial ports
     this->serialPort.close();
+    this->downstreamSerialPort.close();
 
     // notify the user
     const std::string closedDebugMessage = "Closed the DeviceSimulator on "
@@ -181,21 +256,40 @@ void DeviceSimulator::cleanUp()
 
 void DeviceSimulator::attemptReconnect()
 {
+    // reconnect the serial port to the host
+    this->reconnectSerialPort(this->serialPort, this->commandLine.portName, "serial port");
+
+    // reconnect the serial port to the next node of a router
+    if (!this->commandLine.downstreamPortName.empty()) {
+        this->reconnectSerialPort(this->downstreamSerialPort,
+                                  this->commandLine.downstreamPortName,
+                                  "downstream serial port");
+    }
+}
+
+void DeviceSimulator::reconnectSerialPort(SerialPort::SerialPort &selectedSerialPort,
+                                          const std::string &portName,
+                                          const std::string_view portText)
+{
     // serial port must be closed
-    if (this->serialPort.getOpened()) {
+    if (selectedSerialPort.getOpened()) {
         return;
     }
 
     // notify the user
-    HostUtils::logDebug("DeviceSimulator trying to connect to the serial port");
+    const std::string tryingDebugMessage = "DeviceSimulator trying to connect to the "
+                                           + std::string(portText);
+    HostUtils::logDebug(tryingDebugMessage);
 
     // serial port must open
+    const std::string serialPortText = HostUtils::getSerialPortText(portName,
+                                                                    this->commandLine.baudRate);
     const SerialPort::SerialPortStatusType serialPortStatusType
-        = this->serialPort.open(this->commandLine.portName, this->commandLine.baudRate);
+        = selectedSerialPort.open(portName, this->commandLine.baudRate);
     if (serialPortStatusType != SerialPort::SerialPortStatusType::OK) {
         // warn the user
-        const std::string warningMessage = "DeviceSimulator can not connect to serial port on "
-                                           + this->getSerialPortText() + " ("
+        const std::string warningMessage = "DeviceSimulator can not connect to "
+                                           + std::string(portText) + " on " + serialPortText + " ("
                                            + std::string(SerialPort::fromSerialPortStatusType(
                                                serialPortStatusType))
                                            + ")";
@@ -206,8 +300,8 @@ void DeviceSimulator::attemptReconnect()
     }
 
     // notify the user
-    const std::string debugMessage = "DeviceSimulator connected to serial port from "
-                                     + this->getSerialPortText();
+    const std::string debugMessage = "DeviceSimulator connected to " + std::string(portText)
+                                     + " from " + serialPortText;
     HostUtils::logDebug(debugMessage);
 }
 
