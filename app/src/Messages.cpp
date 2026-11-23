@@ -306,6 +306,36 @@ DeviceInfoResponse::DeviceInfoResponse(const uint8_t firmwareVersionMajor,
     this->payloadLength = byteWriter.getSize();
 }
 
+DeviceInfoResponse::DeviceInfoResponse(const uint8_t firmwareVersionMajor,
+                                       const uint8_t firmwareVersionMinor,
+                                       const std::chrono::milliseconds uptime,
+                                       const uint32_t freeHeapSize,
+                                       const std::string_view deviceName,
+                                       const uint8_t protocolVersion,
+                                       const uint8_t nodeAddress)
+    : DeviceInfoResponse(firmwareVersionMajor, firmwareVersionMinor, uptime, freeHeapSize, deviceName)
+{
+    // response must hold the device name
+    if (this->payloadLength == 0) {
+        return;
+    }
+
+    // appended fields must fit into the payload
+    if (this->payloadLength + DEVICE_INFO_ROUTE_SIZE > this->payload.size()) {
+        this->payloadLength = 0;
+        return;
+    }
+
+    // append the protocol version and the node address
+    ByteCodec::ByteWriter byteWriter(this->payload.data() + this->payloadLength,
+                                     this->payload.size() - this->payloadLength);
+    byteWriter.writeUint8(protocolVersion);
+    byteWriter.writeUint8(nodeAddress);
+
+    // keep the payload length
+    this->payloadLength += byteWriter.getSize();
+}
+
 DeviceInfoResponse::DeviceInfoResponse(const Frame::Frame &frame)
     : GenericMessage(frame)
 {}
@@ -364,6 +394,32 @@ std::string_view DeviceInfoResponse::getDeviceName() const
     // expose the characters behind the length of the device name
     return {reinterpret_cast<const char *>(this->payload.data() + DEVICE_INFO_RESPONSE_SIZE),
             this->payload[10]};
+}
+
+uint8_t DeviceInfoResponse::getProtocolVersion() const
+{
+    // payload must hold the appended fields behind the device name
+    if (!this->getLikelyValid()
+        || this->payloadLength
+               < DEVICE_INFO_RESPONSE_SIZE + this->payload[10] + DEVICE_INFO_ROUTE_SIZE) {
+        return Definitions::PROTOCOL_VERSION;
+    }
+
+    // expose the protocol version
+    return this->payload[DEVICE_INFO_RESPONSE_SIZE + this->payload[10]];
+}
+
+uint8_t DeviceInfoResponse::getNodeAddress() const
+{
+    // payload must hold the appended fields behind the device name
+    if (!this->getLikelyValid()
+        || this->payloadLength
+               < DEVICE_INFO_RESPONSE_SIZE + this->payload[10] + DEVICE_INFO_ROUTE_SIZE) {
+        return Definitions::UNASSIGNED_ADDRESS;
+    }
+
+    // expose the node address behind the protocol version
+    return this->payload[DEVICE_INFO_RESPONSE_SIZE + this->payload[10] + 1];
 }
 
 bool DeviceInfoResponse::getLikelyValid() const

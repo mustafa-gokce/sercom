@@ -17,6 +17,7 @@ namespace sercom::Messages {
 constexpr size_t PING_REQUEST_SIZE = 4;                 // ping request size in bytes
 constexpr size_t PING_RESPONSE_SIZE = 8;                // ping response size in bytes
 constexpr size_t DEVICE_INFO_RESPONSE_SIZE = 11;        // fixed device info response size in bytes
+constexpr size_t DEVICE_INFO_ROUTE_SIZE = 2;            // appended device info size in bytes
 constexpr size_t LOG_REPORT_RESPONSE_SIZE = 2;          // fixed log report response size in bytes
 constexpr size_t SET_LED_REQUEST_SIZE = 1;              // set LED request size in bytes
 constexpr size_t SET_LED_RESPONSE_SIZE = 1;             // set LED response size in bytes
@@ -225,6 +226,7 @@ class DeviceInfoResponse final : public GenericMessage
 public:
     /*
      * Device info response with the firmware version, the uptime, the free heap and the name.
+     * The second constructor appends the protocol version and the address of a node with one.
      * A device name above the maximum device name length leaves the response empty.
      * A device name that does not fit into the payload leaves the response empty.
      */
@@ -233,6 +235,13 @@ public:
                                 std::chrono::milliseconds uptime,
                                 uint32_t freeHeapSize,
                                 std::string_view deviceName);
+    explicit DeviceInfoResponse(uint8_t firmwareVersionMajor,
+                                uint8_t firmwareVersionMinor,
+                                std::chrono::milliseconds uptime,
+                                uint32_t freeHeapSize,
+                                std::string_view deviceName,
+                                uint8_t protocolVersion,
+                                uint8_t nodeAddress);
     explicit DeviceInfoResponse(const Frame::Frame &frame);
     ~DeviceInfoResponse() = default;
 
@@ -269,6 +278,16 @@ public:
      * Get the device name, valid as long as the response exists.
      */
     [[nodiscard]] std::string_view getDeviceName() const;
+
+    /*
+     * Get the protocol version of the device, version 1 when the payload does not hold it.
+     */
+    [[nodiscard]] uint8_t getProtocolVersion() const;
+
+    /*
+     * Get the node address of the device, unassigned when the payload does not hold it.
+     */
+    [[nodiscard]] uint8_t getNodeAddress() const;
 
     /*
      * Get whether the payload holds every field and the whole device name.
