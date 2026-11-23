@@ -6,6 +6,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -351,6 +352,15 @@ public:
     }
 
     /*
+     * Get the bytes of a frame.
+     */
+    [[nodiscard]] static std::vector<uint8_t> getFrameData(const Frame::Frame &frame)
+    {
+        // expose a copy of the frame bytes
+        return std::vector<uint8_t>(frame.getData(), frame.getData() + frame.getSize());
+    }
+
+    /*
      * Get the payload bytes of a frame.
      */
     [[nodiscard]] static std::vector<uint8_t> getPayload(const Frame::Frame &frame)
@@ -400,6 +410,69 @@ public:
 
         // deliver the sent data
         this->pump();
+    }
+
+    /*
+     * Get the bytes of a ping request with the counter of the golden frame and its retransmission.
+     * The NACK of the retransmission and the ACK of a ping request of the peer follow them.
+     */
+    [[nodiscard]] std::vector<std::vector<uint8_t>> getGoldenFrameBytes(
+        Link::Link &link,
+        MockTransport &transport,
+        Link::Link &peerLink,
+        MockTransport &peerTransport,
+        MockLinkHandler &peerLinkHandler)
+    {
+        // send fire and forget messages into nowhere until both links reach the golden counter
+        static constexpr uint16_t goldenMessageCounter = 7;
+        std::vector<uint8_t> data;
+        while (link.getNextMessageCounter() < goldenMessageCounter) {
+            REQUIRE(link.sendMessage(0x0100, nullptr, 0, false, this->messageCounter)
+                    == Definitions::SendStatusType::SENT);
+            REQUIRE(peerLink.sendMessage(0x0100, nullptr, 0, false, this->messageCounter)
+                    == Definitions::SendStatusType::SENT);
+        }
+        while (transport.receiveData(data) || peerTransport.receiveData(data)) {
+            data.clear();
+        }
+
+        // send the ping request of the golden frame and its retransmission
+        const std::vector<uint8_t> pingPayload = {0xE8, 0x03, 0x00, 0x00};
+        std::vector<std::vector<uint8_t>> frameBytes;
+        REQUIRE(link.sendMessage(0x0001,
+                                 pingPayload.data(),
+                                 pingPayload.size(),
+                                 true,
+                                 this->messageCounter)
+                == Definitions::SendStatusType::SENT);
+        REQUIRE(transport.receiveData(data));
+        frameBytes.push_back(data);
+        this->clock.advanceTime(getLinkConfiguration().retransmitTimeout);
+        link.maintain();
+        REQUIRE(transport.receiveData(data));
+        frameBytes.push_back(data);
+
+        // reject the retransmission as busy
+        peerLinkHandler.setMessageStatusType(Definitions::MessageStatusType::BUSY);
+        peerLink.onReceivedData(data.data(), data.size());
+        REQUIRE(peerTransport.receiveData(data));
+        frameBytes.push_back(data);
+
+        // acknowledge the ping request of the peer
+        peerLinkHandler.setMessageStatusType(Definitions::MessageStatusType::ACCEPTED);
+        REQUIRE(peerLink.sendMessage(0x0001,
+                                     pingPayload.data(),
+                                     pingPayload.size(),
+                                     true,
+                                     this->messageCounter)
+                == Definitions::SendStatusType::SENT);
+        REQUIRE(peerTransport.receiveData(data));
+        link.onReceivedData(data.data(), data.size());
+        REQUIRE(transport.receiveData(data));
+        frameBytes.push_back(data);
+
+        // expose the bytes of the ping request, the retransmission, the NACK and the ACK
+        return frameBytes;
     }
 
     /*
@@ -909,4 +982,167 @@ TEST_CASE_METHOD(TestLink,
         }));
     REQUIRE(firstMessageCount == static_cast<size_t>(1));
     REQUIRE(anotherLink->getStatistics().duplicateFrameCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A link that is not route capable sends the bytes of version 1",
+                 "[Link][testVersion1Bytes]")
+{
+    // get the ping request, its retransmission, a NACK and an ACK of two links without routes
+    const std::vector<std::vector<uint8_t>> frameBytes = getGoldenFrameBytes(*testLink,
+                                                                             testTransport,
+                                                                             *anotherLink,
+                                                                             anotherTransport,
+                                                                             anotherLinkHandler);
+
+    // check the bytes of version 1 (CRC32 checked with Python binascii)
+    static const std::vector<uint8_t> pingRequestBytes = {0xA5,
+                                                          0xC3,
+                                                          0x01,
+                                                          0x01,
+                                                          0x07,
+                                                          0x00,
+                                                          0x01,
+                                                          0x00,
+                                                          0x04,
+                                                          0xE8,
+                                                          0x03,
+                                                          0x00,
+                                                          0x00,
+                                                          0x21,
+                                                          0x12,
+                                                          0xD0,
+                                                          0x63};
+    static const std::vector<uint8_t> retransmissionBytes = {0xA5,
+                                                             0xC3,
+                                                             0x01,
+                                                             0x09,
+                                                             0x07,
+                                                             0x00,
+                                                             0x01,
+                                                             0x00,
+                                                             0x04,
+                                                             0xE8,
+                                                             0x03,
+                                                             0x00,
+                                                             0x00,
+                                                             0xD5,
+                                                             0x52,
+                                                             0x07,
+                                                             0x70};
+    static const std::vector<uint8_t> rejectionBytes
+        = {0xA5, 0xC3, 0x01, 0x04, 0x07, 0x00, 0x01, 0x00, 0x01, 0x04, 0x61, 0x59, 0x08, 0xE6};
+    static const std::vector<uint8_t> acknowledgementBytes
+        = {0xA5, 0xC3, 0x01, 0x02, 0x07, 0x00, 0x01, 0x00, 0x00, 0xE6, 0xC3, 0x31, 0xC5};
+    CAPTURE(frameBytes);
+    REQUIRE(frameBytes.size() == static_cast<size_t>(4));
+    REQUIRE(frameBytes.at(0) == pingRequestBytes);
+    REQUIRE(frameBytes.at(1) == retransmissionBytes);
+    REQUIRE(frameBytes.at(2) == rejectionBytes);
+    REQUIRE(frameBytes.at(3) == acknowledgementBytes);
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "A route capable link sets the route capable flag on every frame it sends",
+                 "[Link][testRouteCapableFlag]")
+{
+    // get the ping request, its retransmission, a NACK and an ACK of two route capable links
+    Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    linkConfiguration.routeCapable = true;
+    Link::Link testRoutingLink(testTransport, testLinkHandler, clock, linkConfiguration);
+    Link::Link anotherRoutingLink(anotherTransport, anotherLinkHandler, clock, linkConfiguration);
+    const std::vector<std::vector<uint8_t>> frameBytes = getGoldenFrameBytes(testRoutingLink,
+                                                                             testTransport,
+                                                                             anotherRoutingLink,
+                                                                             anotherTransport,
+                                                                             anotherLinkHandler);
+
+    // check the direct frames with the route capable flag (CRC32 checked with Python binascii)
+    static const std::vector<uint8_t> pingRequestBytes = {0xA5,
+                                                          0xC3,
+                                                          0x01,
+                                                          0x11,
+                                                          0x07,
+                                                          0x00,
+                                                          0x01,
+                                                          0x00,
+                                                          0x04,
+                                                          0xE8,
+                                                          0x03,
+                                                          0x00,
+                                                          0x00,
+                                                          0xC9,
+                                                          0x93,
+                                                          0x7E,
+                                                          0x44};
+    static const std::vector<uint8_t> retransmissionBytes = {0xA5,
+                                                             0xC3,
+                                                             0x01,
+                                                             0x19,
+                                                             0x07,
+                                                             0x00,
+                                                             0x01,
+                                                             0x00,
+                                                             0x04,
+                                                             0xE8,
+                                                             0x03,
+                                                             0x00,
+                                                             0x00,
+                                                             0x3D,
+                                                             0xD3,
+                                                             0xA9,
+                                                             0x57};
+    static const std::vector<uint8_t> rejectionBytes
+        = {0xA5, 0xC3, 0x01, 0x14, 0x07, 0x00, 0x01, 0x00, 0x01, 0x04, 0xAF, 0xC5, 0xD6, 0x81};
+    static const std::vector<uint8_t> acknowledgementBytes
+        = {0xA5, 0xC3, 0x01, 0x12, 0x07, 0x00, 0x01, 0x00, 0x00, 0x7D, 0xC1, 0xE7, 0xC6};
+    CAPTURE(frameBytes);
+    REQUIRE(frameBytes.size() == static_cast<size_t>(4));
+    REQUIRE(frameBytes.at(0) == pingRequestBytes);
+    REQUIRE(frameBytes.at(1) == retransmissionBytes);
+    REQUIRE(frameBytes.at(2) == rejectionBytes);
+    REQUIRE(frameBytes.at(3) == acknowledgementBytes);
+}
+
+TEST_CASE_METHOD(TestLink,
+                 "The peer version follows every valid frame of the peer",
+                 "[Link][testPeerVersion]")
+{
+    // check the peer version before the first frame
+    REQUIRE(testLink->getPeerVersionType() == Definitions::PeerVersionType::UNKNOWN);
+
+    // receive frames of a peer that changes its version and check the learned peer version
+    static constexpr uint8_t routeCapableFlags = 0x10;
+    Frame::RouteHeader routeHeader;
+    routeHeader.sourceAddress = Definitions::HOST_ADDRESS;
+    routeHeader.destinationAddress = Definitions::MINIMUM_NODE_ADDRESS;
+    routeHeader.timeToLive = Settings::DEFAULT_TIME_TO_LIVE;
+    const std::vector<std::pair<Frame::Frame, Definitions::PeerVersionType>> receivedFrames = {
+        {Frame::Frame(0, 1, 0x0100, nullptr, 0), Definitions::PeerVersionType::VERSION_1},
+        {Frame::Frame(routeCapableFlags, 2, 0x0100, nullptr, 0),
+         Definitions::PeerVersionType::VERSION_2},
+        {Frame::Frame(0, 3, 0x0100, nullptr, 0), Definitions::PeerVersionType::VERSION_1},
+        {Frame::Frame(0, 4, 0x0100, routeHeader, nullptr, 0),
+         Definitions::PeerVersionType::VERSION_2},
+        {Frame::Frame(0x02, 5, 0x0100, nullptr, 0), Definitions::PeerVersionType::VERSION_1},
+    };
+    std::for_each(receivedFrames.cbegin(),
+                  receivedFrames.cend(),
+                  [this](
+                      const std::pair<Frame::Frame, Definitions::PeerVersionType> &receivedFrame) {
+                      // receive the frame
+                      CAPTURE(receivedFrame.first.getMessageCounter());
+                      testLink->onReceivedData(receivedFrame.first.getData(),
+                                               receivedFrame.first.getSize());
+
+                      // check the learned peer version
+                      REQUIRE(testLink->getPeerVersionType() == receivedFrame.second);
+                  });
+
+    // check that a corrupted frame with the flag leaves the peer version
+    std::vector<uint8_t> corruptedData = getFrameData(
+        Frame::Frame(routeCapableFlags, 6, 0x0100, nullptr, 0));
+    corruptedData.back() = static_cast<uint8_t>(corruptedData.back() ^ 0x01);
+    testLink->onReceivedData(corruptedData.data(), corruptedData.size());
+    REQUIRE(testLink->getPeerVersionType() == Definitions::PeerVersionType::VERSION_1);
 }
