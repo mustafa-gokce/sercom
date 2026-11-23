@@ -10,6 +10,7 @@
 #include "../../core/include/Definitions.h"
 #include "../../core/include/Frame.h"
 #include "../../core/include/Link.h"
+#include "../../core/include/Router.h"
 #include "../../core/include/Transport.h"
 
 #include "../include/AppSettings.h"
@@ -100,12 +101,14 @@ class DeviceClient final : public Link::LinkHandler
 public:
     /*
      * Host side of the demo protocol that sends every request acknowledged.
+     * Its router has one port, a router configuration with an address lets it reach other nodes.
      */
     explicit DeviceClient(
         Transport::Transport &transport,
         const Clock::Clock &clock,
         DeviceClientHandler &handler,
-        const Link::LinkConfiguration &linkConfiguration = Link::LinkConfiguration());
+        const Link::LinkConfiguration &linkConfiguration = Link::LinkConfiguration(),
+        const Router::RouterConfiguration &routerConfiguration = Router::RouterConfiguration());
     ~DeviceClient() final;
 
     // delete copy constructor and copy assignment operator
@@ -148,12 +151,12 @@ public:
                                                               uint16_t &messageCounter);
 
     /*
-     * Listen for received data and hand it to the link.
+     * Listen for received data and hand it to the router.
      */
     void onReceivedData(const uint8_t *data, size_t size);
 
     /*
-     * Maintain the link.
+     * Maintain the router.
      */
     void maintain();
 
@@ -172,6 +175,11 @@ public:
      * Get the link statistics.
      */
     [[nodiscard]] Link::LinkStatistics getLinkStatistics() const;
+
+    /*
+     * Get the router statistics.
+     */
+    [[nodiscard]] Router::RouterStatistics getRouterStatistics() const;
 
     /*
      * Get the number of ping responses to ping requests that this client did not send.
@@ -247,7 +255,7 @@ private:
 private:
     const Clock::Clock &clock;           // reference for clock
     DeviceClientHandler &handler;        // reference to handler
-    Link::Link link;                     // link to the device
+    Router::Router router;               // network layer towards the device
     size_t nextPendingPingIndex;         // pending ping to overwrite next
     uint64_t ignoredPingResponseCounter; // ping responses without a pending ping
     std::array<PendingPing, AppSettings::PING_HISTORY_SIZE> pendingPings; // sent ping requests

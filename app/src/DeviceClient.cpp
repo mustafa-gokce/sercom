@@ -11,10 +11,11 @@ DeviceClientHandler::~DeviceClientHandler() {}
 DeviceClient::DeviceClient(Transport::Transport &transport,
                            const Clock::Clock &clock,
                            DeviceClientHandler &handler,
-                           const Link::LinkConfiguration &linkConfiguration)
+                           const Link::LinkConfiguration &linkConfiguration,
+                           const Router::RouterConfiguration &routerConfiguration)
     : clock(clock)
     , handler(handler)
-    , link(transport, *this, clock, linkConfiguration)
+    , router(transport, nullptr, *this, clock, linkConfiguration, routerConfiguration)
     , nextPendingPingIndex(0)
     , ignoredPingResponseCounter(0)
     , pendingPings()
@@ -112,32 +113,38 @@ Definitions::SendStatusType DeviceClient::sendEchoRequest(const uint8_t *data,
 
 void DeviceClient::onReceivedData(const uint8_t *data, const size_t size)
 {
-    // hand the data to the link
-    this->link.onReceivedData(data, size);
+    // hand the data to the router
+    this->router.onReceivedData(Definitions::PortType::PRIMARY, data, size);
 }
 
 void DeviceClient::maintain()
 {
-    // maintain the link
-    this->link.maintain();
+    // maintain the router
+    this->router.maintain();
 }
 
 bool DeviceClient::getSendRequestAllowed() const
 {
-    // expose whether the link allows an acknowledged message
-    return this->link.getSendAcknowledgedAllowed();
+    // expose whether the router allows an acknowledged message
+    return this->router.getSendAcknowledgedAllowed(Definitions::UNASSIGNED_ADDRESS);
 }
 
 size_t DeviceClient::getPendingCount() const
 {
-    // expose the number of pending messages of the link
-    return this->link.getPendingCount();
+    // expose the number of pending messages of the router
+    return this->router.getPendingCount();
 }
 
 Link::LinkStatistics DeviceClient::getLinkStatistics() const
 {
     // expose the link statistics
-    return this->link.getStatistics();
+    return this->router.getLinkStatistics(Definitions::PortType::PRIMARY);
+}
+
+Router::RouterStatistics DeviceClient::getRouterStatistics() const
+{
+    // expose the router statistics
+    return this->router.getStatistics();
 }
 
 uint64_t DeviceClient::getIgnoredPingResponseCounter() const
@@ -326,11 +333,12 @@ Definitions::SendStatusType DeviceClient::sendRequest(const Messages::MessageTyp
                                                       uint16_t &messageCounter)
 {
     // send the request acknowledged
-    return this->link.sendMessage(Messages::fromMessageType(messageType),
-                                  payload,
-                                  payloadLength,
-                                  true,
-                                  messageCounter);
+    return this->router.sendMessage(Definitions::UNASSIGNED_ADDRESS,
+                                    Messages::fromMessageType(messageType),
+                                    payload,
+                                    payloadLength,
+                                    true,
+                                    messageCounter);
 }
 
 void DeviceClient::rememberPendingPing(const std::chrono::milliseconds requestTimestamp)
