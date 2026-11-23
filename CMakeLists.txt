@@ -113,6 +113,9 @@ target_compile_definitions(${PROJECT_NAME}_settings INTERFACE
     DEFAULT_DUPLICATE_HISTORY_SIZE=${DEFAULT_DUPLICATE_HISTORY_SIZE}
 )
 
+# include directory of the libraries for the consumers
+target_include_directories(${PROJECT_NAME}_settings INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
 # version numbers of the application library only
 add_library(${PROJECT_NAME}_version INTERFACE)
 target_compile_definitions(${PROJECT_NAME}_version INTERFACE
