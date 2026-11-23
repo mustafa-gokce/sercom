@@ -16,6 +16,7 @@
 
 #include "../../../app/include/AppSettings.h"
 #include "../../../app/include/Messages.h"
+#include "../../../core/include/Router.h"
 #include "../../common/include/CommonSettings.h"
 #include "../../common/include/Console.h"
 #include "../../common/include/ControllerRole.h"
@@ -36,9 +37,13 @@ static StreamBufferHandle_t receiveStreamBuffer = nullptr; // bytes from the rec
 static QueueHandle_t logQueue = nullptr;                   // log lines from any task
 static TaskHandle_t protocolTaskHandle = nullptr;          // protocol task for stack reports
 
+static StreamBufferHandle_t secondaryReceiveStreamBuffer = nullptr; // bytes of the secondary port
+static QueueHandle_t routerStatisticsQueue = nullptr; // latest router statistics for the heartbeat
+
 // initialize device
 static HardwareSerial &protocolSerial = sercom::FirmwareSettings::ConsolePrinted ? Serial2 : Serial;
 static sercom::UartTransport::UartTransport uartTransport(protocolSerial);
+static sercom::UartTransport::UartTransport secondaryUartTransport(Serial2);
 static sercom::Esp32Clock::Esp32Clock esp32Clock;
 static sercom::Esp32Platform::Esp32Platform esp32Platform(sercom::FirmwareSettings::LED_PIN,
                                                           sercom::FirmwareSettings::DEVICE_NAME);
@@ -47,7 +52,14 @@ static sercom::Esp32ConsoleOutput::Esp32ConsoleOutput esp32ConsoleOutput(
 static sercom::Console::Console console(esp32ConsoleOutput,
                                         esp32Clock,
                                         sercom::FirmwareSettings::ConsolePrinted);
-static sercom::DeviceRole::DeviceRole deviceRole(uartTransport, esp32Clock, esp32Platform, console);
+static sercom::DeviceRole::DeviceRole deviceRole(uartTransport,
+                                                 sercom::FirmwareSettings::RouterRun
+                                                     ? &secondaryUartTransport
+                                                     : nullptr,
+                                                 esp32Clock,
+                                                 esp32Platform,
+                                                 console,
+                                                 getRouterConfiguration());
 static sercom::ControllerRole::ControllerRole controllerRole(uartTransport,
                                                              esp32Clock,
                                                              esp32Platform,
@@ -65,6 +77,15 @@ void setup()
     receiveStreamBuffer = xStreamBufferCreate(FirmwareSettings::RECEIVE_STREAM_BUFFER_SIZE,
                                               FirmwareSettings::RECEIVE_STREAM_TRIGGER_SIZE);
     logQueue = xQueueCreate(FirmwareSettings::LOG_QUEUE_LENGTH, sizeof(LogLine::LogLine));
+
+    // create the channels of the secondary serial port of a router
+    if (FirmwareSettings::RouterRun) {
+        secondaryReceiveStreamBuffer
+            = xStreamBufferCreate(FirmwareSettings::RECEIVE_STREAM_BUFFER_SIZE,
+                                  FirmwareSettings::RECEIVE_STREAM_TRIGGER_SIZE);
+        routerStatisticsQueue = xQueueCreate(FirmwareSettings::ROUTER_STATISTICS_QUEUE_LENGTH,
+                                             sizeof(Router::RouterStatistics));
+    }
 
     // open the console and print the boot banner
     const bool consoleOpened = esp32ConsoleOutput.begin();
@@ -93,6 +114,16 @@ void setup()
                          FirmwareSettings::SerialReceivePin,
                          FirmwareSettings::SerialTransmitPin);
 
+    // open the secondary serial port of a router the same way
+    if (FirmwareSettings::RouterRun) {
+        Serial2.setRxBufferSize(FirmwareSettings::SERIAL_RECEIVE_BUFFER_SIZE);
+        Serial2.setTxBufferSize(FirmwareSettings::SERIAL_TRANSMIT_BUFFER_SIZE);
+        Serial2.begin(CommonSettings::SERIAL_BAUD_RATE,
+                      SERIAL_8N1,
+                      FirmwareSettings::SecondaryReceivePin,
+                      FirmwareSettings::SecondaryTransmitPin);
+    }
+
     // configure the board
     esp32Platform.begin();
 
@@ -118,6 +149,17 @@ void setup()
                             FirmwareSettings::HEARTBEAT_TASK_PRIORITY,
                             nullptr,
                             FirmwareSettings::APPLICATION_CORE);
+
+    // start the receive task of the secondary serial port of a router
+    if (FirmwareSettings::RouterRun) {
+        xTaskCreatePinnedToCore(secondaryReceiveTask,
+                                "secondary_receive",
+                                FirmwareSettings::UART_RECEIVE_TASK_STACK_SIZE,
+                                nullptr,
+                                FirmwareSettings::UART_RECEIVE_TASK_PRIORITY,
+                                nullptr,
+                                FirmwareSettings::APPLICATION_CORE);
+    }
 
     // start the console task of an open console
     if (consoleOpened) {
@@ -147,6 +189,26 @@ void setup()
                         static_cast<int>(AppSettings::AppVersionString.size()),
                         AppSettings::AppVersionString.data());
     queueLog(Messages::LogLevelType::DEBUG, startedDebugMessage.data());
+
+    // router must name its ports and addresses
+    if (!FirmwareSettings::RouterRun) {
+        return;
+    }
+
+    // notify the user
+    std::array<char, CommonSettings::LOG_LINE_SIZE> routingDebugMessage
+        = std::array<char, CommonSettings::LOG_LINE_SIZE>();
+    [[maybe_unused]] const int routingDebugMessageLength
+        = std::snprintf(routingDebugMessage.data(),
+                        routingDebugMessage.size(),
+                        "Routing as node %" PRIu32 " between %.*s and %.*s, proxy address %" PRIu32,
+                        static_cast<uint32_t>(FirmwareSettings::NodeAddress),
+                        static_cast<int>(FirmwareSettings::SerialPortName.size()),
+                        FirmwareSettings::SerialPortName.data(),
+                        static_cast<int>(FirmwareSettings::SecondaryPortName.size()),
+                        FirmwareSettings::SecondaryPortName.data(),
+                        static_cast<uint32_t>(FirmwareSettings::ProxyAddress));
+    queueLog(Messages::LogLevelType::DEBUG, routingDebugMessage.data());
 }
 
 void loop()
@@ -171,7 +233,32 @@ void queueLog(const sercom::Messages::LogLevelType logLevelType, const std::stri
                      pdMS_TO_TICKS(FirmwareSettings::LOG_QUEUE_TIMEOUT_MSEC.count()));
 }
 
+sercom::Router::RouterConfiguration getRouterConfiguration()
+{
+    using namespace sercom;
+
+    // create router configuration
+    Router::RouterConfiguration routerConfiguration;
+    routerConfiguration.nodeAddress = FirmwareSettings::NodeAddress;
+    routerConfiguration.proxyAddress = FirmwareSettings::ProxyAddress;
+
+    // expose the router configuration
+    return routerConfiguration;
+}
+
 void uartReceiveTask([[maybe_unused]] void *parameter)
+{
+    // move the received bytes of the protocol serial port to the protocol task
+    receiveSerialData(protocolSerial, receiveStreamBuffer);
+}
+
+void secondaryReceiveTask([[maybe_unused]] void *parameter)
+{
+    // move the received bytes of the secondary serial port to the protocol task
+    receiveSerialData(Serial2, secondaryReceiveStreamBuffer);
+}
+
+void receiveSerialData(HardwareSerial &serial, StreamBufferHandle_t streamBuffer)
 {
     using namespace sercom;
 
@@ -180,7 +267,7 @@ void uartReceiveTask([[maybe_unused]] void *parameter)
         = std::array<uint8_t, FirmwareSettings::RECEIVE_CHUNK_SIZE>();
     while (true) {
         // received bytes must be available
-        const int availableSize = protocolSerial.available();
+        const int availableSize = serial.available();
         if (availableSize <= 0) {
             vTaskDelay(pdMS_TO_TICKS(FirmwareSettings::UART_IDLE_DELAY_MSEC.count()));
             continue;
@@ -188,13 +275,13 @@ void uartReceiveTask([[maybe_unused]] void *parameter)
 
         // received bytes of at most one chunk must be read
         const size_t requestedSize = std::min(static_cast<size_t>(availableSize), chunk.size());
-        const size_t receivedSize = protocolSerial.readBytes(chunk.data(), requestedSize);
+        const size_t receivedSize = serial.readBytes(chunk.data(), requestedSize);
         if (receivedSize == 0) {
             continue;
         }
 
         // hand the bytes to the protocol task
-        [[maybe_unused]] const size_t sentSize = xStreamBufferSend(receiveStreamBuffer,
+        [[maybe_unused]] const size_t sentSize = xStreamBufferSend(streamBuffer,
                                                                    chunk.data(),
                                                                    receivedSize,
                                                                    portMAX_DELAY);
@@ -222,6 +309,20 @@ void protocolTask([[maybe_unused]] void *parameter)
             firmwareRole.onReceivedData(chunk.data(), receivedSize);
         }
 
+        // feed the waiting bytes of the secondary serial port of a router without waiting
+        const size_t secondaryReceivedSize
+            = FirmwareSettings::RouterRun
+                  ? xStreamBufferReceive(secondaryReceiveStreamBuffer,
+                                         chunk.data(),
+                                         chunk.size(),
+                                         pdMS_TO_TICKS(
+                                             FirmwareSettings::SECONDARY_RECEIVE_TIMEOUT_MSEC
+                                                 .count()))
+                  : 0;
+        if (secondaryReceivedSize > 0) {
+            deviceRole.onReceivedSecondaryData(chunk.data(), secondaryReceivedSize);
+        }
+
         // report the queued log lines through the firmware role
         LogLine::LogLine logLine;
         while (xQueueReceive(logQueue,
@@ -234,6 +335,13 @@ void protocolTask([[maybe_unused]] void *parameter)
 
         // maintain the firmware role
         firmwareRole.maintain();
+
+        // publish the router statistics of a router for the heartbeat
+        if (FirmwareSettings::RouterRun) {
+            const Router::RouterStatistics routerStatistics = deviceRole.getRouterStatistics();
+            [[maybe_unused]] const BaseType_t overwritten = xQueueOverwrite(routerStatisticsQueue,
+                                                                            &routerStatistics);
+        }
     }
 }
 
@@ -265,5 +373,29 @@ void heartbeatTask([[maybe_unused]] void *parameter)
                             esp32Platform.getFreeHeapSize(),
                             static_cast<uint32_t>(uxTaskGetStackHighWaterMark(protocolTaskHandle)));
         queueLog(Messages::LogLevelType::DEBUG, debugMessage.data());
+
+        // router statistics of a router must be published
+        Router::RouterStatistics routerStatistics;
+        if (!FirmwareSettings::RouterRun
+            || xQueuePeek(routerStatisticsQueue,
+                          &routerStatistics,
+                          pdMS_TO_TICKS(
+                              FirmwareSettings::ROUTER_STATISTICS_QUEUE_TIMEOUT_MSEC.count()))
+                   != pdTRUE) {
+            continue;
+        }
+
+        // notify the user
+        std::array<char, CommonSettings::LOG_LINE_SIZE> routerDebugMessage
+            = std::array<char, CommonSettings::LOG_LINE_SIZE>();
+        [[maybe_unused]] const int routerDebugMessageLength
+            = std::snprintf(routerDebugMessage.data(),
+                            routerDebugMessage.size(),
+                            "Heartbeat: forwarded %" PRIu32 ", expired %" PRIu32
+                            ", unreachable %" PRIu32,
+                            static_cast<uint32_t>(routerStatistics.forwardedFrameCounter),
+                            static_cast<uint32_t>(routerStatistics.expiredFrameCounter),
+                            static_cast<uint32_t>(routerStatistics.unreachableFrameCounter));
+        queueLog(Messages::LogLevelType::DEBUG, routerDebugMessage.data());
     }
 }
