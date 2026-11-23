@@ -177,6 +177,29 @@ TEST_CASE_METHOD(TestDefinitions,
 }
 
 TEST_CASE_METHOD(TestDefinitions,
+                 "Peer version type can be converted to string",
+                 "[Definitions][fromPeerVersionType]")
+{
+    REQUIRE(Definitions::fromPeerVersionType(Definitions::PeerVersionType::UNKNOWN) == "UNKNOWN");
+    REQUIRE(Definitions::fromPeerVersionType(Definitions::PeerVersionType::VERSION_1)
+            == "VERSION_1");
+    REQUIRE(Definitions::fromPeerVersionType(Definitions::PeerVersionType::VERSION_2)
+            == "VERSION_2");
+}
+
+TEST_CASE_METHOD(TestDefinitions,
+                 "Peer version type can be parsed from string",
+                 "[Definitions][toPeerVersionType]")
+{
+    REQUIRE(Definitions::toPeerVersionType("UNKNOWN") == Definitions::PeerVersionType::UNKNOWN);
+    REQUIRE(Definitions::toPeerVersionType("VERSION_1") == Definitions::PeerVersionType::VERSION_1);
+    REQUIRE(Definitions::toPeerVersionType("VERSION_2") == Definitions::PeerVersionType::VERSION_2);
+    REQUIRE(Definitions::toPeerVersionType("LOREM_IPSUM") == Definitions::PeerVersionType::UNKNOWN);
+    REQUIRE(Definitions::toPeerVersionType("version_1") == Definitions::PeerVersionType::UNKNOWN);
+    REQUIRE(Definitions::toPeerVersionType("VERSION_1 ") == Definitions::PeerVersionType::UNKNOWN);
+}
+
+TEST_CASE_METHOD(TestDefinitions,
                  "Frame flags can be checked in the value of a flags field",
                  "[Definitions][testFrameFlagSet]")
 {
