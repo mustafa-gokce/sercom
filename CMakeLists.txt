@@ -594,8 +594,8 @@ if (WIN32 AND CMAKE_HOST_WIN32 AND SERCOM_BUILD_BINARIES)
     )
 endif()
 
-# create fuzz executables (only with the fuzzer flags passed from outside)
-if (CMAKE_CXX_FLAGS MATCHES "fuzzer-no-link")
+# create fuzz executables (only in the main project with the fuzzer flags passed from outside)
+if (SERCOM_IS_MAIN_PROJECT AND CMAKE_CXX_FLAGS MATCHES "fuzzer-no-link")
     # create frame decoder fuzz executable
     add_executable(${PROJECT_NAME}_fuzz_frame_decoder
         fuzz/fuzz_FrameDecoder.cpp
@@ -751,7 +751,7 @@ if (SERCOM_IS_MAIN_PROJECT)
 endif()
 
 # check the compiler of the fuzz executables
-if (CMAKE_CXX_FLAGS MATCHES "fuzzer-no-link" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if (SERCOM_IS_MAIN_PROJECT AND CMAKE_CXX_FLAGS MATCHES "fuzzer-no-link" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "The fuzz executables need Clang")
 endif()
 
