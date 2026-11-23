@@ -9,6 +9,7 @@
 #include <QCoreApplication>
 
 #include "../../app/include/Messages.h"
+#include "../../core/include/Definitions.h"
 
 #include "../include/DeviceSimulator.h"
 #include "../include/HostSettings.h"
@@ -24,6 +25,9 @@ enum class OptionType : uint8_t {
     LOG_PERIOD = 3, // heartbeat log period
     HELP = 4,       // request of the usage text
     TRACE = 5,      // print of every frame on the serial port
+    ADDRESS = 6,    // address of the simulated node
+    DOWNSTREAM = 7, // serial port to the next node
+    PROXY = 8,      // address of a next node without an address
 };
 
 /*
@@ -54,6 +58,11 @@ void printUsage(std::string_view programName);
 [[nodiscard]] bool parseOption(const std::string &option,
                                const std::string &value,
                                sercom::DeviceSimulator::CommandLine &commandLine);
+
+/*
+ * Check that the router options come with an address, warn the user and get false otherwise.
+ */
+[[nodiscard]] bool checkRouterOptions(const sercom::DeviceSimulator::CommandLine &commandLine);
 
 /*
  * Parse the device name argument, warn the user and get false when it is too long.
@@ -112,6 +121,15 @@ std::string_view fromOptionType(const OptionType optionType)
     case OptionType::TRACE: {
         return {"--trace"};
     }
+    case OptionType::ADDRESS: {
+        return {"--address"};
+    }
+    case OptionType::DOWNSTREAM: {
+        return {"--downstream"};
+    }
+    case OptionType::PROXY: {
+        return {"--proxy"};
+    }
     case OptionType::UNKNOWN:
     default: {
         return {};
@@ -136,6 +154,15 @@ OptionType toOptionType(const std::string_view optionType)
     if (optionType == std::string_view("--trace")) {
         return OptionType::TRACE;
     }
+    if (optionType == std::string_view("--address")) {
+        return OptionType::ADDRESS;
+    }
+    if (optionType == std::string_view("--downstream")) {
+        return OptionType::DOWNSTREAM;
+    }
+    if (optionType == std::string_view("--proxy")) {
+        return OptionType::PROXY;
+    }
     return OptionType::UNKNOWN;
 }
 
@@ -147,6 +174,7 @@ void printUsage(const std::string_view programName)
     const std::string usage
         = std::string("Usage: ") + std::string(programName)
           + " <port> [--baud N] [--name NAME] [--log-period MILLISECONDS] [--trace]\n"
+            "       [--address N [--downstream PORT [--proxy N]]]\n"
             "Simulates the demo device on a serial port, a pseudo terminal or a virtual COM port.\n"
             "Port:\n"
             "  <port>                               device path such as /dev/ttyUSB0 on Linux,\n"
@@ -155,7 +183,10 @@ void printUsage(const std::string_view programName)
             "  --baud N                             baud rate of the serial port\n"
             "  --name NAME                          device name of the simulated device\n"
             "  --log-period MILLISECONDS            heartbeat log period, none by default\n"
-            "  --trace                              print every frame in both directions";
+            "  --trace                              print every frame in both directions\n"
+            "  --address N                          address 2 to 254 of the node in a daisy chain\n"
+            "  --downstream PORT                    serial port to the next node, a router\n"
+            "  --proxy N                            address of a next node without an address";
     HostUtils::printLine(usage);
 }
 
@@ -211,8 +242,8 @@ bool parseCommandLine(const int argc,
         index += 2;
     }
 
-    // command line parsed successfully
-    return true;
+    // router options must come with an address
+    return checkRouterOptions(commandLine);
 }
 
 bool parseOption(const std::string &option,
@@ -242,6 +273,22 @@ bool parseOption(const std::string &option,
                                                 commandLine.logPeriod);
     }
 
+    // parse the address option
+    case OptionType::ADDRESS: {
+        return HostUtils::parseAddressArgument(value, "address", commandLine.nodeAddress);
+    }
+
+    // take the downstream serial port option
+    case OptionType::DOWNSTREAM: {
+        commandLine.downstreamPortName = value;
+        return true;
+    }
+
+    // parse the proxy option
+    case OptionType::PROXY: {
+        return HostUtils::parseAddressArgument(value, "proxy", commandLine.proxyAddress);
+    }
+
     // reject an unknown option
     case OptionType::UNKNOWN:
     default: {
@@ -253,6 +300,29 @@ bool parseOption(const std::string &option,
         return false;
     }
     }
+}
+
+bool checkRouterOptions(const sercom::DeviceSimulator::CommandLine &commandLine)
+{
+    using namespace sercom;
+
+    // downstream and proxy options must come with the address option
+    const bool routerOptionsGiven = !commandLine.downstreamPortName.empty()
+                                    || commandLine.proxyAddress != Definitions::UNASSIGNED_ADDRESS;
+    if (routerOptionsGiven && commandLine.nodeAddress == Definitions::UNASSIGNED_ADDRESS) {
+        HostUtils::logWarning("The downstream and the proxy options need the address option");
+        return false;
+    }
+
+    // proxy option must come with the downstream option
+    if (commandLine.proxyAddress != Definitions::UNASSIGNED_ADDRESS
+        && commandLine.downstreamPortName.empty()) {
+        HostUtils::logWarning("The proxy option needs the downstream option");
+        return false;
+    }
+
+    // router options checked successfully
+    return true;
 }
 
 bool parseDeviceName(const std::string &deviceName,
