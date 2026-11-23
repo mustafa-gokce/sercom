@@ -17,7 +17,7 @@ import sys
 
 # directories of the own C++ sources, relative to the source directory
 SOURCE_DIRECTORIES = ('core', 'app', 'host', 'firmware/common/include', 'firmware/common/src', 'firmware/esp32/include',
-                      'firmware/esp32/src', 'tests', 'examples',
+                      'firmware/esp32/src', 'firmware/stm32f4/include', 'firmware/stm32f4/src', 'tests', 'examples',
                       'fuzz')
 
 # extensions of the C++ sources
