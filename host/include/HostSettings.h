@@ -41,6 +41,8 @@ constexpr std::chrono::milliseconds DURATION_ARGUMENT_UNIT_MSEC
     = 1 * 1000ms; // unit of a duration argument in milliseconds
 constexpr std::chrono::milliseconds DEFAULT_COMMAND_DURATION_MSEC
     = 5 * 1000ms; // default command duration in milliseconds
+constexpr std::chrono::milliseconds DEFAULT_DISCOVER_DURATION_MSEC
+    = 2 * 1000ms; // default wait for the answers of the discover command in milliseconds
 constexpr std::chrono::milliseconds MAXIMUM_COMMAND_DURATION_MSEC
     = 24 * 60 * 60 * 1000ms;                    // maximum command duration in milliseconds
 constexpr uint32_t MAXIMUM_PING_COUNT = 100000; // maximum ping requests of the ping command
