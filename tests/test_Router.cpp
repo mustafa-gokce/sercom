@@ -370,6 +370,27 @@ public:
     }
 
     /*
+     * Check a route failure report that the host received: its route and every field of its payload.
+     */
+    static void checkReport(const Frame::Frame &report,
+                            const uint8_t reportingNodeAddress,
+                            const std::vector<uint8_t> &expectedPayload)
+    {
+        // check the route of the report
+        CAPTURE(report.getMessageCounter());
+        REQUIRE(report.getMessageType() == Definitions::ROUTE_FAILURE_REPORT_MESSAGE_TYPE);
+        REQUIRE(report.getSourceAddress() == reportingNodeAddress);
+        REQUIRE(report.getDestinationAddress() == Definitions::HOST_ADDRESS);
+        REQUIRE_FALSE(report.getFlag(Definitions::FrameFlagType::ACK_REQUEST));
+
+        // check the payload of the report
+        const std::vector<uint8_t> payload(report.getPayload(),
+                                           report.getPayload() + report.getPayloadLength());
+        CAPTURE(payload);
+        REQUIRE(payload == expectedPayload);
+    }
+
+    /*
      * Create the routers of the chain with their addresses and the proxy address of the lower node.
      */
     void createRouters(const uint8_t upperNodeAddress,
@@ -963,6 +984,54 @@ TEST_CASE_METHOD(TestRouter,
 }
 
 TEST_CASE_METHOD(TestRouter,
+                 "A forwarded message that the next hop refuses as busy stays with the router",
+                 "[Router][testBusyForwardedMessage]")
+{
+    // let the host answer no frame of the upper node
+    hostTransport.setFilter(
+        []([[maybe_unused]] const size_t sendCount,
+           [[maybe_unused]] const std::vector<uint8_t> &data) noexcept { return false; });
+
+    // fill the window of the upper node towards the host with messages of the end node
+    const std::vector<uint8_t> payload = {0x40, 0x50};
+    for (size_t messageIndex = 0; messageIndex <= Settings::MaximumPendingFrames; ++messageIndex) {
+        CAPTURE(messageIndex);
+        REQUIRE(endRouter->sendMessage(Definitions::HOST_ADDRESS,
+                                       TestMessageType,
+                                       payload.data(),
+                                       payload.size(),
+                                       true,
+                                       messageCounter)
+                == Definitions::SendStatusType::SENT);
+        pump();
+    }
+
+    // check that the upper node refused the last message as busy and the lower node kept it
+    REQUIRE(getRejectionStatus(upperSecondaryTransport.getSentFrames().back())
+            == Definitions::MessageStatusType::BUSY);
+    REQUIRE(lowerRouter->getLinkStatistics(Definitions::PortType::PRIMARY).failedDeliveryCounter
+            == static_cast<uint64_t>(0));
+    REQUIRE(hostHandler.getMessages().size() == Settings::MaximumPendingFrames);
+
+    // let the host answer again and the retransmissions pass
+    hostTransport.setFilter(DataFilter());
+    const Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    for (uint8_t retransmission = 0; retransmission < linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        advance(linkConfiguration.retransmitTimeout);
+    }
+
+    // check that every message reached the host once without a failed forward or a report
+    REQUIRE(hostHandler.getMessages().size() == Settings::MaximumPendingFrames + 1);
+    REQUIRE(endHandler.getDeliveryResults().size() == Settings::MaximumPendingFrames + 1);
+    REQUIRE(endHandler.getMessages().empty());
+    REQUIRE(upperRouter->getStatistics().busyFrameCounter >= static_cast<uint64_t>(1));
+    REQUIRE(lowerRouter->getStatistics().failedForwardCounter == static_cast<uint64_t>(0));
+    REQUIRE(lowerRouter->getStatistics().outgoingReportCounter == static_cast<uint64_t>(0));
+}
+
+TEST_CASE_METHOD(TestRouter,
                  "A ring wiring is stopped by the own source rule and by the time to live",
                  "[Router][testRing]")
 {
@@ -1164,4 +1233,122 @@ TEST_CASE_METHOD(
     REQUIRE(lowerHandler.getMessages().size() == static_cast<size_t>(1));
     REQUIRE(lowerSecondaryTransport.getSentFrames().empty());
     REQUIRE(endHandler.getMessages().empty());
+}
+
+TEST_CASE_METHOD(TestRouter,
+                 "A failed forward is reported to the source with its quote on its arrival port",
+                 "[Router][testRouteFailureReports]")
+{
+    // send a message of the host to a missing node and one that the end node rejects
+    REQUIRE(sendHostMessage(MissingNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+    endHandler.setMessageStatusType(Definitions::MessageStatusType::INVALID_ARGUMENT);
+    REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+
+    // hand the upper node a message of the host that expires at the lower node
+    const std::vector<uint8_t> twoLinksFrame = getRoutedFrameData(0x11,
+                                                                  9,
+                                                                  Definitions::HOST_ADDRESS,
+                                                                  EndNodeAddress,
+                                                                  2);
+    upperRouter->onReceivedData(Definitions::PortType::PRIMARY,
+                                twoLinksFrame.data(),
+                                twoLinksFrame.size());
+    pump();
+
+    // check the three reports of the lower node and of the upper node
+    const std::vector<Frame::Frame> hostMessages = hostHandler.getMessages();
+    REQUIRE(hostMessages.size() == static_cast<size_t>(3));
+    checkReport(hostMessages.at(0),
+                LowerNodeAddress,
+                std::vector<uint8_t>(
+                    {MissingNodeAddress, 0x00, 0x01, 0x02, 0x06, 0x03, 0x10, 0x20, 0x30}));
+    checkReport(hostMessages.at(1),
+                LowerNodeAddress,
+                std::vector<uint8_t>(
+                    {EndNodeAddress, 0x00, 0x01, 0x02, 0x05, 0x03, 0x10, 0x20, 0x30}));
+    checkReport(hostMessages.at(2),
+                UpperNodeAddress,
+                std::vector<uint8_t>({EndNodeAddress, 0x00, 0x01, 0x02, 0x07, 0x02, 0x01, 0x02}));
+    REQUIRE(hostMessages.at(0).getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE - 1);
+
+    // check the counters of the reporting nodes
+    REQUIRE(lowerRouter->getStatistics().failedForwardCounter == static_cast<uint64_t>(2));
+    REQUIRE(lowerRouter->getStatistics().outgoingReportCounter == static_cast<uint64_t>(2));
+    REQUIRE(upperRouter->getStatistics().outgoingReportCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(TestRouter,
+                 "A forward that timed out is reported after the retransmissions of its hop",
+                 "[Router][testTimedOutForward]")
+{
+    // let the link from the lower node to the end node drop everything
+    lowerSecondaryTransport.setFilter(
+        []([[maybe_unused]] const size_t sendCount,
+           [[maybe_unused]] const std::vector<uint8_t> &data) noexcept { return false; });
+    REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+
+    // let every retransmission of the lower node time out
+    const Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    for (uint8_t retransmission = 0; retransmission <= linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        REQUIRE(hostHandler.getMessages().empty());
+        advance(linkConfiguration.retransmitTimeout);
+    }
+
+    // check the report of the timeout without a remote message status
+    const std::vector<Frame::Frame> hostMessages = hostHandler.getMessages();
+    REQUIRE(hostMessages.size() == static_cast<size_t>(1));
+    checkReport(hostMessages.at(0),
+                LowerNodeAddress,
+                std::vector<uint8_t>(
+                    {EndNodeAddress, 0x00, 0x01, 0x01, 0x00, 0x03, 0x10, 0x20, 0x30}));
+    REQUIRE(lowerRouter->getLinkStatistics(Definitions::PortType::SECONDARY).retransmissionCounter
+            == linkConfiguration.maximumRetransmissions);
+}
+
+TEST_CASE_METHOD(TestRouter,
+                 "No report is sent about a report, a broadcast or a fire and forget frame",
+                 "[Router][testNoReport]")
+{
+    // let the end node reject a broadcast of the host
+    endHandler.setMessageStatusType(Definitions::MessageStatusType::INVALID_ARGUMENT);
+    REQUIRE(sendHostMessage(Definitions::BROADCAST_ADDRESS) == Definitions::SendStatusType::SENT);
+    pump();
+
+    // send a fire and forget message of the host to a missing node
+    const std::vector<uint8_t> payload = {0x01};
+    REQUIRE(hostRouter->sendMessage(MissingNodeAddress,
+                                    TestMessageType,
+                                    payload.data(),
+                                    payload.size(),
+                                    false,
+                                    messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // hand the upper node an acknowledged report for a missing node
+    Frame::RouteHeader routeHeader;
+    routeHeader.sourceAddress = Definitions::HOST_ADDRESS;
+    routeHeader.destinationAddress = MissingNodeAddress;
+    routeHeader.timeToLive = Settings::DEFAULT_TIME_TO_LIVE;
+    const Frame::Frame reportFrame(0x11,
+                                   1,
+                                   Definitions::ROUTE_FAILURE_REPORT_MESSAGE_TYPE,
+                                   routeHeader,
+                                   payload.data(),
+                                   payload.size());
+    upperRouter->onReceivedData(Definitions::PortType::PRIMARY,
+                                reportFrame.getData(),
+                                reportFrame.getSize());
+    pump();
+
+    // check the failed forwards without a report
+    REQUIRE(hostHandler.getMessages().empty());
+    REQUIRE(lowerRouter->getStatistics().failedForwardCounter == static_cast<uint64_t>(2));
+    REQUIRE(lowerRouter->getStatistics().outgoingReportCounter == static_cast<uint64_t>(0));
+    REQUIRE(endRouter->getStatistics().unreachableFrameCounter == static_cast<uint64_t>(2));
 }
