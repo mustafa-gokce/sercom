@@ -46,6 +46,7 @@ because its messages travel over the link layer of example 18.
 | S12 | L79 (also L82, L91) | 22 | Trace a Conversation | The frame tracer of `sercom_cli --trace` prints every frame of a ping and a device info request in both directions | [guide](22_trace_a_conversation.md), [source](22_trace_a_conversation.cpp) |
 | S12 | L77, L78 (also L19, L20, L79, L89) | 24 | Serial Ping | Opens a serial port, waits for the device to boot, measures one ping and prints the round trip time | [guide](24_serial_ping.md), [source](24_serial_ping.cpp) |
 | S16 | L110 (also L109, L45) | 26 | Routed Frame | Builds the golden ping as a direct and as a routed frame side by side, forwards it with TTL 7 and fails a damaged TTL on the CRC32 | [guide](26_routed_frame.md), [source](26_routed_frame.cpp) |
+| S16 | L113, L112 (also L81) | 27 | Chain in One Process | The host, a router node 2 and node 3 in memory: discover, a ping and the info of node 3, a request failed as UNREACHABLE through a report and one as EXPIRED | [guide](27_chain_in_one_process.md), [source](27_chain_in_one_process.cpp) |
 
 ## Building the examples
 1. Open a terminal, on Windows PowerShell 7 with the path of the README.
