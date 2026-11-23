@@ -47,6 +47,21 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 4. Go to the source directory.
 5. Build every firmware environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller -e nucleo_f401re-router -e netduinoplus2-qemu-router`
 
+### As a dependency
+1. A CMake project of your own uses sercom as a library with CMake 3.16 or newer and a C++17 compiler; `sercom::settings` requires C++17 of every target that links it, also without `set(CMAKE_CXX_STANDARD 17)` in your project
+2. Add sercom as a git submodule and pin it to a tag: `git submodule add https://github.com/mustafa-gokce/sercom.git dep/sercom` and `git -C dep/sercom checkout <tag>`
+3. Add the submodule in the `CMakeLists.txt` of your project: `add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/dep/sercom)`
+4. Or fetch sercom at a tag without a submodule: `include(FetchContent)`, `FetchContent_Declare(sercom GIT_REPOSITORY https://github.com/mustafa-gokce/sercom.git GIT_TAG <tag> GIT_SHALLOW ON GIT_SUBMODULES "")` and `FetchContent_MakeAvailable(sercom)`
+5. Build a fetched sercom from a local checkout in place of the download: `-DFETCHCONTENT_SOURCE_DIR_SERCOM=<checkout>`
+6. Link `sercom::settings` and every library the target uses: `target_link_libraries(my_tool PRIVATE sercom::settings sercom::core sercom::app)`, the other libraries are `sercom::firmware` and `sercom::host`
+7. Include the headers by relative path, `"dep/sercom/app/include/DeviceClient.h"`, or through the include directory of `sercom::settings`, `"app/include/DeviceClient.h"`, the form for a fetched sercom.
+8. As a subproject sercom builds no tests, no programs and no host library and asks for no Qt; its libraries build with the flags of your project, without the warning flags of sercom.
+9. Turn on the host library with `set(SERCOM_BUILD_HOST ON)` before `add_subdirectory` or `FetchContent_MakeAvailable`; it needs Qt 5.12.12 on `CMAKE_PREFIX_PATH`, and a target that links `sercom::host` also links `Qt5::Core` and `Qt5::SerialPort`.
+10. The protocol limits `MAXIMUM_PAYLOAD_SIZE`, `MAXIMUM_PENDING_FRAMES` and `DEFAULT_DUPLICATE_HISTORY_SIZE` stay the `set()` lines of the `CMakeLists.txt` of sercom: they are the contract with the peer, so both ends build with the same values.
+11. sercom has no install step and no `find_package(sercom)`, a project takes it as a submodule or with `FetchContent`.
+12. Examples 28 and 29 are two such projects with their guides, [examples/README.md](examples/README.md) lists them under "Consumer projects".
+13. Build and run both against this checkout: `tools/run_consumers.sh build/sercom_device_sim`, on Windows `tools/run_consumers.ps1 build/sercom_device_sim.exe`
+
 ## Run tests
 ### Linux
 1. Open a terminal.
