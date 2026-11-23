@@ -15,6 +15,7 @@
 #include "../../../app/include/Messages.h"
 #include "../../common/include/CommonSettings.h"
 #include "../../common/include/Console.h"
+#include "../../common/include/ControllerRole.h"
 #include "../../common/include/DeviceRole.h"
 #include "../../common/include/FirmwareRole.h"
 
@@ -49,7 +50,14 @@ static sercom::Console::Console console(consolePort,
                                         stm32Clock,
                                         sercom::FirmwareSettings::ConsolePrinted);
 static sercom::DeviceRole::DeviceRole deviceRole(protocolPort, stm32Clock, stm32Platform, console);
-static sercom::FirmwareRole::FirmwareRole &firmwareRole = deviceRole;
+static sercom::ControllerRole::ControllerRole controllerRole(protocolPort,
+                                                             stm32Clock,
+                                                             stm32Platform,
+                                                             console);
+static sercom::FirmwareRole::FirmwareRole &firmwareRole
+    = sercom::FirmwareSettings::ControllerRun
+          ? static_cast<sercom::FirmwareRole::FirmwareRole &>(controllerRole)
+          : static_cast<sercom::FirmwareRole::FirmwareRole &>(deviceRole);
 
 int main()
 {
