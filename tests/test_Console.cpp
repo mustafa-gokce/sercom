@@ -14,6 +14,7 @@
 #include "../core/include/Definitions.h"
 #include "../core/include/Frame.h"
 #include "../core/include/FrameTracer.h"
+#include "../core/include/Settings.h"
 #include "../firmware/common/include/Console.h"
 #include "../firmware/common/include/ConsoleOutput.h"
 
@@ -250,6 +251,39 @@ TEST_CASE_METHOD(TestConsole,
                "len   4  E8 03 00 00  CRC ok\r\n"
                "[     1.234] << #7     ECHO_RESPONSE                ACK_REQUEST|RETRANSMISSION "
                "len  20  AB AB AB AB AB AB AB AB AB AB AB AB AB AB AB AB ..  CRC ok\r\n");
+}
+
+TEST_CASE_METHOD(TestConsole,
+                 "A traced routed frame is printed with its route like the host trace",
+                 "[Console][testTracedRoutedFrame]")
+{
+    // trace the golden routed ping request from the host to node 3
+    static constexpr uint16_t messageCounter = 7;
+    static constexpr uint8_t destinationAddress = 3;
+    const std::vector<uint8_t> pingPayload = {0xE8, 0x03, 0x00, 0x00};
+    Frame::RouteHeader routeHeader;
+    routeHeader.sourceAddress = Definitions::HOST_ADDRESS;
+    routeHeader.destinationAddress = destinationAddress;
+    routeHeader.timeToLive = Settings::DEFAULT_TIME_TO_LIVE;
+    const Frame::Frame routedFrame(static_cast<uint8_t>(
+                                       Definitions::fromFrameFlagType(
+                                           Definitions::FrameFlagType::ACK_REQUEST)
+                                       | Definitions::fromFrameFlagType(
+                                           Definitions::FrameFlagType::ROUTE_CAPABLE)),
+                                   messageCounter,
+                                   Messages::fromMessageType(Messages::MessageType::PING_REQUEST),
+                                   routeHeader,
+                                   pingPayload.data(),
+                                   pingPayload.size());
+    FrameTracer::FrameTracerHandler &frameTracerHandler = *console;
+    frameTracerHandler.onReceivedTracedFrame(FrameTracer::TraceDirectionType::HOST_TO_DEVICE,
+                                             routedFrame,
+                                             clock.getTime());
+
+    // check the flags and the route behind the CRC32 check
+    REQUIRE(consoleOutput.getText()
+            == "[     1.234] >> #7     PING_REQUEST                 ACK_REQUEST|ROUTE_CAPABLE  "
+               "len   4  E8 03 00 00  CRC ok  route 1>3 ttl 8\r\n");
 }
 
 TEST_CASE_METHOD(TestConsole,
