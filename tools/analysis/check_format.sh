@@ -5,7 +5,8 @@
 #
 # Check that every own C++ file equals the output of clang-format 18 with the house style file.
 #
-# The consumer projects in examples/ are checked too, the build directories inside them are skipped.
+# The consumer projects in examples/ are checked too, the PlatformIO consumer with its include and src directories.
+# The build directories inside them are skipped: build and build-* of CMake, .pio of PlatformIO like every hidden one.
 # The style file is tools/analysis/clang-format.yaml, other clang-format versions lay out differently.
 # Every file that differs is listed with its number of changed lines, --fix rewrites those files.
 #
@@ -49,7 +50,7 @@ if [[ ! "${version_text}" =~ version\ ${CLANG_FORMAT_VERSION}\. ]]; then
     exit 69
 fi
 
-# list the own C++ files without the build directories of the consumer projects
+# list the own C++ files without the build directories of the CMake and PlatformIO consumer projects
 cd "${SOURCE_DIRECTORY}"
 mapfile -t FILES < <(find core app host firmware/common/include firmware/common/src firmware/esp32/include \
     firmware/esp32/src firmware/stm32f4/include firmware/stm32f4/src tests examples fuzz \
