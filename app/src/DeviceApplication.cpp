@@ -11,10 +11,25 @@ DevicePlatform::~DevicePlatform() {}
 DeviceApplication::DeviceApplication(Transport::Transport &transport,
                                      const Clock::Clock &clock,
                                      DevicePlatform &devicePlatform,
-                                     const Link::LinkConfiguration &linkConfiguration)
+                                     const Link::LinkConfiguration &linkConfiguration,
+                                     const Router::RouterConfiguration &routerConfiguration)
+    : DeviceApplication(transport,
+                        nullptr,
+                        clock,
+                        devicePlatform,
+                        linkConfiguration,
+                        routerConfiguration)
+{}
+
+DeviceApplication::DeviceApplication(Transport::Transport &transport,
+                                     Transport::Transport *secondaryTransport,
+                                     const Clock::Clock &clock,
+                                     DevicePlatform &devicePlatform,
+                                     const Link::LinkConfiguration &linkConfiguration,
+                                     const Router::RouterConfiguration &routerConfiguration)
     : clock(clock)
     , devicePlatform(devicePlatform)
-    , link(transport, *this, clock, linkConfiguration)
+    , router(transport, secondaryTransport, *this, clock, linkConfiguration, routerConfiguration)
     , startTimestamp(clock.getTime())
     , telemetryPeriod(AppSettings::DEFAULT_TELEMETRY_PERIOD_MSEC)
     , lastTelemetryTimestamp(this->startTimestamp)
@@ -25,14 +40,20 @@ DeviceApplication::~DeviceApplication() {}
 
 void DeviceApplication::onReceivedData(const uint8_t *data, const size_t size)
 {
-    // hand the data to the link
-    this->link.onReceivedData(data, size);
+    // hand the data of the primary port to the router
+    this->router.onReceivedData(Definitions::PortType::PRIMARY, data, size);
+}
+
+void DeviceApplication::onReceivedSecondaryData(const uint8_t *data, const size_t size)
+{
+    // hand the data of the secondary port to the router
+    this->router.onReceivedData(Definitions::PortType::SECONDARY, data, size);
 }
 
 void DeviceApplication::maintain()
 {
-    // maintain the link
-    this->link.maintain();
+    // maintain the router
+    this->router.maintain();
 
     // telemetry must be on
     if (this->telemetryPeriod == 0ms) {
@@ -62,12 +83,13 @@ bool DeviceApplication::sendLogReportResponse(const Messages::LogLevelType logLe
     // log report response must be sent without acknowledgement
     uint16_t messageCounter = 0;
     const Definitions::SendStatusType sendStatusType
-        = this->link.sendMessage(Messages::fromMessageType(
-                                     Messages::MessageType::LOG_REPORT_RESPONSE),
-                                 logReportResponse.getPayload(),
-                                 logReportResponse.getPayloadLength(),
-                                 false,
-                                 messageCounter);
+        = this->router.sendMessage(Definitions::UNASSIGNED_ADDRESS,
+                                   Messages::fromMessageType(
+                                       Messages::MessageType::LOG_REPORT_RESPONSE),
+                                   logReportResponse.getPayload(),
+                                   logReportResponse.getPayloadLength(),
+                                   false,
+                                   messageCounter);
     if (sendStatusType != Definitions::SendStatusType::SENT) {
         return false;
     }
@@ -84,8 +106,20 @@ std::chrono::milliseconds DeviceApplication::getTelemetryPeriod() const
 
 Link::LinkStatistics DeviceApplication::getLinkStatistics() const
 {
-    // expose the link statistics
-    return this->link.getStatistics();
+    // expose the link statistics of the primary port
+    return this->router.getLinkStatistics(Definitions::PortType::PRIMARY);
+}
+
+Link::LinkStatistics DeviceApplication::getSecondaryLinkStatistics() const
+{
+    // expose the link statistics of the secondary port
+    return this->router.getLinkStatistics(Definitions::PortType::SECONDARY);
+}
+
+Router::RouterStatistics DeviceApplication::getRouterStatistics() const
+{
+    // expose the router statistics
+    return this->router.getStatistics();
 }
 
 Definitions::MessageStatusType DeviceApplication::onReceivedMessage(const Frame::Frame &frame)
@@ -122,6 +156,7 @@ Definitions::MessageStatusType DeviceApplication::onReceivedMessage(const Frame:
     case Messages::MessageType::DEVICE_INFO_RESPONSE:
     case Messages::MessageType::LOG_REPORT_RESPONSE:
     case Messages::MessageType::ECHO_RESPONSE:
+    case Messages::MessageType::ROUTE_FAILURE_REPORT_RESPONSE:
     case Messages::MessageType::SET_LED_RESPONSE:
     case Messages::MessageType::TELEMETRY_REPORT_RESPONSE:
     case Messages::MessageType::UNKNOWN:
@@ -265,7 +300,7 @@ bool DeviceApplication::getSendResponseAllowed(const Frame::Frame &frame) const
 {
     // expose whether the response can be sent now
     return !frame.getFlag(Definitions::FrameFlagType::ACK_REQUEST)
-           || this->link.getSendAcknowledgedAllowed();
+           || this->router.getSendAcknowledgedAllowed(Definitions::UNASSIGNED_ADDRESS);
 }
 
 Definitions::MessageStatusType DeviceApplication::sendResponse(
@@ -277,11 +312,12 @@ Definitions::MessageStatusType DeviceApplication::sendResponse(
     // response must be sent
     uint16_t messageCounter = 0;
     const Definitions::SendStatusType sendStatusType
-        = this->link.sendMessage(Messages::fromMessageType(messageType),
-                                 payload,
-                                 payloadLength,
-                                 frame.getFlag(Definitions::FrameFlagType::ACK_REQUEST),
-                                 messageCounter);
+        = this->router.sendMessage(Definitions::UNASSIGNED_ADDRESS,
+                                   Messages::fromMessageType(messageType),
+                                   payload,
+                                   payloadLength,
+                                   frame.getFlag(Definitions::FrameFlagType::ACK_REQUEST),
+                                   messageCounter);
     if (sendStatusType != Definitions::SendStatusType::SENT) {
         return Definitions::MessageStatusType::BUSY;
     }
@@ -305,12 +341,13 @@ void DeviceApplication::sendTelemetryReportResponse()
     // send the telemetry report response without acknowledgement
     uint16_t messageCounter = 0;
     [[maybe_unused]] const Definitions::SendStatusType sendStatusType
-        = this->link.sendMessage(Messages::fromMessageType(
-                                     Messages::MessageType::TELEMETRY_REPORT_RESPONSE),
-                                 telemetryReportResponse.getPayload(),
-                                 telemetryReportResponse.getPayloadLength(),
-                                 false,
-                                 messageCounter);
+        = this->router.sendMessage(Definitions::UNASSIGNED_ADDRESS,
+                                   Messages::fromMessageType(
+                                       Messages::MessageType::TELEMETRY_REPORT_RESPONSE),
+                                   telemetryReportResponse.getPayload(),
+                                   telemetryReportResponse.getPayloadLength(),
+                                   false,
+                                   messageCounter);
 }
 
 std::chrono::milliseconds DeviceApplication::getUptime() const

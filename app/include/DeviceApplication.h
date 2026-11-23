@@ -10,6 +10,7 @@
 #include "../../core/include/Definitions.h"
 #include "../../core/include/Frame.h"
 #include "../../core/include/Link.h"
+#include "../../core/include/Router.h"
 #include "../../core/include/Transport.h"
 
 #include "../include/Messages.h"
@@ -65,12 +66,20 @@ class DeviceApplication final : public Link::LinkHandler
 public:
     /*
      * Device side of the demo protocol, shared by the firmware and the device simulator.
+     * The constructor with a secondary transport makes the device a router, a null one an end node.
      */
     explicit DeviceApplication(
         Transport::Transport &transport,
         const Clock::Clock &clock,
         DevicePlatform &devicePlatform,
-        const Link::LinkConfiguration &linkConfiguration = Link::LinkConfiguration());
+        const Link::LinkConfiguration &linkConfiguration = Link::LinkConfiguration(),
+        const Router::RouterConfiguration &routerConfiguration = Router::RouterConfiguration());
+    explicit DeviceApplication(Transport::Transport &transport,
+                               Transport::Transport *secondaryTransport,
+                               const Clock::Clock &clock,
+                               DevicePlatform &devicePlatform,
+                               const Link::LinkConfiguration &linkConfiguration,
+                               const Router::RouterConfiguration &routerConfiguration);
     ~DeviceApplication() final;
 
     // delete copy constructor and copy assignment operator
@@ -83,12 +92,17 @@ public:
 
 public:
     /*
-     * Listen for received data and hand it to the link.
+     * Listen for received data of the primary port and hand it to the router.
      */
     void onReceivedData(const uint8_t *data, size_t size);
 
     /*
-     * Maintain the link and send the telemetry report response when it is due.
+     * Listen for received data of the secondary port and hand it to the router.
+     */
+    void onReceivedSecondaryData(const uint8_t *data, size_t size);
+
+    /*
+     * Maintain the router and send the telemetry report response when it is due.
      */
     void maintain();
 
@@ -107,9 +121,19 @@ public:
     [[nodiscard]] std::chrono::milliseconds getTelemetryPeriod() const;
 
     /*
-     * Get the link statistics.
+     * Get the link statistics of the primary port.
      */
     [[nodiscard]] Link::LinkStatistics getLinkStatistics() const;
+
+    /*
+     * Get the link statistics of the secondary port.
+     */
+    [[nodiscard]] Link::LinkStatistics getSecondaryLinkStatistics() const;
+
+    /*
+     * Get the router statistics.
+     */
+    [[nodiscard]] Router::RouterStatistics getRouterStatistics() const;
 
 private:
     /*
@@ -186,7 +210,7 @@ private:
 private:
     const Clock::Clock &clock;                        // reference for clock
     DevicePlatform &devicePlatform;                   // reference for device platform
-    Link::Link link;                                  // link to the host
+    Router::Router router;                            // network layer towards the host and below
     const std::chrono::milliseconds startTimestamp;   // time of the construction
     std::chrono::milliseconds telemetryPeriod;        // period of the telemetry report responses
     std::chrono::milliseconds lastTelemetryTimestamp; // time of the last telemetry report response
