@@ -38,13 +38,14 @@ enum class MessageType : uint16_t {
     UNKNOWN = 0x0000, // unknown message type
 
     // system messages
-    PING_REQUEST = 0x0001,         // host asks for a ping response
-    PING_RESPONSE = 0x0002,        // device answers a ping request
-    DEVICE_INFO_REQUEST = 0x0003,  // host asks for the device information
-    DEVICE_INFO_RESPONSE = 0x0004, // device answers with its information
-    LOG_REPORT_RESPONSE = 0x0005,  // device reports a log line
-    ECHO_REQUEST = 0x0006,         // host sends bytes to echo
-    ECHO_RESPONSE = 0x0007,        // device sends the bytes back
+    PING_REQUEST = 0x0001,                  // host asks for a ping response
+    PING_RESPONSE = 0x0002,                 // device answers a ping request
+    DEVICE_INFO_REQUEST = 0x0003,           // host asks for the device information
+    DEVICE_INFO_RESPONSE = 0x0004,          // device answers with its information
+    LOG_REPORT_RESPONSE = 0x0005,           // device reports a log line
+    ECHO_REQUEST = 0x0006,                  // host sends bytes to echo
+    ECHO_RESPONSE = 0x0007,                 // device sends the bytes back
+    ROUTE_FAILURE_REPORT_RESPONSE = 0x0008, // node reports a frame it could not pass on
 
     // application messages
     SET_LED_REQUEST = 0x0100,              // host switches the LED
@@ -352,6 +353,68 @@ public:
     EchoResponse &operator=(EchoResponse &&) = default;
 };
 
+class RouteFailureReportResponse final : public GenericMessage
+{
+public:
+    /*
+     * Route failure report response of a node whose next hop failed a frame that it passed on.
+     * It names the destination and the message type of the frame and quotes its first payload bytes.
+     * A quote above the maximum quote size leaves the response empty.
+     */
+    explicit RouteFailureReportResponse(uint8_t destinationAddress,
+                                        uint16_t messageType,
+                                        Definitions::DeliveryFailureType deliveryFailureType,
+                                        Definitions::MessageStatusType messageStatusType,
+                                        const uint8_t *quote,
+                                        size_t quoteLength);
+    explicit RouteFailureReportResponse(const Frame::Frame &frame);
+    ~RouteFailureReportResponse() = default;
+
+    // default copy constructor and copy assignment operator
+    RouteFailureReportResponse(const RouteFailureReportResponse &) = default;
+    RouteFailureReportResponse &operator=(const RouteFailureReportResponse &) = default;
+
+    // default move constructor and move assignment operator
+    RouteFailureReportResponse(RouteFailureReportResponse &&) = default;
+    RouteFailureReportResponse &operator=(RouteFailureReportResponse &&) = default;
+
+public:
+    /*
+     * Get the destination address of the failed frame.
+     */
+    [[nodiscard]] uint8_t getDestinationAddress() const;
+
+    /*
+     * Get the message type of the failed frame.
+     */
+    [[nodiscard]] uint16_t getMessageType() const;
+
+    /*
+     * Get the delivery failure type of the failed frame.
+     */
+    [[nodiscard]] Definitions::DeliveryFailureType getDeliveryFailureType() const;
+
+    /*
+     * Get the message status of the NACK of the next hop, unknown after a timeout.
+     */
+    [[nodiscard]] Definitions::MessageStatusType getMessageStatusType() const;
+
+    /*
+     * Get the first quoted payload byte of the failed frame.
+     */
+    [[nodiscard]] const uint8_t *getQuote() const;
+
+    /*
+     * Get the number of quoted payload bytes.
+     */
+    [[nodiscard]] size_t getQuoteLength() const;
+
+    /*
+     * Get whether the payload holds every field and the whole quote.
+     */
+    [[nodiscard]] bool getLikelyValid() const;
+};
+
 class SetLedRequest final : public GenericMessage
 {
 public:
@@ -497,5 +560,8 @@ public:
 static_assert(sercom::Messages::TELEMETRY_REPORT_RESPONSE_SIZE
                   <= sercom::Settings::MaximumPayloadSize,
               "Telemetry report response must fit into a payload");
+static_assert(static_cast<uint16_t>(sercom::Messages::MessageType::ROUTE_FAILURE_REPORT_RESPONSE)
+                  == sercom::Definitions::ROUTE_FAILURE_REPORT_MESSAGE_TYPE,
+              "Route failure report response must have the message type of the router");
 
 #endif // SERCOM_MESSAGES_H

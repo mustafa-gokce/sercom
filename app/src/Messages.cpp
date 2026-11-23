@@ -37,6 +37,9 @@ MessageType toMessageType(const uint16_t messageType)
     case MessageType::ECHO_RESPONSE: {
         return MessageType::ECHO_RESPONSE;
     }
+    case MessageType::ROUTE_FAILURE_REPORT_RESPONSE: {
+        return MessageType::ROUTE_FAILURE_REPORT_RESPONSE;
+    }
     case MessageType::SET_LED_REQUEST: {
         return MessageType::SET_LED_REQUEST;
     }
@@ -100,6 +103,9 @@ std::string_view getMessageTypeText(const MessageType messageType)
     }
     case MessageType::ECHO_RESPONSE: {
         return {"ECHO_RESPONSE"};
+    }
+    case MessageType::ROUTE_FAILURE_REPORT_RESPONSE: {
+        return {"ROUTE_FAILURE_REPORT_RESPONSE"};
     }
     case MessageType::SET_LED_REQUEST: {
         return {"SET_LED_REQUEST"};
@@ -455,6 +461,134 @@ EchoResponse::EchoResponse(const uint8_t *data, const size_t size)
 EchoResponse::EchoResponse(const Frame::Frame &frame)
     : GenericMessage(frame)
 {}
+
+RouteFailureReportResponse::RouteFailureReportResponse(
+    const uint8_t destinationAddress,
+    const uint16_t messageType,
+    const Definitions::DeliveryFailureType deliveryFailureType,
+    const Definitions::MessageStatusType messageStatusType,
+    const uint8_t *quote,
+    const size_t quoteLength)
+{
+    // quote must not exceed the maximum quote size
+    if (quoteLength > Definitions::MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE) {
+        return;
+    }
+
+    // quote must exist when it is not empty
+    if (quoteLength > 0 && quote == nullptr) {
+        return;
+    }
+
+    // write every field and the quote
+    ByteCodec::ByteWriter byteWriter(this->payload.data(), this->payload.size());
+    byteWriter.writeUint8(destinationAddress);
+    byteWriter.writeUint16(messageType);
+    byteWriter.writeUint8(static_cast<uint8_t>(deliveryFailureType));
+    byteWriter.writeUint8(Definitions::fromMessageStatusType(messageStatusType));
+    byteWriter.writeUint8(static_cast<uint8_t>(quoteLength));
+    byteWriter.writeBytes(quote, quoteLength);
+
+    // keep the payload length
+    this->payloadLength = byteWriter.getSize();
+}
+
+RouteFailureReportResponse::RouteFailureReportResponse(const Frame::Frame &frame)
+    : GenericMessage(frame)
+{}
+
+uint8_t RouteFailureReportResponse::getDestinationAddress() const
+{
+    // payload must hold every field
+    if (this->payloadLength < Definitions::ROUTE_FAILURE_REPORT_SIZE) {
+        return Definitions::UNASSIGNED_ADDRESS;
+    }
+
+    // expose the destination address
+    return this->payload[0];
+}
+
+uint16_t RouteFailureReportResponse::getMessageType() const
+{
+    // payload must hold every field
+    if (this->payloadLength < Definitions::ROUTE_FAILURE_REPORT_SIZE) {
+        return 0;
+    }
+
+    // expose the message type
+    return ByteCodec::loadUint16(this->payload.data() + 1);
+}
+
+Definitions::DeliveryFailureType RouteFailureReportResponse::getDeliveryFailureType() const
+{
+    // payload must hold every field
+    if (this->payloadLength < Definitions::ROUTE_FAILURE_REPORT_SIZE) {
+        return Definitions::DeliveryFailureType::UNKNOWN;
+    }
+
+    // expose a known delivery failure type
+    switch (static_cast<Definitions::DeliveryFailureType>(this->payload[3])) {
+    case Definitions::DeliveryFailureType::TIMED_OUT: {
+        return Definitions::DeliveryFailureType::TIMED_OUT;
+    }
+    case Definitions::DeliveryFailureType::REJECTED: {
+        return Definitions::DeliveryFailureType::REJECTED;
+    }
+    case Definitions::DeliveryFailureType::UNKNOWN:
+    default: {
+        return Definitions::DeliveryFailureType::UNKNOWN;
+    }
+    }
+}
+
+Definitions::MessageStatusType RouteFailureReportResponse::getMessageStatusType() const
+{
+    // payload must hold every field
+    if (this->payloadLength < Definitions::ROUTE_FAILURE_REPORT_SIZE) {
+        return Definitions::MessageStatusType::UNKNOWN;
+    }
+
+    // expose the message status
+    return Definitions::toMessageStatusType(this->payload[4]);
+}
+
+const uint8_t *RouteFailureReportResponse::getQuote() const
+{
+    // expose the quote behind the fixed fields
+    return this->payload.data() + Definitions::ROUTE_FAILURE_REPORT_SIZE;
+}
+
+size_t RouteFailureReportResponse::getQuoteLength() const
+{
+    // payload must hold the whole quote
+    if (!this->getLikelyValid()) {
+        return 0;
+    }
+
+    // expose the quote length
+    return this->payload[5];
+}
+
+bool RouteFailureReportResponse::getLikelyValid() const
+{
+    // payload must hold every field
+    if (this->payloadLength < Definitions::ROUTE_FAILURE_REPORT_SIZE) {
+        return false;
+    }
+
+    // quote must not exceed the maximum quote size
+    if (this->payload[5] > Definitions::MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE) {
+        return false;
+    }
+
+    // payload must hold the whole quote
+    if (this->payloadLength < Definitions::ROUTE_FAILURE_REPORT_SIZE + this->payload[5]) {
+        return false;
+    }
+
+    // passed basic checks
+    return true;
+}
 
 SetLedRequest::SetLedRequest(const bool ledOn)
 {
