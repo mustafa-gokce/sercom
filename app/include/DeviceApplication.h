@@ -107,7 +107,7 @@ public:
     void maintain();
 
     /*
-     * Send a log report response without acknowledgement.
+     * Send a log report response without acknowledgement to the source of the latest request.
      * A lost log line costs less than a window full of acknowledged messages.
      * A text above the maximum log text length is not sent.
      */
@@ -189,7 +189,7 @@ private:
     [[nodiscard]] bool getSendResponseAllowed(const Frame::Frame &frame) const;
 
     /*
-     * Send a response, acknowledged when its request frame asks for an acknowledgement.
+     * Send a response to the source of its request frame, acknowledged when the request was.
      */
     [[nodiscard]] Definitions::MessageStatusType sendResponse(const Frame::Frame &frame,
                                                               Messages::MessageType messageType,
@@ -197,7 +197,7 @@ private:
                                                               size_t payloadLength);
 
     /*
-     * Send a telemetry report response without acknowledgement.
+     * Send a telemetry report response without acknowledgement to the source of the latest request.
      * The next telemetry report response replaces a lost one.
      */
     void sendTelemetryReportResponse();
@@ -215,6 +215,7 @@ private:
     std::chrono::milliseconds telemetryPeriod;        // period of the telemetry report responses
     std::chrono::milliseconds lastTelemetryTimestamp; // time of the last telemetry report response
     uint16_t telemetrySequence; // sequence of the next telemetry report response
+    uint8_t reportAddress;      // destination of the log and telemetry report responses
 };
 
 } // namespace sercom::DeviceApplication

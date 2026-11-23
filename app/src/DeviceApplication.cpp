@@ -34,6 +34,9 @@ DeviceApplication::DeviceApplication(Transport::Transport &transport,
     , telemetryPeriod(AppSettings::DEFAULT_TELEMETRY_PERIOD_MSEC)
     , lastTelemetryTimestamp(this->startTimestamp)
     , telemetrySequence(0)
+    , reportAddress(routerConfiguration.nodeAddress == Definitions::UNASSIGNED_ADDRESS
+                        ? Definitions::UNASSIGNED_ADDRESS
+                        : Definitions::HOST_ADDRESS)
 {}
 
 DeviceApplication::~DeviceApplication() {}
@@ -83,7 +86,7 @@ bool DeviceApplication::sendLogReportResponse(const Messages::LogLevelType logLe
     // log report response must be sent without acknowledgement
     uint16_t messageCounter = 0;
     const Definitions::SendStatusType sendStatusType
-        = this->router.sendMessage(Definitions::UNASSIGNED_ADDRESS,
+        = this->router.sendMessage(this->reportAddress,
                                    Messages::fromMessageType(
                                        Messages::MessageType::LOG_REPORT_RESPONSE),
                                    logReportResponse.getPayload(),
@@ -124,6 +127,9 @@ Router::RouterStatistics DeviceApplication::getRouterStatistics() const
 
 Definitions::MessageStatusType DeviceApplication::onReceivedMessage(const Frame::Frame &frame)
 {
+    // send the reports to the source of the latest request
+    this->reportAddress = frame.getSourceAddress();
+
     // handle the message by its message type
     switch (Messages::toMessageType(frame.getMessageType())) {
     // handle a ping request
@@ -207,12 +213,22 @@ Definitions::MessageStatusType DeviceApplication::handleDeviceInfoRequest(const 
         return Definitions::MessageStatusType::BUSY;
     }
 
-    // device info response must hold the whole device name
-    const Messages::DeviceInfoResponse deviceInfoResponse(AppSettings::AppVersionMajor,
-                                                          AppSettings::AppVersionMinor,
-                                                          this->getUptime(),
-                                                          this->devicePlatform.getFreeHeapSize(),
-                                                          this->devicePlatform.getDeviceName());
+    // device info response must hold the whole device name, a node with an address appends its own
+    const uint8_t nodeAddress = this->router.getNodeAddress();
+    const Messages::DeviceInfoResponse deviceInfoResponse
+        = nodeAddress == Definitions::UNASSIGNED_ADDRESS
+              ? Messages::DeviceInfoResponse(AppSettings::AppVersionMajor,
+                                             AppSettings::AppVersionMinor,
+                                             this->getUptime(),
+                                             this->devicePlatform.getFreeHeapSize(),
+                                             this->devicePlatform.getDeviceName())
+              : Messages::DeviceInfoResponse(AppSettings::AppVersionMajor,
+                                             AppSettings::AppVersionMinor,
+                                             this->getUptime(),
+                                             this->devicePlatform.getFreeHeapSize(),
+                                             this->devicePlatform.getDeviceName(),
+                                             Definitions::ROUTED_PROTOCOL_VERSION,
+                                             nodeAddress);
     if (!deviceInfoResponse.getLikelyValid()) {
         return Definitions::MessageStatusType::UNKNOWN;
     }
@@ -300,7 +316,7 @@ bool DeviceApplication::getSendResponseAllowed(const Frame::Frame &frame) const
 {
     // expose whether the response can be sent now
     return !frame.getFlag(Definitions::FrameFlagType::ACK_REQUEST)
-           || this->router.getSendAcknowledgedAllowed(Definitions::UNASSIGNED_ADDRESS);
+           || this->router.getSendAcknowledgedAllowed(frame.getSourceAddress());
 }
 
 Definitions::MessageStatusType DeviceApplication::sendResponse(
@@ -312,7 +328,7 @@ Definitions::MessageStatusType DeviceApplication::sendResponse(
     // response must be sent
     uint16_t messageCounter = 0;
     const Definitions::SendStatusType sendStatusType
-        = this->router.sendMessage(Definitions::UNASSIGNED_ADDRESS,
+        = this->router.sendMessage(frame.getSourceAddress(),
                                    Messages::fromMessageType(messageType),
                                    payload,
                                    payloadLength,
@@ -341,7 +357,7 @@ void DeviceApplication::sendTelemetryReportResponse()
     // send the telemetry report response without acknowledgement
     uint16_t messageCounter = 0;
     [[maybe_unused]] const Definitions::SendStatusType sendStatusType
-        = this->router.sendMessage(Definitions::UNASSIGNED_ADDRESS,
+        = this->router.sendMessage(this->reportAddress,
                                    Messages::fromMessageType(
                                        Messages::MessageType::TELEMETRY_REPORT_RESPONSE),
                                    telemetryReportResponse.getPayload(),
