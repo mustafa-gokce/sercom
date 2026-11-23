@@ -51,11 +51,27 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 1. Open a terminal.
 2. Go to the build directory.
 3. `./sercom_test --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
+4. Go to the source directory.
+5. Point the helper scripts at Qt 5.12.12: `export CMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64`
+6. Run the tests with a 64 byte payload limit: `tools/run_small_limit_test.sh`
+7. Run the Python reference self test: `python3 tools/sercom_frame.py self-test`
+8. Run the end to end test over a noisy virtual link: `tests/e2e/noisy_link_test.sh build/sercom_cli build/sercom_device_sim`
+9. Run every example of the build directory, examples 01 and 24 over socat pseudo terminals: `tools/run_examples.sh build`
+10. Compare the version numbers of the build files: `python3 tools/check_versions.py`
+11. Install Clang, clang-format 18 and clang-tidy 18 (the versions of Ubuntu 24.04): `sudo apt install clang clang-format clang-tidy`
+12. Build and install cppcheck 2.22 into `~/.local/cppcheck-2.22.0`: `tools/analysis/install_cppcheck.sh`
+13. Run the layout, comment, idiom, cppcheck and clang-tidy gates: `CPPCHECK=~/.local/cppcheck-2.22.0/bin/cppcheck tools/run_static_analysis.sh build`
+14. Run the tests with AddressSanitizer and UndefinedBehaviorSanitizer in `build-sanitizers`: `tools/run_sanitizer_test.sh`
+15. Fuzz the frame decoder and the link layer for one minute each in `build-fuzz`: `fuzz/run_fuzzers.sh`
 
 ### Windows
 1. Open PowerShell 7 with the path of the build steps.
 2. Go to the build directory.
 3. `./sercom_test.exe --order decl --reporter JUnit::out=test_results_junit.xml --reporter xml::out=test_results.xml --reporter console`
+4. Go to the source directory.
+5. Run the Python reference self test: `python tools/sercom_frame.py self-test`
+6. Run every example of the build directory, examples 01 and 24 on the com0com pair `COM10` and `COM11` of [tools/COM0COM.md](tools/COM0COM.md): `tools/run_examples.ps1 build`
+7. Run the end to end test over a noisy link of the com0com pairs `COM10` to `COM13`: `tests/e2e/noisy_link_test.ps1 build/sercom_cli.exe build/sercom_device_sim.exe`
 
 ### ESP32
 1. Build the firmware as above, the protocol code is tested on Linux and Windows.
