@@ -696,8 +696,8 @@ public:
 
 ## 20. Consumer projects
 
-- A consumer project is a CMake project of its own in a directory of `examples/`, outside
-  the main build: `examples/28_consume_with_add_subdirectory` and
+- A consumer project is a project of its own in a directory of `examples/`, outside the main
+  build. The CMake consumer projects are `examples/28_consume_with_add_subdirectory` and
   `examples/29_consume_with_fetch_content`. Each one holds a `CMakeLists.txt` and one source
   file named like its directory, with its guide next to the directory.
 - Its C++ file follows this document and its `CMakeLists.txt` section 15: the values to change
@@ -721,5 +721,17 @@ public:
   compile command of either project holds `-Werror` or `-Wold-style-cast`, which would mean
   that sercom passed its own flags on. It also builds the source of example 28 in a consumer
   without a C++ standard of its own, which needs the `cxx_std_17` of the settings target.
+- `examples/30_consume_with_platformio` is the PlatformIO consumer project, an ESP32 firmware
+  of its own: `platformio.ini`, the header/source pairs `ConsumerPort` and `ConsumerPlatform`
+  and `main` in `include/` and `src/`, with its guide next to the directory. Its
+  `platformio.ini` keeps the flags of the firmware projects, `-std=gnu++17` and the house
+  `build_src_flags` for its own sources, and takes sercom only through the three `symlink://`
+  lines of `lib_deps`, the pre script `firmware/common/build_settings.py` and the option
+  `custom_sercom_directory`, so its protocol limits come from the `CMakeLists.txt` of sercom.
+- Its sources follow the firmware rules of this document and keep the three exceptions of
+  every firmware source, which `check_style.py` gives them through one pattern,
+  `FIRMWARE_SOURCES`: output outside the log functions (R-129), C arrays of a literal size
+  (R-083) and one log line formatted with `snprintf` into a local buffer (R-131).
 - `tools/analysis/check_format.sh` and `tools/analysis/check_style.py` check the consumer
-  projects, their `CMakeLists.txt` included, and skip the `build` directories inside them.
+  projects, their `CMakeLists.txt` included, and skip the `build` directories inside them and
+  the hidden `.pio` directory of example 30.
