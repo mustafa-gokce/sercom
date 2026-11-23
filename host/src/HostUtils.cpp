@@ -388,6 +388,12 @@ std::string_view getMessageStatusTypeText(const Definitions::MessageStatusType m
     case Definitions::MessageStatusType::INVALID_ARGUMENT: {
         return {"INVALID_ARGUMENT"};
     }
+    case Definitions::MessageStatusType::UNREACHABLE: {
+        return {"UNREACHABLE"};
+    }
+    case Definitions::MessageStatusType::EXPIRED: {
+        return {"EXPIRED"};
+    }
     case Definitions::MessageStatusType::UNKNOWN:
     default: {
         return {"UNKNOWN"};
