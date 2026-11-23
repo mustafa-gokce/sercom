@@ -37,13 +37,14 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 3. Check that PlatformIO runs: `pio --version`; when PowerShell does not find `pio` on Windows, put the `Scripts` directory that pip names in its warning on the path or call `python -m platformio` in place of `pio`
 4. Go to the source directory.
 5. Build both firmware environments: `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console`
+6. Build the controller firmware: `pio run -d firmware/esp32 -e esp32dev-controller`
 
 ### STM32F4
 1. Open a terminal, on Windows PowerShell 7.
 2. Install PlatformIO: `pip install platformio`
 3. Check that PlatformIO runs: `pio --version`; when PowerShell does not find `pio` on Windows, put the `Scripts` directory that pip names in its warning on the path or call `python -m platformio` in place of `pio`
 4. Go to the source directory.
-5. Build every firmware environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e netduinoplus2-qemu`
+5. Build every firmware environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller`
 
 ## Run tests
 ### Linux
