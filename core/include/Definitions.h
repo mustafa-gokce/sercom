@@ -39,6 +39,10 @@ constexpr uint8_t MINIMUM_NODE_ADDRESS = 0x02; // lowest address of a node
 constexpr uint8_t MAXIMUM_NODE_ADDRESS = 0xFE; // highest address of a node
 constexpr uint8_t BROADCAST_ADDRESS = 0xFF;    // address of every node of a chain
 
+constexpr uint16_t ROUTE_FAILURE_REPORT_MESSAGE_TYPE = 0x0008; // route failure report type
+constexpr size_t ROUTE_FAILURE_REPORT_SIZE = 6;                // fixed report size in bytes
+constexpr size_t MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE = 8;         // longest quote of a report in bytes
+
 constexpr uint32_t CRC32_POLYNOMIAL = 0xEDB88320U;      // reflected polynomial of CRC-32/ISO-HDLC
 constexpr uint32_t CRC32_INITIAL_VALUE = 0xFFFFFFFFU;   // CRC32 register before the first byte
 constexpr uint32_t CRC32_FINAL_XOR_VALUE = 0xFFFFFFFFU; // value XORed into the CRC32 register
@@ -95,6 +99,8 @@ enum class MessageStatusType : uint8_t {
     MALFORMED_PAYLOAD = 3,        // payload does not match the message type
     BUSY = 4,                     // receiver cannot handle the message now
     INVALID_ARGUMENT = 5,         // field of the payload is out of range
+    UNREACHABLE = 6,              // receiver cannot pass the frame on to its destination
+    EXPIRED = 7,                  // time to live of the frame ran out
 };
 
 /*
@@ -117,6 +123,7 @@ enum class SendStatusType : uint8_t {
     PAYLOAD_TOO_LONG = 3, // payload is above the limit of this build
     TRANSPORT_ERROR = 4,  // transport could not write the frame
     INVALID_ARGUMENT = 5, // argument is missing or does not fit into its message field
+    NO_ROUTE = 6,         // destination cannot be reached from this node
 };
 
 /*
@@ -166,6 +173,25 @@ std::string_view fromPeerVersionType(PeerVersionType peerVersionType);
  * String to peer version type.
  */
 PeerVersionType toPeerVersionType(std::string_view peerVersionType);
+
+/*
+ * Port type.
+ */
+enum class PortType : uint8_t {
+    UNKNOWN = 0,   // unknown port
+    PRIMARY = 1,   // port towards the host
+    SECONDARY = 2, // port away from the host
+};
+
+/*
+ * Port type to string.
+ */
+std::string_view fromPortType(PortType portType);
+
+/*
+ * String to port type.
+ */
+PortType toPortType(std::string_view portType);
 
 /*
  * Check whether a flag is set in the value of a FLAGS field.

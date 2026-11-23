@@ -74,6 +74,12 @@ MessageStatusType toMessageStatusType(const uint8_t messageStatusType)
     case MessageStatusType::INVALID_ARGUMENT: {
         return MessageStatusType::INVALID_ARGUMENT;
     }
+    case MessageStatusType::UNREACHABLE: {
+        return MessageStatusType::UNREACHABLE;
+    }
+    case MessageStatusType::EXPIRED: {
+        return MessageStatusType::EXPIRED;
+    }
     case MessageStatusType::UNKNOWN:
     default: {
         return MessageStatusType::UNKNOWN;
@@ -99,6 +105,9 @@ std::string_view fromSendStatusType(const SendStatusType sendStatusType)
     case SendStatusType::INVALID_ARGUMENT: {
         return {"INVALID_ARGUMENT"};
     }
+    case SendStatusType::NO_ROUTE: {
+        return {"NO_ROUTE"};
+    }
     case SendStatusType::UNKNOWN:
     default: {
         return {"UNKNOWN"};
@@ -122,6 +131,9 @@ SendStatusType toSendStatusType(const std::string_view sendStatusType)
     }
     if (sendStatusType == std::string_view("INVALID_ARGUMENT")) {
         return SendStatusType::INVALID_ARGUMENT;
+    }
+    if (sendStatusType == std::string_view("NO_ROUTE")) {
+        return SendStatusType::NO_ROUTE;
     }
     return SendStatusType::UNKNOWN;
 }
@@ -178,6 +190,33 @@ PeerVersionType toPeerVersionType(const std::string_view peerVersionType)
         return PeerVersionType::VERSION_2;
     }
     return PeerVersionType::UNKNOWN;
+}
+
+std::string_view fromPortType(const PortType portType)
+{
+    switch (portType) {
+    case PortType::PRIMARY: {
+        return {"PRIMARY"};
+    }
+    case PortType::SECONDARY: {
+        return {"SECONDARY"};
+    }
+    case PortType::UNKNOWN:
+    default: {
+        return {"UNKNOWN"};
+    }
+    }
+}
+
+PortType toPortType(const std::string_view portType)
+{
+    if (portType == std::string_view("PRIMARY")) {
+        return PortType::PRIMARY;
+    }
+    if (portType == std::string_view("SECONDARY")) {
+        return PortType::SECONDARY;
+    }
+    return PortType::UNKNOWN;
 }
 
 bool isFrameFlagSet(const uint8_t flags, const FrameFlagType frameFlagType)
