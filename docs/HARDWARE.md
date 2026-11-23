@@ -1,9 +1,10 @@
 # Hardware Bring-Up
 
 This document takes an ESP32 DevKit board from the box to a traced conversation with
-the host tools, on Linux and in section 10 on Windows. Sections 11 to 13 do the same for
-the STM32F4 Nucleo boards, wire two boards to each other and run both targets in QEMU
-without a board. Sections 1 to 9 cover the device environments of
+the host tools, on Linux and in section 10 on Windows. Sections 11 to 14 do the same for
+the STM32F4 Nucleo boards, wire two boards to each other, run both targets in QEMU
+without a board and chain three boards with version 2 of the protocol. Sections 1 to 9
+cover the device environments of
 `firmware/esp32/platformio.ini`:
 
 | Environment | Protocol | USB port of the board shows | Host tools open |
@@ -347,6 +348,8 @@ device role of `firmware/common` as the ESP32 in a superloop. Its environments:
 | `nucleo_f401re-controller` | Nucleo-F401RE | controller of a device on USART1 | USART2, the virtual COM port | none, the controller talks to a device (section 12) |
 | `netduinoplus2-qemu` | STM32F405 of the QEMU machine `netduinoplus2` | USART2 | none | the link `usart2` of `tools/run_emulator.sh` on Linux (section 13) |
 | `netduinoplus2-qemu-controller` | STM32F405 of the QEMU machine `netduinoplus2` | controller on USART1 | USART2 | none, the controller talks to a device (section 13) |
+| `nucleo_f401re-router` | Nucleo-F401RE | router node 3 on USART1 and USART6 | USART2, the virtual COM port | none, the host talks to node 3 through node 2 (section 14) |
+| `netduinoplus2-qemu-router` | STM32F405 of the QEMU machine `netduinoplus2` | router node 3 on USART1 and USART6 | USART2 | none, the host talks to node 3 through node 2 (section 14) |
 
 The ST-LINK of a Nucleo-64 board carries USART2 (PA2 transmits, PA3 receives) to the
 host as a virtual COM port, `/dev/ttyACM0` on Linux and a COM port such as `COM5` on
@@ -354,7 +357,7 @@ Windows (section 10). Opening it does not reset the chip and the chip prints no 
 text, so the first frame of the host is answered at once. The user LED LD2 is PA5
 (`LED_PIN` in `firmware/stm32f4/include/FirmwareSettings.h`).
 
-1. Build every environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller`.
+1. Build every environment: `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller -e nucleo_f401re-router -e netduinoplus2-qemu-router`.
 2. Connect the ST-LINK USB connector of the board.
 3. Flash the device firmware through the ST-LINK: `pio run -d firmware/stm32f4 -e nucleo_f401re -t upload`.
 4. Print the device information with every frame: `build/sercom_cli /dev/ttyACM0 --trace info`, on Windows `build/sercom_cli.exe COM5 --trace info`.
@@ -418,9 +421,9 @@ or the other way round:
   the virtual COM port of the Nucleo controller, `/dev/ttyACM0` or `COM5` on Windows.
   Each start runs the steps once; press reset to run them again.
 
-A gateway, where the host talks to one board that forwards to the other, is not part
-of version 1 of the protocol; [GATEWAY.md](GATEWAY.md) explains why and how it could be
-added.
+A board that passes the frames of the host on to the next board is a router of version 2
+of the protocol, and section 14 chains three boards that way; [GATEWAY.md](GATEWAY.md)
+explains why version 1 has no gateway.
 
 ## 13. Both targets in QEMU without a board
 
@@ -488,3 +491,120 @@ What differs from a board:
 | STM32F4 LED | GPIO is not modelled, the LED state is only remembered | LD2 lights |
 | STM32F4 temperature | the ADC conversion never ends, `sercom_cli` and a controller show the temperature as `no reading` | calibrated internal sensor |
 | ESP32 | watchdogs off, the temperature reads `-17.78 C`, opening a port does not reset the chip | DTR and RTS reset the chip when a port opens on Linux, on Windows the chip keeps running (section 10) |
+
+## 14. A daisy chain
+
+Version 2 of the protocol ([PROTOCOL.md](PROTOCOL.md#8-version-2-routed-frames)) lets the
+host reach a board through the boards in front of it. A router build runs the device role
+of `firmware/common` on two serial ports: a frame for another node leaves on the port it
+did not arrive on with its time to live one lower, and every link between two boards is a
+version 1 link layer of its own with its own counters, acknowledgements and
+retransmissions. The chain of three boards:
+
+| Node | Board and environment | Port towards the host | Port away from the host | Console |
+|---|---|---|---|---|
+| 2 | ESP32 DevKit, `esp32dev-router` | UART0, the USB bridge | UART2, GPIO16 receives, GPIO17 transmits | none, both UARTs carry frames |
+| 3 | Nucleo-F401RE, `nucleo_f401re-router`, proxy of node 4 | USART1, PA10 (D2) receives, PA9 (D8) transmits | USART6, PA12 (CN10 pin 12) receives, PA11 (CN10 pin 14) transmits | USART2, the ST-LINK virtual COM port |
+| 4 | ESP32 DevKit, `esp32dev-chain` | UART2, GPIO16 receives, GPIO17 transmits | none, the end of the chain | UART0, the USB bridge |
+
+The four environments of the chain:
+
+| Environment | Build values | Node |
+|---|---|---|
+| `esp32dev-router` | `-DLET_RUN_ROUTER -DNODE_ADDRESS=2` | node 2 |
+| `esp32dev-chain` | `-DLET_PRINT_CONSOLE -DNODE_ADDRESS=4` | node 4, the console environment with an address |
+| `nucleo_f401re-router` | `-DLET_PRINT_CONSOLE -DLET_RUN_ROUTER -DNODE_ADDRESS=3 -DPROXY_ADDRESS=4` | node 3 |
+| `netduinoplus2-qemu-router` | the values of `nucleo_f401re-router` and `-DLET_RUN_ON_QEMU` | node 3 in QEMU |
+
+`FirmwareSettings.cpp` of each target reads the values once. `NODE_ADDRESS` is the address
+of the node, 2 to 254; a build without it has no address and sends the bytes of version 1.
+`PROXY_ADDRESS` names the neighbour below a router that has no address of its own, and
+`LET_RUN_ROUTER` gives the device role its second port. A build stops when a router has no
+address, and on the ESP32 when a router prints a console, because UART2 is its second port.
+USART6 keeps the ST-LINK port free for the console of node 3 and needs no solder bridge:
+PA11 and PA12 are free pins of the morpho connector CN10. They reach USART6 with alternate
+function 8, where USART1 and USART2 use 7, and USART6 takes its clock from APB2 like USART1.
+
+Wire the boards one link after the other:
+
+| From | To | Purpose |
+|---|---|---|
+| ESP32 node 2, GPIO17 (TX2) | Nucleo node 3, PA10 (D2, USART1 RX) | down from node 2 |
+| ESP32 node 2, GPIO16 (RX2) | Nucleo node 3, PA9 (D8, USART1 TX) | up to node 2 |
+| Nucleo node 3, PA11 (CN10 pin 14, USART6 TX) | ESP32 node 4, GPIO16 (RX2) | down from node 3 |
+| Nucleo node 3, PA12 (CN10 pin 12, USART6 RX) | ESP32 node 4, GPIO17 (TX2) | up to node 3 |
+| GND of node 2 and of node 4 | GND of node 3 | common ground |
+
+The rules of section 12 hold for both links: transmit goes to receive, the boards share
+ground, the levels are 3.3 V only and each board is powered over its own USB port.
+
+1. Build the four environments: `pio run -d firmware/esp32 -e esp32dev-router -e esp32dev-chain` and `pio run -d firmware/stm32f4 -e nucleo_f401re-router -e netduinoplus2-qemu-router`
+2. Flash node 2 on its USB port: `pio run -d firmware/esp32 -e esp32dev-router -t upload --upload-port /dev/ttyUSB0`
+3. Flash node 4 on its USB port: `pio run -d firmware/esp32 -e esp32dev-chain -t upload --upload-port /dev/ttyUSB1`
+4. Flash node 3 through its ST-LINK: `pio run -d firmware/stm32f4 -e nucleo_f401re-router -t upload`
+5. Wire the boards as the table shows.
+6. Find every node of the chain: `build/sercom_cli /dev/ttyUSB0 discover`
+7. Print the device information of node 4 through node 2 and node 3: `build/sercom_cli /dev/ttyUSB0 --to 4 info`
+8. Run the echo stress test over three links: `build/sercom_cli /dev/ttyUSB0 --to 4 stress 300 32 2`
+9. Watch node 3 on its console: `pio device monitor -d firmware/stm32f4 -e nucleo_f401re-router -p /dev/ttyACM0`, and node 4 on its own: `pio device monitor -d firmware/esp32 -e esp32dev-chain -p /dev/ttyUSB1`
+10. Follow the heartbeat of node 2, which has no console: `build/sercom_cli /dev/ttyUSB0 monitor 10`
+11. On Windows use the COM ports of section 10 in place of `/dev/ttyUSB0`, `/dev/ttyUSB1` and `/dev/ttyACM0`.
+
+The console of node 3 traces the frames of USART1 with their route, and every 5 s a router
+adds a second heartbeat line with its forwarded, expired and unreachable frames:
+
+```text
+[     0.016] log DEBUG: Routing as node 3 between USART1 and USART6, proxy address 4
+[    11.009] << #77    ECHO_RESPONSE                ACK_REQUEST|ROUTE_CAPABLE  len  32  36 00 00 00 3A 3B 3C 3D 3E 3F 40 41 42 43 44 45 ..  CRC ok  route 4>1 ttl 7
+[    30.020] log DEBUG: Heartbeat: forwarded 684, expired 1, unreachable 0, dropped secondary bytes 0
+```
+
+Node 4 may also be a device of version 1, for example the `esp32dev-console` firmware of
+tag `L108` built in a worktree of its own (`git worktree add ../sercom-l108 L108`), or the
+`esp32dev-console` of this tree, which has no address. Node 3 stands in for it as node 4,
+its `PROXY_ADDRESS`: it sends the requests for node 4 down as direct frames and passes the
+answers up as routed frames from node 4. `--to 4 info` then lists no protocol version and
+no node address, and the first request after the swap waits for one timeout of node 3
+before the proxy takes over, within the 3000 ms boot wait of `sercom_cli`.
+
+The same chain runs in QEMU on Linux with the emulators of section 13:
+
+1. Build `build/sercom_cli` and `build/sercom_dump` with Qt 5.12.12 as the Linux steps of `README.md` show.
+2. Build the emulated chain: `pio run -d firmware/esp32 -e esp32dev-router -e esp32dev-chain -e esp32dev-console` and `pio run -d firmware/stm32f4 -e netduinoplus2-qemu-router`
+3. Start node 4: `tools/run_emulator.sh start esp32 firmware/esp32/.pio/build/esp32dev-chain /tmp/node4 --log uart0`
+4. Start node 3: `tools/run_emulator.sh start stm32f4 firmware/stm32f4/.pio/build/netduinoplus2-qemu-router /tmp/node3 --log usart2`
+5. Join node 3 and node 4: `socat /tmp/node3/usart6,raw,echo=0 /tmp/node4/uart2,raw,echo=0 &`
+6. Start node 2: `tools/run_emulator.sh start esp32 firmware/esp32/.pio/build/esp32dev-router /tmp/node2`
+7. Join node 2 and node 3 through the noise of the realistic profile: `python3 tools/noise.py --drop 0.001 --flip 0.001 --insert 0.0005 --duplicate 0.0001 --maximum-bit-flips 1 --delay 0.0001 --burst 0.0001 --burst-length 5 --seed 1 --duplex /tmp/node2/uart2 /tmp/node3/usart1 &`
+8. Talk to the chain like to the boards: `build/sercom_cli /tmp/node2/uart0 discover`, `build/sercom_cli /tmp/node2/uart0 --to 4 stress 300 32 2`
+9. Decode what node 2 sent down, the requests of the host carry `ttl=7`: `build/sercom_dump /tmp/node2/uart2.log`
+10. Decode what node 3 sent down, the same requests carry `ttl=6`: `build/sercom_dump /tmp/node3/usart6.log`
+11. Read the console of node 3: `tr -d '\r' < /tmp/node3/usart2.log`
+12. Stop the links and the chips: `kill %2 %1`, then `tools/run_emulator.sh stop /tmp/node2`, `tools/run_emulator.sh stop /tmp/node3` and `tools/run_emulator.sh stop /tmp/node4`
+13. Run every check of the chain, with node 4 replaced by `esp32dev-console` at the end: `tests/e2e/emulator_chain_test.sh build/sercom_cli build/sercom_dump firmware/esp32/.pio/build firmware/stm32f4/.pio/build`; `END_DEVICE_BUILD_DIRECTORY=<L108 worktree>/firmware/esp32/.pio/build/esp32dev-console` makes the replaced node 4 a device of version 1.
+
+Every STM32F4 run of `tools/run_emulator.sh` has a `usart6` link, so any emulated STM32F4
+build can be the router of a chain. Measured in three runs of `emulator_chain_test.sh` with
+its default seed on a host with 20 cores: `discover` heard node 2 after 1 to 3 ms, node 3
+after 11 to 15 ms and node 4 after 11 to 24 ms; `--to 4 stress 300 32 2` verified all 300
+echoes in 12.5 to 14.8 s at 83 to 98 ms average latency and 806 ms at most, with 0 busy
+retries of the host and 0 overdue retries, because a node that a router refuses as `BUSY`
+sends its frame again (PROTOCOL.md §8.7); `--to 4 info` through the proxy answered the boot
+wait after 1013 to 1017 ms with the `esp32dev-console` of this tree as node 4 and after
+2019 ms with the one of `L108`.
+
+What a chain does not model:
+
+- A per-hop acknowledgement says that the next board holds the frame, not that node 4 has
+  it; the response, or a route failure report of the board that lost it, closes a request
+  (PROTOCOL.md §8.8 and §8.10).
+- Each board has two ports at most and no routing table: a frame that is not for a board
+  leaves on its other port. Trees and stars, and answers to requests that come from below,
+  are not part of version 2 (PROTOCOL.md §8.12).
+- On Linux opening `/dev/ttyUSB0` resets node 2 through DTR and RTS (section 9). Node 2
+  then forgets the frames it held for node 3 and the versions of its peers, so the first
+  request after the reset may wait for a retransmission; in QEMU and on Windows the chip
+  keeps running.
+- QEMU moves the bytes of every port at the speed of the host and does not model the
+  alternate functions of the STM32F4 pins, so the timing above and the pins of USART6 are
+  checked only on the boards.
