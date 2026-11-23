@@ -18,6 +18,8 @@
 #include "../../core/include/Definitions.h"
 #include "../../core/include/Frame.h"
 #include "../../core/include/FrameTracer.h"
+#include "../../core/include/Router.h"
+#include "../../core/include/Settings.h"
 #include "../../core/include/TraceTransport.h"
 
 #include "../include/HostSettings.h"
@@ -37,6 +39,7 @@ enum class CommandType : uint8_t {
     TELEMETRY = 4, // set the telemetry period and print telemetry
     MONITOR = 5,   // print telemetry and device logs
     STRESS = 6,    // run the echo stress test
+    DISCOVER = 7,  // find every node of the chain
 };
 
 /*
@@ -66,7 +69,15 @@ struct CommandLine
     std::chrono::milliseconds duration
         = HostSettings::DEFAULT_COMMAND_DURATION_MSEC; // command duration in milliseconds
     bool traced = false;                               // every frame on the serial port is printed
+    uint8_t destinationAddress = Definitions::UNASSIGNED_ADDRESS; // node of the requests
+    uint8_t timeToLive = Settings::DEFAULT_TIME_TO_LIVE;          // links a request may cross
 };
+
+/*
+ * Get the router configuration of the device client of a command line.
+ * The client takes the host address for a destination or for the discover command, else none.
+ */
+[[nodiscard]] Router::RouterConfiguration getRouterConfiguration(const CommandLine &commandLine);
 
 /*
  * Echo request that waits for its echo response.
@@ -76,6 +87,8 @@ struct PendingEcho
     std::chrono::milliseconds requestTimestamp
         = std::chrono::milliseconds::zero(); // time the echo request was sent first
     uint16_t messageCounter = 0;             // message counter of the latest echo request
+    std::chrono::milliseconds lastSentTimestamp
+        = std::chrono::milliseconds::zero(); // time the echo request was sent last
 };
 
 class CliApplication final : public QObject,
@@ -240,8 +253,21 @@ private:
 
     /*
      * Advance the stress command.
+     * With a destination an echo request without an echo response in time is sent again.
+     * A node on the way back may have dropped the echo response, only the host can repeat it.
      */
     void progressStressCommand();
+
+    /*
+     * Advance the discover command that pings every node once and collects the answers.
+     */
+    void progressDiscoverCommand();
+
+    /*
+     * Print a node that answered the ping request of the discover command for the first time.
+     */
+    void printDiscoveredNode(const Messages::PingResponse &pingResponse,
+                             std::chrono::milliseconds roundTripTime);
 
     /*
      * Send the request of a command that waits for one response.
@@ -302,6 +328,12 @@ private:
     [[nodiscard]] std::string getSerialPortText() const;
 
     /*
+     * Get whether a message comes from the destination of the requests.
+     * Every message counts without a destination or with the broadcast address.
+     */
+    [[nodiscard]] bool getFromDestination(const Messages::GenericMessage &genericMessage) const;
+
+    /*
      * Get the echo payload of a sequence number.
      */
     [[nodiscard]] std::vector<uint8_t> getEchoPayload(uint32_t sequenceNumber) const;
@@ -317,6 +349,7 @@ private:
     bool finished;                                          // command is finished
     int exitCode;                                           // exit code of the process
     bool waitingForDevice;                                  // first frame of the device is awaited
+    bool destinationAnswered;                               // destination answered a ping request
     bool waitingForResponse;                                // response of a request is awaited
     bool monitoring;                                        // device reports are printed
     std::chrono::milliseconds startTimestamp;               // time the command started
@@ -335,10 +368,12 @@ private:
     uint64_t unexpectedEchoResponseCounter;                 // echo responses without echo request
     uint64_t lostEchoRequestCounter;                        // echo requests without echo response
     uint64_t busyEchoRequestCounter;                        // echo requests sent again when busy
+    uint64_t resentEchoRequestCounter;                      // echo requests sent again when overdue
     std::chrono::milliseconds echoRoundTripTimeSum;         // sum of the echo round trip times
     std::chrono::milliseconds maximumEchoRoundTripTime;     // longest echo round trip time
     std::map<uint32_t, PendingEcho> pendingEchoes;          // pending echoes by sequence number
     std::vector<uint32_t> retrySequenceNumbers;             // busy echo requests to send again
+    std::vector<uint8_t> discoveredAddresses;               // nodes that answered the discover ping
 };
 
 } // namespace sercom::CliApplication

@@ -32,6 +32,9 @@ std::string_view fromCommandType(const CommandType commandType)
     case CommandType::STRESS: {
         return {"stress"};
     }
+    case CommandType::DISCOVER: {
+        return {"discover"};
+    }
     case CommandType::UNKNOWN:
     default: {
         return {};
@@ -59,18 +62,42 @@ CommandType toCommandType(const std::string_view commandType)
     if (commandType == std::string_view("stress")) {
         return CommandType::STRESS;
     }
+    if (commandType == std::string_view("discover")) {
+        return CommandType::DISCOVER;
+    }
     return CommandType::UNKNOWN;
+}
+
+Router::RouterConfiguration getRouterConfiguration(const CommandLine &commandLine)
+{
+    // take the time to live of the command line
+    Router::RouterConfiguration routerConfiguration;
+    routerConfiguration.timeToLive = commandLine.timeToLive;
+
+    // take the host address to reach a destination or every node
+    if (commandLine.destinationAddress != Definitions::UNASSIGNED_ADDRESS
+        || commandLine.commandType == CommandType::DISCOVER) {
+        routerConfiguration.nodeAddress = Definitions::HOST_ADDRESS;
+    }
+
+    // expose the router configuration
+    return routerConfiguration;
 }
 
 CliApplication::CliApplication(const CommandLine &commandLine)
     : commandLine(commandLine)
     , frameTracer(*this, this->clock, FrameTracer::TraceDirectionType::HOST_TO_DEVICE)
     , traceTransport(this->serialPort, this->frameTracer)
-    , deviceClient(this->traceTransport, this->clock, *this)
+    , deviceClient(this->traceTransport,
+                   this->clock,
+                   *this,
+                   Link::LinkConfiguration(),
+                   getRouterConfiguration(commandLine))
     , maintainTimer()
     , finished(false)
     , exitCode(0)
     , waitingForDevice(false)
+    , destinationAnswered(false)
     , waitingForResponse(false)
     , monitoring(false)
     , startTimestamp(0)
@@ -89,9 +116,15 @@ CliApplication::CliApplication(const CommandLine &commandLine)
     , unexpectedEchoResponseCounter(0)
     , lostEchoRequestCounter(0)
     , busyEchoRequestCounter(0)
+    , resentEchoRequestCounter(0)
     , echoRoundTripTimeSum(0)
     , maximumEchoRoundTripTime(0)
 {
+    // send the requests to the destination, to every node for the discover command
+    this->deviceClient.setDestinationAddress(this->commandLine.commandType == CommandType::DISCOVER
+                                                 ? Definitions::BROADCAST_ADDRESS
+                                                 : this->commandLine.destinationAddress);
+
     // connect serial port signals and slots
     QObject::connect(&this->serialPort,
                      &SerialPort::SerialPort::receivedData,
@@ -159,8 +192,24 @@ void CliApplication::onReceivedPingResponse(const Messages::PingResponse &pingRe
     // keep track of messages
     this->lastDeviceMessageTimestamp = this->clock.getTime();
 
+    // keep track of the answers of the destination for the wait for the device
+    if (this->getFromDestination(pingResponse)) {
+        this->destinationAnswered = true;
+    }
+
+    // print a node that answered the discover command
+    if (this->commandLine.commandType == CommandType::DISCOVER) {
+        this->printDiscoveredNode(pingResponse, roundTripTime);
+        return;
+    }
+
     // ping response must answer a ping request of the ping command
     if (this->commandLine.commandType != CommandType::PING || !this->waitingForResponse) {
+        return;
+    }
+
+    // ping response must come from the destination
+    if (!this->getFromDestination(pingResponse)) {
         return;
     }
 
@@ -170,9 +219,14 @@ void CliApplication::onReceivedPingResponse(const Messages::PingResponse &pingRe
         return;
     }
 
-    // print the round trip time and the device uptime
-    const std::string line = "ping response: round trip " + std::to_string(roundTripTime.count())
-                             + " ms, device uptime "
+    // print the round trip time and the device uptime, with a destination also the node
+    const std::string nodeAsText = this->commandLine.destinationAddress
+                                           == Definitions::UNASSIGNED_ADDRESS
+                                       ? std::string()
+                                       : " from node "
+                                             + std::to_string(pingResponse.getSourceAddress());
+    const std::string line = "ping response" + nodeAsText + ": round trip "
+                             + std::to_string(roundTripTime.count()) + " ms, device uptime "
                              + std::to_string(pingResponse.getUptime().count()) + " ms";
     HostUtils::printLine(line);
 
@@ -187,14 +241,25 @@ void CliApplication::onReceivedDeviceInfoResponse(
     // keep track of messages
     this->lastDeviceMessageTimestamp = this->clock.getTime();
 
+    // device info response must come from the destination
+    if (!this->getFromDestination(deviceInfoResponse)) {
+        return;
+    }
+
+    // get the device information
+    std::string line = "device: " + std::string(deviceInfoResponse.getDeviceName()) + "\nfirmware: "
+                       + std::to_string(deviceInfoResponse.getFirmwareVersionMajor()) + "."
+                       + std::to_string(deviceInfoResponse.getFirmwareVersionMinor()) + "\nuptime: "
+                       + std::to_string(deviceInfoResponse.getUptime().count()) + " ms\nfree heap: "
+                       + std::to_string(deviceInfoResponse.getFreeHeapSize()) + " bytes";
+
+    // add the protocol version and the address of a device with an address
+    if (deviceInfoResponse.getNodeAddress() != Definitions::UNASSIGNED_ADDRESS) {
+        line += "\nprotocol version: " + std::to_string(deviceInfoResponse.getProtocolVersion())
+                + "\nnode address: " + std::to_string(deviceInfoResponse.getNodeAddress());
+    }
+
     // print the device information
-    const std::string line = "device: " + std::string(deviceInfoResponse.getDeviceName())
-                             + "\nfirmware: "
-                             + std::to_string(deviceInfoResponse.getFirmwareVersionMajor()) + "."
-                             + std::to_string(deviceInfoResponse.getFirmwareVersionMinor())
-                             + "\nuptime: " + std::to_string(deviceInfoResponse.getUptime().count())
-                             + " ms\nfree heap: "
-                             + std::to_string(deviceInfoResponse.getFreeHeapSize()) + " bytes";
     HostUtils::printLine(line);
 
     // device info response must answer the info command
@@ -210,6 +275,11 @@ void CliApplication::onReceivedSetLedResponse(const Messages::SetLedResponse &se
 {
     // keep track of messages
     this->lastDeviceMessageTimestamp = this->clock.getTime();
+
+    // set LED response must come from the destination
+    if (!this->getFromDestination(setLedResponse)) {
+        return;
+    }
 
     // print the LED state
     const std::string line = std::string("led: ") + (setLedResponse.getLedOn() ? "on" : "off");
@@ -230,8 +300,8 @@ void CliApplication::onReceivedTelemetryReportResponse(
     // keep track of messages
     this->lastDeviceMessageTimestamp = this->clock.getTime();
 
-    // telemetry must be monitored
-    if (!this->monitoring) {
+    // telemetry of the destination must be monitored
+    if (!this->monitoring || !this->getFromDestination(telemetryReportResponse)) {
         return;
     }
 
@@ -252,8 +322,8 @@ void CliApplication::onReceivedLogReportResponse(const Messages::LogReportRespon
     // keep track of messages
     this->lastDeviceMessageTimestamp = this->clock.getTime();
 
-    // device logs must be monitored
-    if (!this->monitoring) {
+    // device logs of the destination must be monitored
+    if (!this->monitoring || !this->getFromDestination(logReportResponse)) {
         return;
     }
 
@@ -584,6 +654,7 @@ void CliApplication::waitForDevice()
 
     // wait for the first frame of the device and the end of the ping request within the boot time
     this->waitingForDevice = true;
+    this->destinationAnswered = false;
     this->waitTimestamp = this->clock.getTime();
     this->waitIncomingFrameCounter = this->deviceClient.getLinkStatistics().incomingFrameCounter;
 }
@@ -593,8 +664,11 @@ void CliApplication::progressWaitForDevice()
     // wait must be over by an answer of the device or by the boot time
     const std::chrono::milliseconds currentTime = this->clock.getTime();
     const std::chrono::milliseconds waitTime = currentTime - this->waitTimestamp;
-    const bool deviceSilent = this->deviceClient.getLinkStatistics().incomingFrameCounter
-                              == this->waitIncomingFrameCounter;
+    const bool deviceSilent = this->deviceClient.getDestinationAddress()
+                                      == Definitions::UNASSIGNED_ADDRESS
+                                  ? this->deviceClient.getLinkStatistics().incomingFrameCounter
+                                        == this->waitIncomingFrameCounter
+                                  : !this->destinationAnswered;
     if ((deviceSilent || this->deviceClient.getPendingCount() > 0)
         && waitTime < HostSettings::DEVICE_BOOT_TIMEOUT_MSEC) {
         return;
@@ -625,7 +699,8 @@ void CliApplication::progressWaitForDevice()
 void CliApplication::sendPeriodicRequest()
 {
     // command must not send ping requests of its own
-    if (this->commandLine.commandType == CommandType::PING) {
+    if (this->commandLine.commandType == CommandType::PING
+        || this->commandLine.commandType == CommandType::DISCOVER) {
         return;
     }
 
@@ -655,7 +730,8 @@ void CliApplication::startCommand()
     case CommandType::INFO:
     case CommandType::LED:
     case CommandType::TELEMETRY:
-    case CommandType::STRESS: {
+    case CommandType::STRESS:
+    case CommandType::DISCOVER: {
         return;
     }
 
@@ -710,6 +786,12 @@ void CliApplication::progressCommand()
     // advance the stress command
     case CommandType::STRESS: {
         this->progressStressCommand();
+        break;
+    }
+
+    // advance the discover command
+    case CommandType::DISCOVER: {
+        this->progressDiscoverCommand();
         break;
     }
 
@@ -850,6 +932,34 @@ void CliApplication::progressStressCommand()
                       this->forgetLostEchoRequest(lostSequenceNumber);
                   });
 
+    // iterate over the echo requests to a destination
+    std::for_each(this->pendingEchoes.begin(),
+                  this->pendingEchoes.end(),
+                  [this, currentTime](std::pair<const uint32_t, PendingEcho> &pendingEcho) {
+                      // echo response of a destination must be overdue
+                      if (this->commandLine.destinationAddress == Definitions::UNASSIGNED_ADDRESS
+                          || currentTime - pendingEcho.second.lastSentTimestamp
+                                 <= HostSettings::RESPONSE_TIMEOUT_MSEC) {
+                          return;
+                      }
+
+                      // echo request must not wait to be sent again already
+                      const std::vector<uint32_t>::const_iterator &iterator
+                          = std::find(this->retrySequenceNumbers.cbegin(),
+                                      this->retrySequenceNumbers.cend(),
+                                      pendingEcho.first);
+                      if (iterator != this->retrySequenceNumbers.cend()) {
+                          return;
+                      }
+
+                      // keep track of overdue echo requests
+                      ++this->resentEchoRequestCounter;
+                      pendingEcho.second.lastSentTimestamp = currentTime;
+
+                      // send the echo request again before the next one
+                      this->retrySequenceNumbers.push_back(pendingEcho.first);
+                  });
+
     // keep the configured number of echo requests in flight
     bool echoRequestSent = true;
     while (echoRequestSent
@@ -871,6 +981,70 @@ void CliApplication::progressStressCommand()
                                      && this->corruptedEchoResponseCounter == 0
                                      && this->unexpectedEchoResponseCounter == 0;
     this->finish(stressCommandPassed ? 0 : 1);
+}
+
+void CliApplication::progressDiscoverCommand()
+{
+    // ping request to every node must be sent once
+    const std::chrono::milliseconds currentTime = this->clock.getTime();
+    if (!this->waitingForResponse) {
+        // ping request must be sent
+        uint16_t messageCounter = 0;
+        const Definitions::SendStatusType sendStatusType = this->deviceClient.sendPingRequest(
+            messageCounter);
+        if (!this->checkSendStatus(Messages::MessageType::PING_REQUEST, sendStatusType)) {
+            return;
+        }
+
+        // collect the answers from now on
+        ++this->outgoingPingRequestCounter;
+        this->waitingForResponse = true;
+        this->lastRequestTimestamp = currentTime;
+
+        // do not proceed further
+        return;
+    }
+
+    // answers must be collected for the duration
+    if (currentTime - this->lastRequestTimestamp < this->commandLine.duration) {
+        return;
+    }
+
+    // print the number of discovered nodes
+    const size_t nodeCount = this->discoveredAddresses.size();
+    const std::string line = "discovered " + std::to_string(nodeCount)
+                             + (nodeCount == 1 ? " node" : " nodes");
+    HostUtils::printLine(line);
+
+    // finish the discover command, a chain without an answer fails
+    this->finish(nodeCount == 0 ? 1 : 0);
+}
+
+void CliApplication::printDiscoveredNode(const Messages::PingResponse &pingResponse,
+                                         const std::chrono::milliseconds roundTripTime)
+{
+    // ping response must answer the ping request of the discover command
+    if (!this->waitingForResponse
+        || static_cast<uint32_t>(pingResponse.getRequestTimestamp().count())
+               < static_cast<uint32_t>(this->lastRequestTimestamp.count())) {
+        return;
+    }
+
+    // node must answer for the first time
+    const uint8_t sourceAddress = pingResponse.getSourceAddress();
+    const std::vector<uint8_t>::const_iterator &iterator
+        = std::find(this->discoveredAddresses.cbegin(),
+                    this->discoveredAddresses.cend(),
+                    sourceAddress);
+    if (iterator != this->discoveredAddresses.cend()) {
+        return;
+    }
+
+    // print the node with its round trip time
+    this->discoveredAddresses.push_back(sourceAddress);
+    const std::string line = "node " + std::to_string(sourceAddress) + " answered after "
+                             + std::to_string(roundTripTime.count()) + " ms";
+    HostUtils::printLine(line);
 }
 
 void CliApplication::sendCommandRequest()
@@ -911,6 +1085,7 @@ void CliApplication::sendCommandRequest()
     case CommandType::PING:
     case CommandType::MONITOR:
     case CommandType::STRESS:
+    case CommandType::DISCOVER:
     case CommandType::UNKNOWN:
     default: {
         return;
@@ -989,6 +1164,7 @@ bool CliApplication::sendEchoRequest(const uint32_t sequenceNumber,
     PendingEcho &pendingEcho = this->pendingEchoes[sequenceNumber];
     pendingEcho.requestTimestamp = requestTimestamp;
     pendingEcho.messageCounter = messageCounter;
+    pendingEcho.lastSentTimestamp = this->clock.getTime();
 
     // echo request sent successfully
     return true;
@@ -1114,6 +1290,11 @@ void CliApplication::printStressReport() const
         HostUtils::getReportLine("lost requests", std::to_string(this->lostEchoRequestCounter)));
     HostUtils::printLine(
         HostUtils::getReportLine("busy retries", std::to_string(this->busyEchoRequestCounter)));
+    if (this->commandLine.destinationAddress != Definitions::UNASSIGNED_ADDRESS) {
+        HostUtils::printLine(
+            HostUtils::getReportLine("overdue retries",
+                                     std::to_string(this->resentEchoRequestCounter)));
+    }
     HostUtils::printLine(
         HostUtils::getReportLine("average latency (ms)",
                                  HostUtils::getDecimalText(averageRoundTripTime, 1)));
@@ -1140,6 +1321,15 @@ std::string CliApplication::getSerialPortText() const
 {
     // expose the serial port name and the baud rate
     return HostUtils::getSerialPortText(this->commandLine.portName, this->commandLine.baudRate);
+}
+
+bool CliApplication::getFromDestination(const Messages::GenericMessage &genericMessage) const
+{
+    // expose whether the message comes from the destination or every source counts
+    const uint8_t destinationAddress = this->deviceClient.getDestinationAddress();
+    return destinationAddress == Definitions::UNASSIGNED_ADDRESS
+           || destinationAddress == Definitions::BROADCAST_ADDRESS
+           || genericMessage.getSourceAddress() == destinationAddress;
 }
 
 std::vector<uint8_t> CliApplication::getEchoPayload(const uint32_t sequenceNumber) const
