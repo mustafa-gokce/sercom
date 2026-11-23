@@ -4,6 +4,7 @@
 
 Without files every C++ file of the own source directories is checked, together with the repository checks.
 The consumer projects in examples/ are checked with their CMakeLists.txt, the build directories inside them are skipped.
+The PlatformIO consumer project is a firmware and keeps the exceptions of the firmware for its output and log lines.
 Each finding is printed as path:line: rule: message, the exit code is 1 when there is a finding.
 The layout is checked by tools/analysis/check_format.sh, the analyzers by tools/run_static_analysis.sh.
 """
@@ -32,6 +33,9 @@ OWN_OUTPUT_CONSUMER = r'^examples/28_consume_with_add_subdirectory/'
 
 # consumer project with the one FetchContent, it includes through the include directory of sercom
 FETCH_CONTENT_CONSUMER = r'^examples/29_consume_with_fetch_content/'
+
+# firmware sources with the exceptions of the firmware, the PlatformIO consumer project included
+FIRMWARE_SOURCES = r'^(firmware|examples/30_consume_with_platformio)/'
 
 # characters of an identifier or a number
 IDENTIFIER_CHARACTERS = set(string.ascii_letters + string.digits + '_')
@@ -73,7 +77,7 @@ IDIOM_RULES = (
     ('R-019', '#ifdef or #if !defined', r'^\s*#\s*(ifdef|if\s*!\s*defined)', 'all', 'line', None, None),
     ('R-019', '#ifndef outside a guard', r'^#ifndef ', 'all', 'line', r'_H$', None),
     ('R-129', 'output outside the log functions', r'std::(cout|cerr|clog)|\bs?n?printf\(', 'all', 'code', None,
-     r'^(host/src/HostUtils\.cpp|firmware/)|' + OWN_OUTPUT_CONSUMER),
+     r'^host/src/HostUtils\.cpp|' + FIRMWARE_SOURCES + '|' + OWN_OUTPUT_CONSUMER),
     ('R-066', 'analyzer suppression', r'NOLINTNEXTLINE|NOLINT\(|cppcheck-suppress', 'all', 'line', None, None),
     ('R-091', 'auto outside a lambda', r'\bauto\b', 'all', 'code', r'auto \w+ = \[|const auto \w+ = \[', None),
     ('R-117', 'enum name without Type or Key', r'enum class \w+', 'all', 'code', r'enum class \w+(Type|Key)\b', None),
@@ -89,7 +93,8 @@ IDIOM_RULES = (
     ('R-134', 'serialize or encode name', r'\b(serialize|deserialize|encode|decode)[A-Za-z]*\(', 'all', 'code', None,
      None),
     ('R-071', 'brace value-initialization', r'^\s+[A-Za-z_:<>, 0-9]+ [a-z]\w*\{\};', 'sources', 'code', None, None),
-    ('R-083', 'C array of literal size', r'\b(char|uint8_t|int) \w+\[[0-9]+\]', 'all', 'code', None, r'^firmware/'),
+    ('R-083', 'C array of literal size', r'\b(char|uint8_t|int) \w+\[[0-9]+\]', 'all', 'code', None,
+     FIRMWARE_SOURCES),
     ('R-090', 'hand-written minimum or maximum', r'(\w+) [<>]=? (\w+) \? \1 : \2', 'all', 'code', None, None),
     ('R-024', 'nodiscard on an enum converter', r'\[\[nodiscard\]\] [^(]*\b(from|to)[A-Z]\w*(Type|Key)\(', 'headers',
      'code', None, None),
@@ -104,7 +109,7 @@ IDIOM_RULES = (
     ('R-030', 'bare {} argument', r'[(,] ?\{\}\)', 'all', 'code', r'return \{\}', None),
     ('R-250', 'class or struct in a program source', r'^\s*(class|struct) \w+( final)?( :.*)?$', 'programs', 'code',
      None, None),
-    ('R-131', 'snprintf on the host', r'snprintf\(', 'all', 'code', None, r'^firmware/'),
+    ('R-131', 'snprintf on the host', r'snprintf\(', 'all', 'code', None, FIRMWARE_SOURCES),
     ('R-104', 'unsigned, long or short', r'\bunsigned\b|\blong\b|\bshort\b', 'all', 'code', None, None),
     ('R-075', 'size compared with zero', r'\.size\(\) == 0\b', 'all', 'code', None, None),
     ('R-041', 'reference member without reference comment', r'^\s+[A-Za-z:]+ &\w+;\s*// (?!reference)', 'headers',
