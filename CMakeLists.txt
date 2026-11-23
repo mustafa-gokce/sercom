@@ -568,6 +568,7 @@ if (SERCOM_BUILD_TESTS)
         tests/test_CliApplication.cpp
         tests/test_FrameTracer.cpp
         tests/test_HostUtils.cpp
+        tests/test_RingBuffer.cpp
         tests/test_Console.cpp
         tests/test_ActivityLed.cpp
     )
