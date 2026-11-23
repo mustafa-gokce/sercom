@@ -93,6 +93,8 @@ TEST_CASE_METHOD(TestDefinitions,
     REQUIRE(Definitions::fromMessageStatusType(Definitions::MessageStatusType::BUSY) == 4);
     REQUIRE(Definitions::fromMessageStatusType(Definitions::MessageStatusType::INVALID_ARGUMENT)
             == 5);
+    REQUIRE(Definitions::fromMessageStatusType(Definitions::MessageStatusType::UNREACHABLE) == 6);
+    REQUIRE(Definitions::fromMessageStatusType(Definitions::MessageStatusType::EXPIRED) == 7);
 }
 
 TEST_CASE_METHOD(TestDefinitions,
@@ -107,6 +109,8 @@ TEST_CASE_METHOD(TestDefinitions,
             == Definitions::MessageStatusType::MALFORMED_PAYLOAD);
     REQUIRE(Definitions::toMessageStatusType(4) == Definitions::MessageStatusType::BUSY);
     REQUIRE(Definitions::toMessageStatusType(5) == Definitions::MessageStatusType::INVALID_ARGUMENT);
+    REQUIRE(Definitions::toMessageStatusType(6) == Definitions::MessageStatusType::UNREACHABLE);
+    REQUIRE(Definitions::toMessageStatusType(7) == Definitions::MessageStatusType::EXPIRED);
     REQUIRE(Definitions::toMessageStatusType(8) == Definitions::MessageStatusType::UNKNOWN);
     REQUIRE(Definitions::toMessageStatusType(200) == Definitions::MessageStatusType::UNKNOWN);
 }
@@ -125,6 +129,7 @@ TEST_CASE_METHOD(TestDefinitions,
             == "TRANSPORT_ERROR");
     REQUIRE(Definitions::fromSendStatusType(Definitions::SendStatusType::INVALID_ARGUMENT)
             == "INVALID_ARGUMENT");
+    REQUIRE(Definitions::fromSendStatusType(Definitions::SendStatusType::NO_ROUTE) == "NO_ROUTE");
 }
 
 TEST_CASE_METHOD(TestDefinitions,
@@ -141,6 +146,7 @@ TEST_CASE_METHOD(TestDefinitions,
             == Definitions::SendStatusType::TRANSPORT_ERROR);
     REQUIRE(Definitions::toSendStatusType("INVALID_ARGUMENT")
             == Definitions::SendStatusType::INVALID_ARGUMENT);
+    REQUIRE(Definitions::toSendStatusType("NO_ROUTE") == Definitions::SendStatusType::NO_ROUTE);
     REQUIRE(Definitions::toSendStatusType("LOREM_IPSUM") == Definitions::SendStatusType::UNKNOWN);
     REQUIRE(Definitions::toSendStatusType("sent") == Definitions::SendStatusType::UNKNOWN);
     REQUIRE(Definitions::toSendStatusType("SENT ") == Definitions::SendStatusType::UNKNOWN);
@@ -197,6 +203,35 @@ TEST_CASE_METHOD(TestDefinitions,
     REQUIRE(Definitions::toPeerVersionType("LOREM_IPSUM") == Definitions::PeerVersionType::UNKNOWN);
     REQUIRE(Definitions::toPeerVersionType("version_1") == Definitions::PeerVersionType::UNKNOWN);
     REQUIRE(Definitions::toPeerVersionType("VERSION_1 ") == Definitions::PeerVersionType::UNKNOWN);
+}
+
+TEST_CASE_METHOD(TestDefinitions,
+                 "Port type can be converted to string",
+                 "[Definitions][fromPortType]")
+{
+    REQUIRE(Definitions::fromPortType(Definitions::PortType::UNKNOWN) == "UNKNOWN");
+    REQUIRE(Definitions::fromPortType(Definitions::PortType::PRIMARY) == "PRIMARY");
+    REQUIRE(Definitions::fromPortType(Definitions::PortType::SECONDARY) == "SECONDARY");
+}
+
+TEST_CASE_METHOD(TestDefinitions, "Port type can be parsed from string", "[Definitions][toPortType]")
+{
+    REQUIRE(Definitions::toPortType("UNKNOWN") == Definitions::PortType::UNKNOWN);
+    REQUIRE(Definitions::toPortType("PRIMARY") == Definitions::PortType::PRIMARY);
+    REQUIRE(Definitions::toPortType("SECONDARY") == Definitions::PortType::SECONDARY);
+    REQUIRE(Definitions::toPortType("LOREM_IPSUM") == Definitions::PortType::UNKNOWN);
+    REQUIRE(Definitions::toPortType("primary") == Definitions::PortType::UNKNOWN);
+    REQUIRE(Definitions::toPortType("PRIMARY ") == Definitions::PortType::UNKNOWN);
+}
+
+TEST_CASE_METHOD(TestDefinitions,
+                 "The route failure report is a system message with a short quote",
+                 "[Definitions][testRouteFailureReport]")
+{
+    // check the message type and the sizes of the route failure report
+    REQUIRE(Definitions::ROUTE_FAILURE_REPORT_MESSAGE_TYPE == 0x0008);
+    REQUIRE(Definitions::ROUTE_FAILURE_REPORT_SIZE == static_cast<size_t>(6));
+    REQUIRE(Definitions::MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE == static_cast<size_t>(8));
 }
 
 TEST_CASE_METHOD(TestDefinitions,
