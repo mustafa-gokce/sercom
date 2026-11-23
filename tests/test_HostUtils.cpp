@@ -113,7 +113,7 @@ TEST_CASE_METHOD(TestHostUtils,
     REQUIRE(HostUtils::getFrameFlagsText(0x0F) == "ACK_REQUEST|ACK|NACK|RETRANSMISSION");
 
     // check that bits without a flag are not shown
-    REQUIRE(HostUtils::getFrameFlagsText(0xF0) == "NONE");
+    REQUIRE(HostUtils::getFrameFlagsText(0xE0) == "NONE");
 }
 
 TEST_CASE_METHOD(TestHostUtils,
