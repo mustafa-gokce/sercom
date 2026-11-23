@@ -4,7 +4,9 @@ A robust, packet-based binary protocol for serial links, written in modern C++17
 with a Qt 5.12.12 host toolset for Linux and Windows, firmware for the ESP32 (Arduino
 framework on FreeRTOS) and for the STM32F4 (bare metal on the CMSIS headers), and a
 test suite that includes noise injection, sanitizers, fuzzing and both firmware
-targets in QEMU.
+targets in QEMU. Version 2 of the protocol adds addresses, so that boards in a daisy
+chain reach the host through each other, and sercom builds as a library inside other
+CMake and PlatformIO projects.
 
 This repository is the companion code of the course
 **Packet-Based Binary Serial Communication with C++**.
@@ -15,10 +17,23 @@ A5 C3 | VERSION | FLAGS | MESSAGE_COUNTER | MESSAGE_TYPE | PAYLOAD_LENGTH | PAYL
 ```
 
 All multi-byte fields are little-endian, payloads carry up to 255 bytes, and every
-frame costs 13 bytes of overhead. CRC32 is the IEEE 802.3 / zlib CRC over
-`VERSION` through the end of `PAYLOAD`. The full specification, including the
+direct frame of version 1 costs 13 bytes of overhead. CRC32 is the IEEE 802.3 / zlib
+CRC over `VERSION` through the end of `PAYLOAD`. The full specification, including the
 link layer (acknowledgements, retransmission, duplicate suppression), is in
 [PROTOCOL.md](PROTOCOL.md).
+
+```
+A5 C3 | 02 | FLAGS | MESSAGE_COUNTER | MESSAGE_TYPE | PAYLOAD_LENGTH | SOURCE | DESTINATION | TTL | PAYLOAD | CRC32
+ 2 B    1 B   1 B        2 B              2 B             1 B          1 B        1 B       1 B    N B      4 B
+```
+
+A routed frame of version 2 keeps the nine header bytes of version 1 and adds the
+source address, the destination address and the time to live, 16 bytes of overhead,
+with the CRC32 over the three routing bytes too. Only a node with an address sends
+routed frames and the flag `ROUTE_CAPABLE`; a node without one sends the bytes of
+version 1. Every link of a chain keeps its own link layer, and a node passes a frame
+for another node on with one link less to live. Section 8 of
+[PROTOCOL.md](PROTOCOL.md) specifies version 2.
 
 ## Layout
 
@@ -27,29 +42,30 @@ and every file includes the others by a path relative to itself.
 
 | Directory | Contents |
 |---|---|
-| `core/` | The protocol: CRC32, byte codec, frame, resynchronizing decoder, link layer and the frame tracer that decodes both directions for display. No OS calls, no heap, no exceptions; builds for PCs and microcontrollers. |
-| `app/` | Demo device protocol on top of `core`: message types, `DeviceApplication` (device side) and `DeviceClient` (host side). Shared by the firmware and the host tools. |
-| `firmware/common/` | The firmware of every target without platform calls, built in place by both PlatformIO projects and by CMake for the tests: `DeviceRole` (the device application with its frame tracer and activity LED), `ControllerRole` (the `DeviceClient` querying another device step by step), the readable `Console` behind a `ConsoleOutput`, `ActivityLed`, the `RingBuffer` of interrupt handlers, `CommonSettings` and the `build_settings.py` of both projects. |
-| `host/` | The Qt 5.12.12 host: `SerialPort` on `QSerialPort` with the received data as a signal, utilities with the `QElapsedTimer` clock and the Qt log, the classes of the tools on the `QCoreApplication` event loop and, in `host/apps/`, the tools `sercom_cli`, `sercom_device_sim`, `sercom_dump`. The same code builds on Linux with GCC and on Windows with the MinGW 7.3.0 of Qt, without a platform branch. |
-| `firmware/esp32/` | PlatformIO project for ESP32 DevKit boards using `core`, `app` and `firmware/common` in place, with the FreeRTOS tasks, the UART, clock, platform and console adapters and the environments `esp32dev` (protocol on the USB port), `esp32dev-console` (protocol on UART2, readable console on the USB port) and `esp32dev-controller` (controller of a device on UART2, console on the USB port). |
-| `firmware/stm32f4/` | Bare metal PlatformIO project for Nucleo-F401RE and Nucleo-F411RE boards: a superloop, SysTick clock, interrupt driven USARTs and the platform adapter, with device, console and controller environments and `netduinoplus2-qemu` for the STM32F405 of QEMU. |
-| `examples/` | 25 small standalone programs in course order, from raw serial I/O on `QSerialPort` to a ping over a serial port, each with a step-by-step guide; the index is [examples/README.md](../examples/README.md). |
-| `tests/` | Catch2 unit and integration tests with their runner `tests/test_main.cpp` inside a `QCoreApplication`, among them the controller role against the device role over in-memory transports (`tests/test_ControllerRole.cpp`), the noise checklist, an end-to-end test over a noisy virtual link with a fake device for the boot wait (`tests/e2e/late_ping_device.py`) for Linux in Bash and for Windows in PowerShell, and the emulator test of both firmware targets on Linux (`tests/e2e/emulator_test.sh`). |
-| `fuzz/` | libFuzzer targets for the decoder and the link layer with their runner `fuzz/run_fuzzers.sh`. |
-| `tools/` | `noise.py` noise injector for pseudo terminals and COM ports, `noisy_link.sh` and `noisy_link.ps1` virtual links, `sercom_frame.py` Python reference implementation, `check_versions.py` version comparison, `run_small_limit_test.sh` small payload limit run, `run_sanitizer_test.sh` sanitizer run, `run_examples.sh` and `run_examples.ps1` example runs, `run_emulator.sh` with `uart_bridge.py` for a firmware build in QEMU, `run_static_analysis.sh` with the layout and style checks, the analyzer configurations and the cppcheck installer in `tools/analysis/`. |
+| `core/` | The protocol: CRC32, byte codec, frame of both versions, resynchronizing decoder, link layer with the peer version, the network layer of a node (`Router` with a primary and a secondary `RoutePort`, `NullTransport` for a port without a cable) and the frame tracer that decodes both directions for display. No OS calls, no heap, no exceptions; builds for PCs and microcontrollers. |
+| `app/` | Demo device protocol on top of `core`: message types with the route failure report, `DeviceApplication` (device side, on a router with one or two ports) and `DeviceClient` (host side, with a destination address and failure reports turned into failed requests). Shared by the firmware and the host tools. |
+| `firmware/common/` | The firmware of every target without platform calls, built in place by both PlatformIO projects and by CMake for the tests: `DeviceRole` (the device application with its frame tracer and activity LED, a router between two ports when it gets a secondary transport), `ControllerRole` (the `DeviceClient` querying another device step by step), the readable `Console` behind a `ConsoleOutput`, `ActivityLed`, the `RingBuffer` of interrupt handlers, `CommonSettings` and the `build_settings.py` of both projects. |
+| `host/` | The Qt 5.12.12 host: `SerialPort` on `QSerialPort` with the received data as a signal, utilities with the `QElapsedTimer` clock and the Qt log, the classes of the tools on the `QCoreApplication` event loop and, in `host/apps/`, the tools `sercom_cli` (with `--to`, `--ttl` and `discover` for a daisy chain), `sercom_device_sim` (with `--address`, `--downstream` and `--proxy` for a node of a chain), `sercom_dump`. The same code builds on Linux with GCC and on Windows with the MinGW 7.3.0 of Qt, without a platform branch. |
+| `firmware/esp32/` | PlatformIO project for ESP32 DevKit boards using `core`, `app` and `firmware/common` in place, with the FreeRTOS tasks, the UART, clock, platform and console adapters and the environments `esp32dev` (protocol on the USB port), `esp32dev-console` (protocol on UART2, readable console on the USB port), `esp32dev-controller` (controller of a device on UART2, console on the USB port), `esp32dev-router` (router node 2 between the USB port and UART2) and `esp32dev-chain` (node 4 at the end of a chain on UART2, console on the USB port). |
+| `firmware/stm32f4/` | Bare metal PlatformIO project for Nucleo-F401RE and Nucleo-F411RE boards: a superloop, SysTick clock, interrupt driven USARTs and the platform adapter, with device, console and controller environments, the router node 3 on USART1 and USART6 with its console on USART2 (`nucleo_f401re-router`), and `netduinoplus2-qemu` and `netduinoplus2-qemu-router` for the STM32F405 of QEMU. |
+| `examples/` | 27 small standalone programs in course order, from raw serial I/O on `QSerialPort` to a ping over a serial port, the routed frame and a chain of nodes in one process, and the consumer projects 28 to 30, which use sercom as a library through `add_subdirectory`, `FetchContent` and PlatformIO; each with a step-by-step guide, the index is [examples/README.md](../examples/README.md). |
+| `tests/` | Catch2 unit and integration tests with their runner `tests/test_main.cpp` inside a `QCoreApplication`, among them the controller role against the device role over in-memory transports (`tests/test_ControllerRole.cpp`), a chain of four nodes with loss on one hop (`tests/test_Router.cpp`), the device role as an end node and as a router (`tests/test_DeviceRole.cpp`), the noise checklist, an end-to-end test over a noisy virtual link with a fake device for the boot wait (`tests/e2e/late_ping_device.py`) for Linux in Bash and for Windows in PowerShell, the daisy chain of three device simulators with noise between two of them (`tests/e2e/chain_test.sh` and `chain_test.ps1`), the emulator test of both firmware targets on Linux (`tests/e2e/emulator_test.sh`) and the daisy chain of three emulated chips (`tests/e2e/emulator_chain_test.sh`). |
+| `fuzz/` | libFuzzer targets for the decoder, the link layer and the router with their runner `fuzz/run_fuzzers.sh`. |
+| `tools/` | `noise.py` noise injector for pseudo terminals and COM ports, `noisy_link.sh` and `noisy_link.ps1` virtual links, `sercom_frame.py` Python reference implementation, `check_versions.py` version comparison, `run_small_limit_test.sh` small payload limit run, `run_sanitizer_test.sh` sanitizer run, `run_examples.sh` and `run_examples.ps1` example runs, `run_consumers.sh` and `run_consumers.ps1` consumer project runs, `run_emulator.sh` with `uart_bridge.py` for a firmware build in QEMU, `run_static_analysis.sh` with the layout and style checks, the analyzer configurations and the cppcheck installer in `tools/analysis/`. |
 | `dep/` | Catch2 as a git submodule. Qt 5.12.12 is installed apart, for example with aqtinstall as the README shows. |
-| `docs/` | Protocol specification, the hardware bring-up of both targets in [HARDWARE.md](HARDWARE.md), the gateway design note [GATEWAY.md](GATEWAY.md), the coding style in [STYLE.md](STYLE.md) and this overview. |
+| `docs/` | Protocol specification of versions 1 and 2, the hardware bring-up of both targets and of a daisy chain in [HARDWARE.md](HARDWARE.md), the gateway design note [GATEWAY.md](GATEWAY.md), the coding style in [STYLE.md](STYLE.md) and this overview. |
 
 ## Qt and the platforms
 
 The host targets need Qt 5.12.12 exactly, with QtCore, QtSerialPort and, for the
 tests, QtTest. CMake finds it through `CMAKE_PREFIX_PATH` and stops with a message
-when it finds another version. `core/`, `app/` and `firmware/common/` never see Qt,
-because they also run on the microcontrollers. The same `CMakeLists.txt` builds on
-Linux and on Windows; its only platform check runs `windeployqt` after the Windows
-build, which copies the Qt and MinGW DLLs next to the programs (dynamic Qt under the
-LGPL). The serial port names are `/dev/ttyUSB0`, the `/dev/ttyACM0` of a Nucleo board
-or a pseudo terminal such as `/tmp/ttyV1` on Linux and `COM3` on Windows;
+when it finds another version; only the host library of a consumer project also takes
+a newer Qt 5 or a Qt 6 ("sercom as a library"). `core/`, `app/` and `firmware/common/`
+never see Qt, because they also run on the microcontrollers. The same `CMakeLists.txt`
+builds on Linux and on Windows; its only platform check runs `windeployqt` after the
+Windows build, which copies the Qt and MinGW DLLs next to the programs (dynamic Qt
+under the LGPL). The serial port names are `/dev/ttyUSB0`, the `/dev/ttyACM0` of a
+Nucleo board or a pseudo terminal such as `/tmp/ttyV1` on Linux and `COM3` on Windows;
 `QSerialPort` takes both. On Linux a name without a leading `/` or `./` names a
 device in `/dev`, so `ttyUSB0` works and a pseudo terminal link in the current
 directory, such as the `usart2` of `tools/run_emulator.sh`, needs `./`.
@@ -57,11 +73,26 @@ directory, such as the `usart2` of `tools/run_emulator.sh`, needs `./`.
 ## Build values
 
 The protocol limits and the version numbers are the `set()` lines at the top of
-`CMakeLists.txt`. They reach every target through the `sercom_settings` target and
-are read once in `core/include/Settings.h` and `app/src/AppSettings.cpp`. The
-firmware builds read the same `set()` lines through `firmware/common/build_settings.py`,
-and the limits must match on both peers. Both builds take the build number from
+`CMakeLists.txt`. The limits reach every target through the `sercom_settings` target,
+the version numbers only the application library through `sercom_version`; they are
+read once in `core/include/Settings.h` and `app/src/AppSettings.cpp`. The firmware
+builds read the same `set()` lines through `firmware/common/build_settings.py`, and the
+limits must match on both peers. Both builds take the build number from
 `GITHUB_RUN_NUMBER` and the git hash from `GITHUB_SHA` or `git rev-parse HEAD`.
+
+## sercom as a library
+
+A project of its own takes sercom as a git submodule with `add_subdirectory` or with
+`FetchContent` at a tag, and links `sercom::settings` with every library it uses:
+`sercom::core`, `sercom::app`, `sercom::firmware` and, with `SERCOM_BUILD_HOST` and a
+Qt 5 from 5.12 on or a Qt 6 from 6.2 on, `sercom::host`. As a subproject sercom builds
+no tests, no programs and no host library, asks for no Qt and adds none of its warning
+flags; the settings target carries its top directory as the include directory and
+requires C++17. A PlatformIO project links `core/`, `app/` and `firmware/common/` with
+`symlink://` and names its checkout with the option `custom_sercom_directory` for
+`build_settings.py`. Examples 28 to 30 are such projects, `tools/run_consumers.sh` and
+`run_consumers.ps1` build and run the CMake ones against this checkout without a
+compiler warning, and the README shows the steps in "As a dependency".
 
 ## Quality gates
 
@@ -74,21 +105,30 @@ and the limits must match on both peers. Both builds take the build number from
 | `tools/run_examples.sh build` | Every example program exits with 0, examples 01 and 24 over socat pseudo terminals |
 | `tools/run_examples.ps1 build` | The same on Windows, examples 01 and 24 over a com0com pair |
 | `tests/e2e/noisy_link_test.ps1 build/sercom_cli.exe build/sercom_device_sim.exe` | The end to end test on Windows over two com0com pairs |
+| `tests/e2e/chain_test.sh build/sercom_cli build/sercom_device_sim` | A daisy chain of three device simulators with noise between node 2 and node 3: discover, info, ping and stress over three links, the route failure reports of `UNREACHABLE` and `EXPIRED`, and a device without an address behind the proxy |
+| `tests/e2e/chain_test.ps1 build/sercom_cli.exe build/sercom_device_sim.exe` | The same on Windows over four com0com pairs |
+| `tools/run_consumers.sh build/sercom_device_sim` | The consumer projects of examples 28 and 29 and a consumer without a C++ standard of its own, built against this checkout without the warning flags of sercom and without a compiler warning, example 29 with the Qt 5 or Qt 6 of `CMAKE_PREFIX_PATH`, and run, example 29 over socat; `tools/run_consumers.ps1` on Windows over a com0com pair |
 | `tools/run_sanitizer_test.sh` | The same tests with AddressSanitizer and UndefinedBehaviorSanitizer, the flags are passed from outside |
-| `fuzz/run_fuzzers.sh` | libFuzzer targets `sercom_fuzz_frame_decoder` and `sercom_fuzz_link` for one minute each (Clang), the flags are passed from outside |
+| `fuzz/run_fuzzers.sh` | libFuzzer targets `sercom_fuzz_frame_decoder`, `sercom_fuzz_link` and `sercom_fuzz_router` for one minute each (Clang), the flags are passed from outside |
 | `python3 tools/check_versions.py` | The version numbers of CMakeLists.txt and the three library.json files |
 | `tools/run_static_analysis.sh build` | Layout, comments, countable idioms, cppcheck 2.22 with its Qt library (`tools/analysis/install_cppcheck.sh`) and clang-tidy 18 |
-| `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller` | The ESP32 environments with the same core, app and common firmware libraries |
-| `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller` | The STM32F4 environments with the same libraries and the house warnings with `-Werror` |
+| `pio run -d firmware/esp32 -e esp32dev -e esp32dev-console -e esp32dev-controller -e esp32dev-router -e esp32dev-chain` | The ESP32 environments with the same core, app and common firmware libraries |
+| `pio run -d firmware/stm32f4 -e nucleo_f401re -e nucleo_f411re -e nucleo_f401re-console -e nucleo_f401re-controller -e netduinoplus2-qemu -e netduinoplus2-qemu-controller -e nucleo_f401re-router -e netduinoplus2-qemu-router` | The STM32F4 environments with the same libraries and the house warnings with `-Werror` |
+| `pio run -d examples/30_consume_with_platformio` | The PlatformIO consumer project of example 30 on the same libraries |
 | `tests/e2e/emulator_test.sh build/sercom_cli firmware/esp32/.pio/build firmware/stm32f4/.pio/build` | Both targets in QEMU on Linux against the Qt `sercom_cli`, whose port stays free when it is killed, the ESP32 controller against the STM32F4 device on a clean and a noisy link, and the STM32F4 controller against the ESP32 device |
+| `tests/e2e/emulator_chain_test.sh build/sercom_cli build/sercom_dump firmware/esp32/.pio/build firmware/stm32f4/.pio/build` | The ESP32 router node 2, the STM32F4 router node 3 and the ESP32 node 4 in QEMU with noise between node 2 and node 3, the time to live of every hop in the port logs, and an ESP32 device without an address behind the proxy of node 3 |
 
 All of them run in GitHub Actions, see [ci.yml](../.github/workflows/ci.yml). The Linux
 jobs install Qt 5.12.12 for GCC and Clang; the `windows` job builds Debug and Release
 with the MinGW 7.3.0 of Qt 5.12.12 and `-Werror`, runs `sercom_test` and `--help` of
 every program from a path without Qt and MinGW, then installs com0com with the pairs of
-[COM0COM.md](../tools/COM0COM.md) and runs every example and the end to end test over
-them; the `emulator` job builds the Qt `sercom_cli` and runs both firmware targets in the
-pinned QEMU releases.
+[COM0COM.md](../tools/COM0COM.md) and runs every example, the end to end test, the daisy
+chain and the consumer projects over them; the `consumers` jobs build and run the
+consumer projects with GCC and Clang on Qt 5.12.12, with GCC on Qt 5.15.2 and Qt 6.8.3
+and on Windows with the MinGW 13.1 of Qt 6.8.3, each against a device simulator of Qt
+5.12.12; the `firmware` job also builds the PlatformIO consumer; the `emulator` job builds
+the Qt `sercom_cli` and `sercom_dump` and runs both firmware targets, the daisy chain of
+three chips and the PlatformIO consumer in the pinned QEMU releases.
 
 ## Noise tools
 
