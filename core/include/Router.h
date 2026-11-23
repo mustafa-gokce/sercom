@@ -34,6 +34,7 @@ struct RouterStatistics
     uint64_t localFrameCounter = 0;       // frames delivered to the node
     uint64_t forwardedFrameCounter = 0;   // frames passed on to the other port
     uint64_t broadcastFrameCounter = 0;   // broadcast frames delivered to the node
+    uint64_t proxiedFrameCounter = 0;     // frames passed between the neighbour without an address
     uint64_t expiredFrameCounter = 0;     // frames dropped at the end of their time to live
     uint64_t unreachableFrameCounter = 0; // frames dropped without a way to their destination
     uint64_t loopedFrameCounter = 0;      // frames dropped that came back to their source
@@ -187,14 +188,16 @@ private:
     [[nodiscard]] Definitions::MessageStatusType deliverMessage(const Frame::Frame &frame);
 
     /*
-     * Pass a frame on from its arrival port to the departure port with a route header.
+     * Pass a frame on from its arrival port to the departure port, routed or in a direct frame.
      * Get the answer to the previous hop: accepted when sent, busy when the window is full.
+     * The route header names the source and the destination of a direct frame too.
      */
     [[nodiscard]] Definitions::MessageStatusType forwardMessage(
         Definitions::PortType arrivalPortType,
         Definitions::PortType departurePortType,
         const Frame::Frame &frame,
-        const Frame::RouteHeader &routeHeader);
+        const Frame::RouteHeader &routeHeader,
+        bool routed);
 
     /*
      * Remember a forwarded acknowledged message and its quote until the next hop answers it.
@@ -246,6 +249,7 @@ private:
     Link::Link primaryLink;                     // link of the primary port
     Link::Link secondaryLink;                   // link of the secondary port
     const bool secondaryPortUsed;               // secondary port has a transport
+    uint8_t proxyReportAddress;                 // destination of the frames passed up for the proxy
     RouterStatistics statistics;                // router statistics
     std::array<ForwardedMessage, Settings::MaximumPendingFrames>
         primaryForwardedMessages; // messages forwarded on the primary port

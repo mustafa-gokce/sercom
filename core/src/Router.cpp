@@ -61,6 +61,7 @@ Router::Router(Transport::Transport &primaryTransport,
                     clock,
                     getPortLinkConfiguration(linkConfiguration, routerConfiguration))
     , secondaryPortUsed(secondaryTransport != nullptr)
+    , proxyReportAddress(Definitions::HOST_ADDRESS)
     , statistics()
     , primaryForwardedMessages()
     , secondaryForwardedMessages()
@@ -253,8 +254,18 @@ Definitions::MessageStatusType Router::handleDirectMessage(const Definitions::Po
         return this->deliverMessage(frame);
     }
 
-    // drop every other direct frame
-    return this->dropUnreachableMessage();
+    // drop a direct frame of the secondary port without a neighbour to stand in for
+    if (this->configuration.proxyAddress == Definitions::UNASSIGNED_ADDRESS) {
+        return this->dropUnreachableMessage();
+    }
+
+    // pass the frame of the neighbour up as a routed frame of the proxy address
+    Frame::RouteHeader routeHeader;
+    routeHeader.sourceAddress = this->configuration.proxyAddress;
+    routeHeader.destinationAddress = this->proxyReportAddress;
+    routeHeader.timeToLive = this->configuration.timeToLive;
+    ++this->statistics.proxiedFrameCounter;
+    return this->forwardMessage(portType, Definitions::PortType::PRIMARY, frame, routeHeader, true);
 }
 
 Definitions::MessageStatusType Router::handleRoutedMessage(const Definitions::PortType portType,
@@ -314,10 +325,20 @@ Definitions::MessageStatusType Router::handleRoutedMessage(const Definitions::Po
         return this->dropUnreachableMessage();
     }
 
+    // send a frame for the neighbour without an address down in a direct frame
+    const bool otherPeerVersion2 = this->getLink(otherPortType).getPeerVersionType()
+                                   == Definitions::PeerVersionType::VERSION_2;
+    if (otherPortType == Definitions::PortType::SECONDARY
+        && destinationAddress == this->configuration.proxyAddress && !otherPeerVersion2) {
+        this->proxyReportAddress = sourceAddress;
+        ++this->statistics.proxiedFrameCounter;
+        return this->forwardMessage(portType, otherPortType, frame, frame.getRouteHeader(), false);
+    }
+
     // pass the frame on to the other port with one link less to live
     Frame::RouteHeader routeHeader = frame.getRouteHeader();
     --routeHeader.timeToLive;
-    return this->forwardMessage(portType, otherPortType, frame, routeHeader);
+    return this->forwardMessage(portType, otherPortType, frame, routeHeader, true);
 }
 
 Definitions::MessageStatusType Router::handleBroadcastMessage(const Definitions::PortType portType,
@@ -344,7 +365,7 @@ Definitions::MessageStatusType Router::handleBroadcastMessage(const Definitions:
     Frame::RouteHeader routeHeader = frame.getRouteHeader();
     --routeHeader.timeToLive;
     [[maybe_unused]] const Definitions::MessageStatusType copyMessageStatusType
-        = this->forwardMessage(portType, otherPortType, frame, routeHeader);
+        = this->forwardMessage(portType, otherPortType, frame, routeHeader, true);
 
     // answer with the message status of the node
     return messageStatusType;
@@ -362,24 +383,35 @@ Definitions::MessageStatusType Router::deliverMessage(const Frame::Frame &frame)
 Definitions::MessageStatusType Router::forwardMessage(const Definitions::PortType arrivalPortType,
                                                       const Definitions::PortType departurePortType,
                                                       const Frame::Frame &frame,
-                                                      const Frame::RouteHeader &routeHeader)
+                                                      const Frame::RouteHeader &routeHeader,
+                                                      const bool routed)
 {
-    // peer of the departure port must read routed frames
+    // peer of the departure port must read a routed frame
     Link::Link &departureLink = this->getLink(departurePortType);
-    if (departureLink.getPeerVersionType() == Definitions::PeerVersionType::VERSION_1) {
+    if (routed && departureLink.getPeerVersionType() == Definitions::PeerVersionType::VERSION_1) {
         return this->dropUnreachableMessage();
     }
 
-    // previous hop must learn that the window of the next link is full
+    // send the frame routed or direct on the link of the departure port
     const bool acknowledged = frame.getFlag(Definitions::FrameFlagType::ACK_REQUEST);
     uint16_t forwardedMessageCounter = 0;
-    const Definitions::SendStatusType sendStatusType
-        = departureLink.sendRoutedMessage(routeHeader,
-                                          frame.getMessageType(),
-                                          frame.getPayload(),
-                                          frame.getPayloadLength(),
-                                          acknowledged,
-                                          forwardedMessageCounter);
+    Definitions::SendStatusType sendStatusType = Definitions::SendStatusType::UNKNOWN;
+    if (routed) {
+        sendStatusType = departureLink.sendRoutedMessage(routeHeader,
+                                                         frame.getMessageType(),
+                                                         frame.getPayload(),
+                                                         frame.getPayloadLength(),
+                                                         acknowledged,
+                                                         forwardedMessageCounter);
+    } else {
+        sendStatusType = departureLink.sendMessage(frame.getMessageType(),
+                                                   frame.getPayload(),
+                                                   frame.getPayloadLength(),
+                                                   acknowledged,
+                                                   forwardedMessageCounter);
+    }
+
+    // previous hop must learn that the window of the next link is full
     if (sendStatusType == Definitions::SendStatusType::WINDOW_FULL) {
         // keep track of busy frames
         ++this->statistics.busyFrameCounter;
