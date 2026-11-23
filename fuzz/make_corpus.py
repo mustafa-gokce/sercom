@@ -16,6 +16,11 @@ TOOLS_DIRECTORY = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(_
 # frame flag types of the seeds
 FRAME_FLAG_ACK_REQUEST = 0x01
 FRAME_FLAG_ACK = 0x02
+FRAME_FLAG_ROUTE_CAPABLE = 0x10
+
+# addresses of the routed seeds
+HOST_ADDRESS = 0x01
+NODE_ADDRESS = 0x03
 
 # message types of the seeds
 PING_REQUEST = 0x0001
@@ -24,6 +29,12 @@ SET_LED_REQUEST = 0x0100
 # chunk size selectors of the seeds, the fuzzer adds one
 PING_CHUNK_SELECTOR = 7
 TWO_FRAMES_CHUNK_SELECTOR = 2
+ROUTED_PING_CHUNK_SELECTOR = 5
+LARGEST_ROUTED_FRAME_CHUNK_SELECTOR = 63
+MIXED_FRAMES_CHUNK_SELECTOR = 3
+
+# noise bytes between the mixed frames, a stray sync word and a version above the routed frames
+MIXED_NOISE = bytes([0x00, 0xA5, 0xC3, 0x03, 0xFF])
 
 
 def get_seeds(sercom_frame):
@@ -40,6 +51,22 @@ def get_seeds(sercom_frame):
     stray_sync_byte = bytes([sercom_frame.SYNC_BYTE_1])
     seeds['two_frames.bin'] = (bytes([TWO_FRAMES_CHUNK_SELECTOR]) + set_led_request + stray_sync_byte
                                + acknowledgement)
+
+    # golden routed frame of docs/PROTOCOL.md section 8.11
+    route = (HOST_ADDRESS, NODE_ADDRESS, sercom_frame.DEFAULT_TIME_TO_LIVE)
+    routed_flags = FRAME_FLAG_ACK_REQUEST | FRAME_FLAG_ROUTE_CAPABLE
+    routed_ping_request = sercom_frame.encode(routed_flags, 7, PING_REQUEST, bytes.fromhex('E8030000'), route)
+    seeds['routed_ping.bin'] = bytes([ROUTED_PING_CHUNK_SELECTOR]) + routed_ping_request
+
+    # largest routed frame of the reference build
+    largest_payload = bytes(range(sercom_frame.MAXIMUM_PAYLOAD_SIZE))
+    largest_routed_frame = sercom_frame.encode(routed_flags, 1, SET_LED_REQUEST, largest_payload, route)
+    seeds['largest_routed_frame.bin'] = bytes([LARGEST_ROUTED_FRAME_CHUNK_SELECTOR]) + largest_routed_frame
+
+    # routed and direct frames mixed with noise
+    routed_acknowledgement = sercom_frame.encode(FRAME_FLAG_ACK | FRAME_FLAG_ROUTE_CAPABLE, 7, PING_REQUEST)
+    seeds['mixed_frames.bin'] = (bytes([MIXED_FRAMES_CHUNK_SELECTOR]) + MIXED_NOISE + set_led_request
+                                 + routed_ping_request + MIXED_NOISE + routed_acknowledgement + MIXED_NOISE)
     return seeds
 
 
