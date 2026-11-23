@@ -62,7 +62,7 @@ Packet Based Binary Serial Protocol for Qt Hosts on Linux and Windows, ESP32 and
 12. Build and install cppcheck 2.22 into `~/.local/cppcheck-2.22.0`: `tools/analysis/install_cppcheck.sh`
 13. Run the layout, comment, idiom, cppcheck and clang-tidy gates: `CPPCHECK=~/.local/cppcheck-2.22.0/bin/cppcheck tools/run_static_analysis.sh build`
 14. Run the tests with AddressSanitizer and UndefinedBehaviorSanitizer in `build-sanitizers`: `tools/run_sanitizer_test.sh`
-15. Fuzz the frame decoder and the link layer for one minute each in `build-fuzz`: `fuzz/run_fuzzers.sh`
+15. Fuzz the frame decoder, the link layer and the router for one minute each in `build-fuzz`: `fuzz/run_fuzzers.sh`
 
 ### Windows
 1. Open PowerShell 7 with the path of the build steps.
