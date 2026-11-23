@@ -120,6 +120,7 @@ add_library(${PROJECT_NAME}_core_lib
     core/include/TraceTransport.h core/src/TraceTransport.cpp
     core/include/NullTransport.h core/src/NullTransport.cpp
     core/include/RoutePort.h core/src/RoutePort.cpp
+    core/include/Router.h core/src/Router.cpp
 )
 target_link_libraries(${PROJECT_NAME}_core_lib PRIVATE
     ${PROJECT_NAME}_settings
