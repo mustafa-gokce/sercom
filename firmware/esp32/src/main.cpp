@@ -18,6 +18,7 @@
 #include "../../../app/include/Messages.h"
 #include "../../common/include/CommonSettings.h"
 #include "../../common/include/Console.h"
+#include "../../common/include/ControllerRole.h"
 #include "../../common/include/DeviceRole.h"
 #include "../../common/include/FirmwareRole.h"
 
@@ -47,7 +48,14 @@ static sercom::Console::Console console(esp32ConsoleOutput,
                                         esp32Clock,
                                         sercom::FirmwareSettings::ConsolePrinted);
 static sercom::DeviceRole::DeviceRole deviceRole(uartTransport, esp32Clock, esp32Platform, console);
-static sercom::FirmwareRole::FirmwareRole &firmwareRole = deviceRole;
+static sercom::ControllerRole::ControllerRole controllerRole(uartTransport,
+                                                             esp32Clock,
+                                                             esp32Platform,
+                                                             console);
+static sercom::FirmwareRole::FirmwareRole &firmwareRole
+    = sercom::FirmwareSettings::ControllerRun
+          ? static_cast<sercom::FirmwareRole::FirmwareRole &>(controllerRole)
+          : static_cast<sercom::FirmwareRole::FirmwareRole &>(deviceRole);
 
 void setup()
 {
