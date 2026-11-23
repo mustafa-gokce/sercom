@@ -170,7 +170,7 @@ TEST_CASE_METHOD(TestFrame,
     const Frame::Frame frame(0, 0, 0, largestPayload.data(), largestPayload.size());
 
     // check the maximum frame size
-    REQUIRE(frame.getSize() == Settings::MAXIMUM_FRAME_SIZE);
+    REQUIRE(frame.getSize() == Settings::MAXIMUM_DIRECT_FRAME_SIZE);
     REQUIRE(frame.getLikelyValid());
 }
 
