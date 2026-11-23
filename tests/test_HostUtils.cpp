@@ -337,3 +337,54 @@ TEST_CASE_METHOD(TestHostUtils,
                       REQUIRE_FALSE(HostUtils::parseUint32(invalidText, maximum, invalidTextValue));
                   });
 }
+
+TEST_CASE_METHOD(TestHostUtils,
+                 "Message status type is shown by its name, the route statuses included",
+                 "[HostUtils][getMessageStatusTypeText]")
+{
+    REQUIRE(HostUtils::getMessageStatusTypeText(Definitions::MessageStatusType::UNKNOWN)
+            == "UNKNOWN");
+    REQUIRE(HostUtils::getMessageStatusTypeText(Definitions::MessageStatusType::ACCEPTED)
+            == "ACCEPTED");
+    REQUIRE(HostUtils::getMessageStatusTypeText(
+                Definitions::MessageStatusType::UNSUPPORTED_MESSAGE_TYPE)
+            == "UNSUPPORTED_MESSAGE_TYPE");
+    REQUIRE(HostUtils::getMessageStatusTypeText(Definitions::MessageStatusType::MALFORMED_PAYLOAD)
+            == "MALFORMED_PAYLOAD");
+    REQUIRE(HostUtils::getMessageStatusTypeText(Definitions::MessageStatusType::BUSY) == "BUSY");
+    REQUIRE(HostUtils::getMessageStatusTypeText(Definitions::MessageStatusType::INVALID_ARGUMENT)
+            == "INVALID_ARGUMENT");
+    REQUIRE(HostUtils::getMessageStatusTypeText(Definitions::MessageStatusType::UNREACHABLE)
+            == "UNREACHABLE");
+    REQUIRE(HostUtils::getMessageStatusTypeText(Definitions::MessageStatusType::EXPIRED)
+            == "EXPIRED");
+}
+
+TEST_CASE_METHOD(TestHostUtils,
+                 "Only the addresses of nodes are parsed as an address argument",
+                 "[HostUtils][parseAddressArgument]")
+{
+    // check the lowest, the highest and a hexadecimal node address
+    static constexpr std::string_view argumentName = "destination";
+    uint8_t address = 0;
+    REQUIRE(HostUtils::parseAddressArgument("2", argumentName, address));
+    REQUIRE(address == Definitions::MINIMUM_NODE_ADDRESS);
+    REQUIRE(HostUtils::parseAddressArgument("254", argumentName, address));
+    REQUIRE(address == Definitions::MAXIMUM_NODE_ADDRESS);
+    REQUIRE(HostUtils::parseAddressArgument("0x10", argumentName, address));
+    REQUIRE(address == 0x10);
+
+    // check that the unassigned, the host and the broadcast address and no number are refused
+    static const std::vector<std::string_view> invalidArguments = {"0", "1", "255", "256", "", "x"};
+    std::for_each(invalidArguments.cbegin(),
+                  invalidArguments.cend(),
+                  [](const std::string_view invalidArgument) {
+                      // check the rejection of the argument
+                      CAPTURE(invalidArgument);
+                      uint8_t invalidAddress = 0;
+                      REQUIRE_FALSE(HostUtils::parseAddressArgument(invalidArgument,
+                                                                    argumentName,
+                                                                    invalidAddress));
+                      REQUIRE(invalidAddress == 0);
+                  });
+}
