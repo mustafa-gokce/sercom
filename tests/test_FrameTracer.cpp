@@ -618,7 +618,7 @@ TEST_CASE_METHOD(TestFrameTracer,
     // trace a frame with a wrong version
     static constexpr size_t versionOffset = 2;
     std::vector<uint8_t> frame = getFrameBytes(0x00, 1, 0x0005, getTextBytes("v2"));
-    frame[versionOffset] = Definitions::PROTOCOL_VERSION + 1;
+    frame[versionOffset] = Definitions::ROUTED_PROTOCOL_VERSION + 1;
     frameTracer->onReceivedData(frame.data(), frame.size());
     advanceSilence();
 
