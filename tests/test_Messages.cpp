@@ -1,11 +1,14 @@
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
 #include "../app/include/Messages.h"
+#include "../core/include/Definitions.h"
 #include "../core/include/Frame.h"
 #include "../core/include/Settings.h"
 
@@ -60,6 +63,8 @@ TEST_CASE_METHOD(TestMessages,
     REQUIRE(Messages::fromMessageType(Messages::MessageType::LOG_REPORT_RESPONSE) == 0x0005);
     REQUIRE(Messages::fromMessageType(Messages::MessageType::ECHO_REQUEST) == 0x0006);
     REQUIRE(Messages::fromMessageType(Messages::MessageType::ECHO_RESPONSE) == 0x0007);
+    REQUIRE(Messages::fromMessageType(Messages::MessageType::ROUTE_FAILURE_REPORT_RESPONSE)
+            == 0x0008);
     REQUIRE(Messages::fromMessageType(Messages::MessageType::SET_LED_REQUEST) == 0x0100);
     REQUIRE(Messages::fromMessageType(Messages::MessageType::SET_LED_RESPONSE) == 0x0101);
     REQUIRE(Messages::fromMessageType(Messages::MessageType::SET_TELEMETRY_PERIOD_REQUEST)
@@ -79,6 +84,7 @@ TEST_CASE_METHOD(TestMessages,
     REQUIRE(Messages::toMessageType(0x0005) == Messages::MessageType::LOG_REPORT_RESPONSE);
     REQUIRE(Messages::toMessageType(0x0006) == Messages::MessageType::ECHO_REQUEST);
     REQUIRE(Messages::toMessageType(0x0007) == Messages::MessageType::ECHO_RESPONSE);
+    REQUIRE(Messages::toMessageType(0x0008) == Messages::MessageType::ROUTE_FAILURE_REPORT_RESPONSE);
     REQUIRE(Messages::toMessageType(0x0100) == Messages::MessageType::SET_LED_REQUEST);
     REQUIRE(Messages::toMessageType(0x0101) == Messages::MessageType::SET_LED_RESPONSE);
     REQUIRE(Messages::toMessageType(0x0102) == Messages::MessageType::SET_TELEMETRY_PERIOD_REQUEST);
@@ -120,6 +126,8 @@ TEST_CASE_METHOD(TestMessages, "Message type is shown by its name", "[Messages][
             == "LOG_REPORT_RESPONSE");
     REQUIRE(Messages::getMessageTypeText(Messages::MessageType::ECHO_REQUEST) == "ECHO_REQUEST");
     REQUIRE(Messages::getMessageTypeText(Messages::MessageType::ECHO_RESPONSE) == "ECHO_RESPONSE");
+    REQUIRE(Messages::getMessageTypeText(Messages::MessageType::ROUTE_FAILURE_REPORT_RESPONSE)
+            == "ROUTE_FAILURE_REPORT_RESPONSE");
     REQUIRE(Messages::getMessageTypeText(Messages::MessageType::SET_LED_REQUEST)
             == "SET_LED_REQUEST");
     REQUIRE(Messages::getMessageTypeText(Messages::MessageType::SET_LED_RESPONSE)
@@ -496,4 +504,131 @@ TEST_CASE_METHOD(TestMessages,
     const Messages::SetTelemetryPeriodRequest receivedSetTelemetryPeriodRequest(getFrame(payload));
     REQUIRE(receivedSetTelemetryPeriodRequest.getLikelyValid());
     REQUIRE(receivedSetTelemetryPeriodRequest.getTelemetryPeriod() == 500ms);
+}
+
+TEST_CASE_METHOD(TestMessages,
+                 "A message keeps the source address of a routed frame only",
+                 "[Messages][getSourceAddress]")
+{
+    // create a ping request from a routed frame of node 3, from a direct frame and from its field
+    static constexpr uint8_t sourceAddress = 3;
+    const Messages::PingRequest pingRequest(std::chrono::milliseconds(1000));
+    Frame::RouteHeader routeHeader;
+    routeHeader.sourceAddress = sourceAddress;
+    routeHeader.destinationAddress = Definitions::HOST_ADDRESS;
+    routeHeader.timeToLive = Settings::DEFAULT_TIME_TO_LIVE;
+    const Frame::Frame routedFrame(0,
+                                   0,
+                                   Messages::fromMessageType(Messages::MessageType::PING_REQUEST),
+                                   routeHeader,
+                                   pingRequest.getPayload(),
+                                   pingRequest.getPayloadLength());
+
+    // check the source address of each message
+    REQUIRE(Messages::PingRequest(routedFrame).getSourceAddress() == sourceAddress);
+    REQUIRE(Messages::PingRequest(routedFrame).getRequestTimestamp()
+            == std::chrono::milliseconds(1000));
+    REQUIRE(Messages::PingRequest(getFrame(getPayload(pingRequest))).getSourceAddress()
+            == Definitions::UNASSIGNED_ADDRESS);
+    REQUIRE(pingRequest.getSourceAddress() == Definitions::UNASSIGNED_ADDRESS);
+}
+
+TEST_CASE_METHOD(TestMessages,
+                 "Route failure report response keeps every field and its quote",
+                 "[Messages][testRouteFailureReportResponse]")
+{
+    // create a route failure report response about a rejected ping request for node 9
+    static constexpr uint8_t destinationAddress = 9;
+    const std::vector<uint8_t> quote = {0xE8, 0x03, 0x00, 0x00};
+    const Messages::RouteFailureReportResponse
+        routeFailureReportResponse(destinationAddress,
+                                   Messages::fromMessageType(Messages::MessageType::PING_REQUEST),
+                                   Definitions::DeliveryFailureType::REJECTED,
+                                   Definitions::MessageStatusType::UNREACHABLE,
+                                   quote.data(),
+                                   quote.size());
+
+    // check the payload bytes
+    REQUIRE(getPayload(routeFailureReportResponse)
+            == std::vector<uint8_t>({0x09, 0x01, 0x00, 0x02, 0x06, 0x04, 0xE8, 0x03, 0x00, 0x00}));
+
+    // check every field after the response was read back from a frame
+    const Messages::RouteFailureReportResponse receivedResponse(
+        getFrame(getPayload(routeFailureReportResponse)));
+    REQUIRE(receivedResponse.getLikelyValid());
+    REQUIRE(receivedResponse.getDestinationAddress() == destinationAddress);
+    REQUIRE(receivedResponse.getMessageType()
+            == Messages::fromMessageType(Messages::MessageType::PING_REQUEST));
+    REQUIRE(receivedResponse.getDeliveryFailureType() == Definitions::DeliveryFailureType::REJECTED);
+    REQUIRE(receivedResponse.getMessageStatusType() == Definitions::MessageStatusType::UNREACHABLE);
+    REQUIRE(receivedResponse.getQuoteLength() == quote.size());
+    REQUIRE(std::vector<uint8_t>(receivedResponse.getQuote(),
+                                 receivedResponse.getQuote() + receivedResponse.getQuoteLength())
+            == quote);
+}
+
+TEST_CASE_METHOD(
+    TestMessages,
+    "Route failure report response with a long quote stays empty and a cut one is not valid",
+    "[Messages][testInvalidRouteFailureReportResponse]")
+{
+    // create a route failure report response with a quote above the maximum quote size
+    const std::vector<uint8_t> longQuote(Definitions::MAXIMUM_ROUTE_FAILURE_QUOTE_SIZE + 1, 0x42);
+    const Messages::RouteFailureReportResponse
+        longResponse(3,
+                     0x0100,
+                     Definitions::DeliveryFailureType::TIMED_OUT,
+                     Definitions::MessageStatusType::UNKNOWN,
+                     longQuote.data(),
+                     longQuote.size());
+    REQUIRE(longResponse.getPayloadLength() == static_cast<size_t>(0));
+    REQUIRE_FALSE(longResponse.getLikelyValid());
+
+    // check a payload that announces more quoted bytes than it holds and an unknown failure type
+    const Messages::RouteFailureReportResponse cutResponse(
+        getFrame(std::vector<uint8_t>({0x03, 0x00, 0x01, 0x09, 0x00, 0x02, 0xAA})));
+    REQUIRE_FALSE(cutResponse.getLikelyValid());
+    REQUIRE(cutResponse.getQuoteLength() == static_cast<size_t>(0));
+    REQUIRE(cutResponse.getDeliveryFailureType() == Definitions::DeliveryFailureType::UNKNOWN);
+    REQUIRE(Messages::RouteFailureReportResponse(getFrame(std::vector<uint8_t>({0x03, 0x00})))
+                .getDestinationAddress()
+            == Definitions::UNASSIGNED_ADDRESS);
+}
+
+TEST_CASE_METHOD(
+    TestMessages,
+    "Device info response appends the protocol version and the node address on request",
+    "[Messages][testDeviceInfoRoute]")
+{
+    // create device info responses without and with the appended fields
+    static constexpr uint8_t nodeAddress = 3;
+    static constexpr std::string_view deviceName = "node";
+    const Messages::DeviceInfoResponse directResponse(1,
+                                                      0,
+                                                      std::chrono::milliseconds(5),
+                                                      1024,
+                                                      deviceName);
+    const Messages::DeviceInfoResponse routedResponse(1,
+                                                      0,
+                                                      std::chrono::milliseconds(5),
+                                                      1024,
+                                                      deviceName,
+                                                      Definitions::ROUTED_PROTOCOL_VERSION,
+                                                      nodeAddress);
+
+    // check the defaults of a response without the appended fields
+    REQUIRE(directResponse.getPayloadLength()
+            == Messages::DEVICE_INFO_RESPONSE_SIZE + deviceName.size());
+    REQUIRE(directResponse.getProtocolVersion() == Definitions::PROTOCOL_VERSION);
+    REQUIRE(directResponse.getNodeAddress() == Definitions::UNASSIGNED_ADDRESS);
+
+    // check the appended fields after the response was read back from a frame
+    const Messages::DeviceInfoResponse receivedResponse(getFrame(getPayload(routedResponse)));
+    REQUIRE(receivedResponse.getPayloadLength()
+            == Messages::DEVICE_INFO_RESPONSE_SIZE + deviceName.size()
+                   + Messages::DEVICE_INFO_ROUTE_SIZE);
+    REQUIRE(receivedResponse.getLikelyValid());
+    REQUIRE(receivedResponse.getDeviceName() == deviceName);
+    REQUIRE(receivedResponse.getProtocolVersion() == Definitions::ROUTED_PROTOCOL_VERSION);
+    REQUIRE(receivedResponse.getNodeAddress() == nodeAddress);
 }
