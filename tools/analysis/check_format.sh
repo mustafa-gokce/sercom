@@ -5,6 +5,7 @@
 #
 # Check that every own C++ file equals the output of clang-format 18 with the house style file.
 #
+# The consumer projects in examples/ are checked too, the build directories inside them are skipped.
 # The style file is tools/analysis/clang-format.yaml, other clang-format versions lay out differently.
 # Every file that differs is listed with its number of changed lines, --fix rewrites those files.
 #
@@ -48,11 +49,12 @@ if [[ ! "${version_text}" =~ version\ ${CLANG_FORMAT_VERSION}\. ]]; then
     exit 69
 fi
 
-# list the own C++ files
+# list the own C++ files without the build directories of the consumer projects
 cd "${SOURCE_DIRECTORY}"
 mapfile -t FILES < <(find core app host firmware/common/include firmware/common/src firmware/esp32/include \
     firmware/esp32/src firmware/stm32f4/include firmware/stm32f4/src tests examples fuzz \
-    -name '.*' -prune -o -type f \( -name '*.h' -o -name '*.cpp' \) -print | sort)
+    \( -name '.*' -o -name 'build' -o -name 'build-*' \) -prune -o -type f \( -name '*.h' -o -name '*.cpp' \) -print \
+    | sort)
 readonly FILES
 
 # compare every file with the formatter output, from its first differing line on
