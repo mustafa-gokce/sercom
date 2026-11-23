@@ -38,7 +38,7 @@ and every file includes the others by a path relative to itself.
 | `fuzz/` | libFuzzer targets for the decoder and the link layer with their runner `fuzz/run_fuzzers.sh`. |
 | `tools/` | `noise.py` noise injector for pseudo terminals and COM ports, `noisy_link.sh` and `noisy_link.ps1` virtual links, `sercom_frame.py` Python reference implementation, `check_versions.py` version comparison, `run_small_limit_test.sh` small payload limit run, `run_sanitizer_test.sh` sanitizer run, `run_examples.sh` and `run_examples.ps1` example runs, `run_emulator.sh` with `uart_bridge.py` for a firmware build in QEMU, `run_static_analysis.sh` with the layout and style checks, the analyzer configurations and the cppcheck installer in `tools/analysis/`. |
 | `dep/` | Catch2 as a git submodule. Qt 5.12.12 is installed apart, for example with aqtinstall as the README shows. |
-| `docs/` | Protocol specification, the hardware bring-up of both targets in [HARDWARE.md](HARDWARE.md), the coding style in [STYLE.md](STYLE.md) and this overview. |
+| `docs/` | Protocol specification, the hardware bring-up of both targets in [HARDWARE.md](HARDWARE.md), the gateway design note [GATEWAY.md](GATEWAY.md), the coding style in [STYLE.md](STYLE.md) and this overview. |
 
 ## Qt and the platforms
 
