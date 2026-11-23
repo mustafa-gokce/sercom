@@ -6,9 +6,19 @@
 #include <sys/types.h>
 
 /*
- * Configure the board, start the millisecond clock and sleep in a superloop.
+ * Configure the board, open the serial ports and run the firmware role in a superloop.
  */
 int main();
+
+/*
+ * Print the boot banner with the name and the version of the device and its serial ports.
+ */
+void printBanner();
+
+/*
+ * Write a formatted line of the boot banner to the console serial port.
+ */
+void writeConsoleLine(const char *line, int lineLength);
 
 extern "C" {
 
@@ -16,6 +26,16 @@ extern "C" {
  * Count one millisecond of the SysTick timer.
  */
 void SysTick_Handler();
+
+/*
+ * Serve the receive and transmit interrupts of USART1.
+ */
+void USART1_IRQHandler();
+
+/*
+ * Serve the receive and transmit interrupts of USART2.
+ */
+void USART2_IRQHandler();
 
 /*
  * Refuse every heap request of the C library, because the firmware has no heap.
