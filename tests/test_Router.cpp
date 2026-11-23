@@ -5,6 +5,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <random>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -763,4 +764,334 @@ TEST_CASE_METHOD(TestRouter,
     REQUIRE(getRejectionStatus(sentFrames.at(0)) == Definitions::MessageStatusType::UNREACHABLE);
     REQUIRE(endHandler.getMessages().empty());
     REQUIRE(endRouter->getStatistics().unreachableFrameCounter == static_cast<uint64_t>(1));
+}
+
+TEST_CASE_METHOD(
+    TestRouter,
+    "A request travels down with one link less to live on every hop and so does its answer up",
+    "[Router][testForwarding]")
+{
+    // send a message of the host to the end node
+    REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the time to live on every hop down
+    REQUIRE(hostTransport.getSentFrames().at(0).getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE);
+    REQUIRE(upperSecondaryTransport.getSentFrames().at(0).getTimeToLive()
+            == Settings::DEFAULT_TIME_TO_LIVE - 1);
+    REQUIRE(lowerSecondaryTransport.getSentFrames().at(0).getTimeToLive()
+            == Settings::DEFAULT_TIME_TO_LIVE - 2);
+
+    // check the delivery to the end node only and the confirmation of the first hop
+    const std::vector<Frame::Frame> endMessages = endHandler.getMessages();
+    REQUIRE(endMessages.size() == static_cast<size_t>(1));
+    REQUIRE(endMessages.at(0).getSourceAddress() == Definitions::HOST_ADDRESS);
+    REQUIRE(upperHandler.getMessages().empty());
+    REQUIRE(lowerHandler.getMessages().empty());
+    REQUIRE(hostHandler.getDeliveryResults().size() == static_cast<size_t>(1));
+    REQUIRE(hostHandler.getDeliveryResults().at(0).confirmed);
+
+    // answer the host from the end node
+    REQUIRE(endRouter->sendMessage(Definitions::HOST_ADDRESS,
+                                   TestMessageType,
+                                   nullptr,
+                                   0,
+                                   true,
+                                   messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pump();
+
+    // check the time to live on every hop up and the delivery to the host
+    REQUIRE(endTransport.getSentFrames().back().getTimeToLive() == Settings::DEFAULT_TIME_TO_LIVE);
+    REQUIRE(lowerPrimaryTransport.getSentFrames().back().getTimeToLive()
+            == Settings::DEFAULT_TIME_TO_LIVE - 1);
+    REQUIRE(upperPrimaryTransport.getSentFrames().back().getTimeToLive()
+            == Settings::DEFAULT_TIME_TO_LIVE - 2);
+    const std::vector<Frame::Frame> hostMessages = hostHandler.getMessages();
+    REQUIRE(hostMessages.size() == static_cast<size_t>(1));
+    REQUIRE(hostMessages.at(0).getSourceAddress() == EndNodeAddress);
+    REQUIRE(endHandler.getDeliveryResults().size() == static_cast<size_t>(1));
+    REQUIRE(endHandler.getDeliveryResults().at(0).confirmed);
+
+    // check that the outcomes of the forwarded messages stay in the routers
+    REQUIRE(upperHandler.getDeliveryResults().empty());
+    REQUIRE(lowerHandler.getDeliveryResults().empty());
+    REQUIRE(upperRouter->getStatistics().forwardedFrameCounter == static_cast<uint64_t>(2));
+    REQUIRE(lowerRouter->getStatistics().forwardedFrameCounter == static_cast<uint64_t>(2));
+}
+
+TEST_CASE_METHOD(
+    TestRouter,
+    "A frame for the host from above and a frame at the end of its time to live are dropped",
+    "[Router][testHostRuleAndTimeToLive]")
+{
+    // hand the upper node a frame for the host from above, one with one link and one with two links to live
+    const std::vector<uint8_t> hostFrame = getRoutedFrameData(0x11,
+                                                              1,
+                                                              LowerNodeAddress,
+                                                              Definitions::HOST_ADDRESS,
+                                                              Settings::DEFAULT_TIME_TO_LIVE);
+    const std::vector<uint8_t> lastLinkFrame = getRoutedFrameData(0x11,
+                                                                  2,
+                                                                  Definitions::HOST_ADDRESS,
+                                                                  EndNodeAddress,
+                                                                  1);
+    const std::vector<uint8_t> twoLinksFrame = getRoutedFrameData(0x11,
+                                                                  3,
+                                                                  Definitions::HOST_ADDRESS,
+                                                                  EndNodeAddress,
+                                                                  2);
+    upperRouter->onReceivedData(Definitions::PortType::PRIMARY, hostFrame.data(), hostFrame.size());
+    upperRouter->onReceivedData(Definitions::PortType::PRIMARY,
+                                lastLinkFrame.data(),
+                                lastLinkFrame.size());
+    upperRouter->onReceivedData(Definitions::PortType::PRIMARY,
+                                twoLinksFrame.data(),
+                                twoLinksFrame.size());
+    pump();
+
+    // check the answers of the upper node to the first two frames
+    const std::vector<Frame::Frame> upperFrames = upperPrimaryTransport.getSentFrames();
+    REQUIRE(upperFrames.size() >= static_cast<size_t>(3));
+    REQUIRE(getRejectionStatus(upperFrames.at(0)) == Definitions::MessageStatusType::UNREACHABLE);
+    REQUIRE(getRejectionStatus(upperFrames.at(1)) == Definitions::MessageStatusType::EXPIRED);
+    REQUIRE(upperFrames.at(2).getFlag(Definitions::FrameFlagType::ACK));
+
+    // check the expiry of the third frame at the lower node
+    const std::vector<Frame::Frame> lowerFrames = lowerPrimaryTransport.getSentFrames();
+    REQUIRE(lowerFrames.size() == static_cast<size_t>(1));
+    REQUIRE(getRejectionStatus(lowerFrames.at(0)) == Definitions::MessageStatusType::EXPIRED);
+    REQUIRE(upperRouter->getStatistics().expiredFrameCounter == static_cast<uint64_t>(1));
+    REQUIRE(upperRouter->getStatistics().failedForwardCounter == static_cast<uint64_t>(1));
+    REQUIRE(lowerRouter->getStatistics().expiredFrameCounter == static_cast<uint64_t>(1));
+    REQUIRE(endHandler.getMessages().empty());
+}
+
+TEST_CASE_METHOD(TestRouter,
+                 "A full window of the next link is answered with BUSY until the sender gives up",
+                 "[Router][testBusy]")
+{
+    // let the link from the upper node to the lower node drop everything
+    upperSecondaryTransport.setFilter(
+        []([[maybe_unused]] const size_t sendCount,
+           [[maybe_unused]] const std::vector<uint8_t> &data) noexcept { return false; });
+
+    // fill the window of the next link of the upper node
+    for (size_t messageIndex = 0; messageIndex < Settings::MaximumPendingFrames; ++messageIndex) {
+        CAPTURE(messageIndex);
+        REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+        pump();
+        REQUIRE(hostHandler.getDeliveryResults().back().confirmed);
+    }
+
+    // check that one more message is answered with BUSY and kept by the host
+    REQUIRE(sendHostMessage(EndNodeAddress) == Definitions::SendStatusType::SENT);
+    pump();
+    REQUIRE(getRejectionStatus(upperPrimaryTransport.getSentFrames().back())
+            == Definitions::MessageStatusType::BUSY);
+    REQUIRE(hostHandler.getDeliveryResults().size() == Settings::MaximumPendingFrames);
+    REQUIRE(hostRouter->getPendingCount() == static_cast<size_t>(1));
+
+    // let the host retransmit the message into the full window until no retransmission is left
+    const Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    for (uint8_t retransmission = 0; retransmission < linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        advance(linkConfiguration.retransmitTimeout);
+    }
+
+    // check that the last BUSY ends the delivery
+    const std::vector<DeliveryResult> deliveryResults = hostHandler.getDeliveryResults();
+    REQUIRE(deliveryResults.size() == Settings::MaximumPendingFrames + 1);
+    REQUIRE(deliveryResults.back().deliveryFailureType
+            == Definitions::DeliveryFailureType::REJECTED);
+    REQUIRE(deliveryResults.back().remoteMessageStatusType == Definitions::MessageStatusType::BUSY);
+    REQUIRE(upperRouter->getStatistics().busyFrameCounter
+            == static_cast<uint64_t>(linkConfiguration.maximumRetransmissions) + 1);
+}
+
+TEST_CASE_METHOD(TestRouter,
+                 "A message from below that a router refuses as busy is retransmitted to the host",
+                 "[Router][testBusyMessageFromBelow]")
+{
+    // let the upper node answer no frame of the lower node
+    upperSecondaryTransport.setFilter(
+        []([[maybe_unused]] const size_t sendCount,
+           [[maybe_unused]] const std::vector<uint8_t> &data) noexcept { return false; });
+
+    // fill the window of the lower node towards the host with messages of the end node
+    const std::vector<uint8_t> payload = {0x40, 0x50};
+    for (size_t messageIndex = 0; messageIndex <= Settings::MaximumPendingFrames; ++messageIndex) {
+        CAPTURE(messageIndex);
+        REQUIRE(endRouter->sendMessage(Definitions::HOST_ADDRESS,
+                                       TestMessageType,
+                                       payload.data(),
+                                       payload.size(),
+                                       true,
+                                       messageCounter)
+                == Definitions::SendStatusType::SENT);
+        pump();
+    }
+
+    // check that the lower node refused the last message as busy and the end node kept it
+    REQUIRE(getRejectionStatus(lowerSecondaryTransport.getSentFrames().back())
+            == Definitions::MessageStatusType::BUSY);
+    REQUIRE(endHandler.getDeliveryResults().size() == Settings::MaximumPendingFrames);
+    REQUIRE(endRouter->getPendingCount() == static_cast<size_t>(1));
+    REQUIRE(hostHandler.getMessages().size() == Settings::MaximumPendingFrames);
+
+    // let the upper node answer again and the retransmissions pass
+    upperSecondaryTransport.setFilter(DataFilter());
+    const Link::LinkConfiguration linkConfiguration = getLinkConfiguration();
+    for (uint8_t retransmission = 0; retransmission < linkConfiguration.maximumRetransmissions;
+         ++retransmission) {
+        CAPTURE(retransmission);
+        advance(linkConfiguration.retransmitTimeout);
+    }
+
+    // check that every message reached the host once and the end node lost none
+    const std::vector<DeliveryResult> deliveryResults = endHandler.getDeliveryResults();
+    REQUIRE(hostHandler.getMessages().size() == Settings::MaximumPendingFrames + 1);
+    REQUIRE(deliveryResults.size() == Settings::MaximumPendingFrames + 1);
+    REQUIRE(
+        std::all_of(deliveryResults.cbegin(),
+                    deliveryResults.cend(),
+                    [](const DeliveryResult &deliveryResult) { return deliveryResult.confirmed; }));
+    REQUIRE(lowerRouter->getStatistics().busyFrameCounter >= static_cast<uint64_t>(1));
+    REQUIRE(endRouter->getLinkStatistics(Definitions::PortType::PRIMARY).failedDeliveryCounter
+            == static_cast<uint64_t>(0));
+}
+
+TEST_CASE_METHOD(TestRouter,
+                 "A ring wiring is stopped by the own source rule and by the time to live",
+                 "[Router][testRing]")
+{
+    // wire two nodes in a ring, each secondary port to the primary port of the other node
+    MockTransport firstPrimaryTransport;
+    MockTransport firstSecondaryTransport;
+    MockTransport secondPrimaryTransport;
+    MockTransport secondSecondaryTransport;
+    MockLinkHandler firstHandler;
+    MockLinkHandler secondHandler;
+    Router::Router firstRouter(firstPrimaryTransport,
+                               &firstSecondaryTransport,
+                               firstHandler,
+                               clock,
+                               getLinkConfiguration(),
+                               getRouterConfiguration(UpperNodeAddress,
+                                                      Definitions::UNASSIGNED_ADDRESS));
+    Router::Router secondRouter(secondPrimaryTransport,
+                                &secondSecondaryTransport,
+                                secondHandler,
+                                clock,
+                                getLinkConfiguration(),
+                                getRouterConfiguration(LowerNodeAddress,
+                                                       Definitions::UNASSIGNED_ADDRESS));
+    const auto pumpRing = [&firstPrimaryTransport,
+                           &firstSecondaryTransport,
+                           &secondPrimaryTransport,
+                           &secondSecondaryTransport,
+                           &firstRouter,
+                           &secondRouter]() {
+        // deliver the data of the ring until none waits
+        static constexpr int maximumAttemptCount = 1000;
+        for (int attempt = 0; attempt < maximumAttemptCount; ++attempt) {
+            deliverData(firstSecondaryTransport, secondRouter, Definitions::PortType::PRIMARY);
+            deliverData(secondPrimaryTransport, firstRouter, Definitions::PortType::SECONDARY);
+            deliverData(secondSecondaryTransport, firstRouter, Definitions::PortType::PRIMARY);
+            deliverData(firstPrimaryTransport, secondRouter, Definitions::PortType::SECONDARY);
+        }
+    };
+
+    // send an own message of the first node to a missing node around the ring
+    REQUIRE(firstRouter
+                .sendMessage(MissingNodeAddress, TestMessageType, nullptr, 0, false, messageCounter)
+            == Definitions::SendStatusType::SENT);
+    pumpRing();
+
+    // check that the first node dropped its own frame as a loop
+    REQUIRE(secondRouter.getStatistics().forwardedFrameCounter == static_cast<uint64_t>(1));
+    REQUIRE(firstRouter.getStatistics().loopedFrameCounter == static_cast<uint64_t>(1));
+
+    // hand the first node a frame of another source for a missing node
+    const std::vector<uint8_t> frame = getRoutedFrameData(0x10,
+                                                          1,
+                                                          EndNodeAddress,
+                                                          MissingNodeAddress,
+                                                          Settings::DEFAULT_TIME_TO_LIVE);
+    firstRouter.onReceivedData(Definitions::PortType::PRIMARY, frame.data(), frame.size());
+    pumpRing();
+
+    // check that the frame circled until its time to live ran out
+    const uint64_t forwardedFrameCount = firstRouter.getStatistics().forwardedFrameCounter
+                                         + secondRouter.getStatistics().forwardedFrameCounter;
+    const uint64_t expiredFrameCount = firstRouter.getStatistics().expiredFrameCounter
+                                       + secondRouter.getStatistics().expiredFrameCounter;
+    REQUIRE(forwardedFrameCount == static_cast<uint64_t>(1 + Settings::DEFAULT_TIME_TO_LIVE - 1));
+    REQUIRE(expiredFrameCount == static_cast<uint64_t>(1));
+    REQUIRE(firstHandler.getMessages().empty());
+    REQUIRE(secondHandler.getMessages().empty());
+}
+
+TEST_CASE_METHOD(TestRouter,
+                 "A lost frame on one hop is sent again by that hop and every request arrives once",
+                 "[Router][testLossOnOneHop]")
+{
+    // lose a tenth of the frames between the upper and the lower node with a fixed seed
+    static constexpr uint32_t seed = 42;
+    static constexpr uint32_t lossPercentage = 10;
+    std::mt19937 generator(seed);
+    const DataFilter lossFilter = [&generator]([[maybe_unused]] const size_t sendCount,
+                                               [[maybe_unused]] const std::vector<uint8_t> &data) {
+        static constexpr uint32_t percentageCount = 100;
+        return generator() % percentageCount >= lossPercentage;
+    };
+    upperSecondaryTransport.setFilter(lossFilter);
+    lowerPrimaryTransport.setFilter(lossFilter);
+
+    // send numbered messages of the host to the end node whenever the host may send
+    static constexpr uint8_t messageCount = 50;
+    uint8_t sentMessageCount = 0;
+    static constexpr int maximumRoundCount = 10000;
+    for (int round = 0; round < maximumRoundCount && endHandler.getMessages().size() < messageCount;
+         ++round) {
+        // send the next message when the window allows it
+        if (sentMessageCount < messageCount
+            && hostRouter->getSendAcknowledgedAllowed(EndNodeAddress)) {
+            const std::vector<uint8_t> payload = {sentMessageCount};
+            REQUIRE(hostRouter->sendMessage(EndNodeAddress,
+                                            TestMessageType,
+                                            payload.data(),
+                                            payload.size(),
+                                            true,
+                                            messageCounter)
+                    == Definitions::SendStatusType::SENT);
+            ++sentMessageCount;
+            pump();
+        }
+
+        // let a retransmit timeout pass
+        advance(getLinkConfiguration().retransmitTimeout);
+    }
+
+    // check that every message arrived once and in no other copy
+    const std::vector<Frame::Frame> endMessages = endHandler.getMessages();
+    REQUIRE(endMessages.size() == static_cast<size_t>(messageCount));
+    for (uint8_t messageIndex = 0; messageIndex < messageCount; ++messageIndex) {
+        CAPTURE(messageIndex);
+        const size_t copyCount = static_cast<size_t>(
+            std::count_if(endMessages.cbegin(),
+                          endMessages.cend(),
+                          [messageIndex](const Frame::Frame &endMessage) {
+                              return endMessage.getPayload()[0] == messageIndex;
+                          }));
+        REQUIRE(copyCount == static_cast<size_t>(1));
+    }
+
+    // check the retransmissions on the lossy hop only
+    REQUIRE(upperRouter->getLinkStatistics(Definitions::PortType::SECONDARY).retransmissionCounter
+            > static_cast<uint64_t>(0));
+    REQUIRE(hostRouter->getLinkStatistics(Definitions::PortType::PRIMARY).retransmissionCounter
+            == static_cast<uint64_t>(0));
+    REQUIRE(upperRouter->getStatistics().failedForwardCounter == static_cast<uint64_t>(0));
 }
