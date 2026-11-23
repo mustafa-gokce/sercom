@@ -18,7 +18,7 @@ constexpr size_t DefaultDuplicateHistorySize
 
 constexpr size_t MAXIMUM_DIRECT_FRAME_SIZE
     = Definitions::FRAME_OVERHEAD + MaximumPayloadSize; // maximum direct frame size in bytes
-constexpr size_t MAXIMUM_FRAME_SIZE = Definitions::FRAME_OVERHEAD
+constexpr size_t MAXIMUM_FRAME_SIZE = Definitions::ROUTED_FRAME_OVERHEAD
                                       + MaximumPayloadSize; // maximum frame size in bytes
 constexpr size_t MAXIMUM_ACKNOWLEDGED_SPREAD = DefaultDuplicateHistorySize - MaximumPendingFrames
                                                + 1; // maximum acknowledged messages after the oldest
