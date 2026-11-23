@@ -315,6 +315,27 @@ bool parseBaudRateArgument(const std::string_view argument, uint32_t &baudRate)
     return true;
 }
 
+bool parseAddressArgument(const std::string_view argument,
+                          const std::string_view argumentName,
+                          uint8_t &address)
+{
+    // argument must be the address of a node
+    uint32_t argumentAsNumber = 0;
+    if (!parseArgument(argument,
+                       argumentName,
+                       Definitions::MINIMUM_NODE_ADDRESS,
+                       Definitions::MAXIMUM_NODE_ADDRESS,
+                       argumentAsNumber)) {
+        return false;
+    }
+
+    // set the address
+    address = static_cast<uint8_t>(argumentAsNumber);
+
+    // argument parsed successfully
+    return true;
+}
+
 std::vector<std::string> getLinkStatisticsLines(const Link::LinkStatistics &linkStatistics)
 {
     // get a report line of a counter

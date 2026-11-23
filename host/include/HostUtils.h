@@ -108,6 +108,14 @@ namespace sercom::HostUtils {
 [[nodiscard]] bool parseBaudRateArgument(std::string_view argument, uint32_t &baudRate);
 
 /*
+ * Parse a command line argument to the address of a node from 2 to 254.
+ * Warn the user and get false when the argument is no such address.
+ */
+[[nodiscard]] bool parseAddressArgument(std::string_view argument,
+                                        std::string_view argumentName,
+                                        uint8_t &address);
+
+/*
  * Get the link and decoder statistics as report lines.
  */
 [[nodiscard]] std::vector<std::string> getLinkStatisticsLines(
