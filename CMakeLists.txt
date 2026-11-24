@@ -755,11 +755,20 @@ if (SERCOM_IS_MAIN_PROJECT AND CMAKE_CXX_FLAGS MATCHES "fuzzer-no-link" AND NOT 
     message(FATAL_ERROR "The fuzz executables need Clang")
 endif()
 
-# check the Qt version of the host targets
-if (SERCOM_BUILD_HOST AND NOT Qt${QT_VERSION_MAJOR}_VERSION VERSION_EQUAL 5.12.12)
+# check the Qt version of the host targets of the main project
+if (SERCOM_IS_MAIN_PROJECT AND SERCOM_BUILD_HOST AND NOT Qt${QT_VERSION_MAJOR}_VERSION VERSION_EQUAL 5.12.12)
     message(FATAL_ERROR "The host targets need Qt 5.12.12 but found Qt ${Qt${QT_VERSION_MAJOR}_VERSION}, "
                         "point CMAKE_PREFIX_PATH at a Qt 5.12.12 install such as "
                         "-DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64 or -DCMAKE_PREFIX_PATH=C:/Qt/5.12.12/mingw73_64")
+endif()
+
+# check the Qt version of the host library of a consumer project
+if (NOT SERCOM_IS_MAIN_PROJECT AND SERCOM_BUILD_HOST)
+    if ((QT_VERSION_MAJOR EQUAL 5 AND Qt5_VERSION VERSION_LESS 5.12) OR (QT_VERSION_MAJOR EQUAL 6 AND Qt6_VERSION VERSION_LESS 6.2))
+        message(FATAL_ERROR "The host library needs Qt 5.12 or newer or Qt 6.2 or newer but found Qt ${Qt${QT_VERSION_MAJOR}_VERSION}, "
+                            "point CMAKE_PREFIX_PATH at a newer Qt install such as "
+                            "-DCMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/gcc_64 or -DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/mingw_64")
+    endif()
 endif()
 
 # debug the project
