@@ -650,13 +650,18 @@ std::for_each(droppedOffsets.cbegin(), droppedOffsets.cend(), [this](const size_
 - `host/`, the examples that use it and the host tests build with Qt 5.12.12 and its
   modules QtCore, QtSerialPort and QtTest; `core/`, `app/` and `firmware/common/` stay
   plain C++ without Qt, because the microcontrollers run them.
+- In a consumer project the host library also builds with a Qt 5 from 5.12 on and a Qt 6
+  from 6.2 on, the first Qt 6 with QtSerialPort. Host code therefore uses only what Qt
+  5.12 and Qt 6 share, such as `'\n'` in place of `endl`, which Qt 5.15 deprecates and Qt 6
+  removed; the host tests stay on Qt 5.12.12 with the main build.
 - Host code, host examples and host tests hold no platform branch: no termios, no
   `poll()`, no Win32 call and no `#if defined(_WIN32)`. The same files build with GCC and
   Clang on Linux and with the MinGW 7.3.0 of Qt 5.12.12 on Windows, so they use no C++17
   library part that GCC 7 lacks, such as `<charconv>` and `<filesystem>`.
-- `CMakeLists.txt` finds Qt once for the host targets and stops when the version is not
-  5.12.12. A platform check stands in CMake only where a toolchain needs it, under a
-  comment that says why (`windeployqt` after a Windows build).
+- `CMakeLists.txt` finds Qt once for the host targets, a Qt 6 before a Qt 5. The main
+  project stops when the version is not 5.12.12, a consumer project when it is older than
+  5.12, or a Qt 6 older than 6.2. A platform check stands in CMake only where a toolchain
+  needs it, under a comment that says why (`windeployqt` after a Windows build).
 - A class with signals or slots derives from `QObject` first and opens its body with
   `Q_OBJECT`. A base from another namespace is fully qualified
   (`public sercom::Transport::Transport`), because moc copies the name as it is written.
@@ -708,6 +713,10 @@ public:
      build directory (R-012). Example 28 includes by relative path, as sercom does.
   3. Example 28 builds without the host library and so without its log functions; it prints
      with its own `printLine()` and `printWarning()` on `std::cout` and `std::cerr` (R-129).
+- Example 29 finds Qt as sercom does, `find_package(QT NAMES Qt6 Qt5 ...)`, and links the
+  `Qt${QT_VERSION_MAJOR}::` targets, so the same project builds with Qt 5 and Qt 6.
+  `tools/run_consumers.sh` fails when the build of a consumer project prints a compiler
+  warning, with the Qt of `CMAKE_PREFIX_PATH`.
 - A consumer project adds no warning flags of its own: `tools/run_consumers.sh` fails when a
   compile command of either project holds `-Werror` or `-Wold-style-cast`, which would mean
   that sercom passed its own flags on. It also builds the source of example 28 in a consumer
