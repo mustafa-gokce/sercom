@@ -528,8 +528,8 @@ std::string getUnframedDataLine(const FrameTracer::TraceDirectionType traceDirec
 
 void printLine(const std::string &line)
 {
-    // print the line at once
-    QTextStream(stdout) << QString::fromStdString(line) << endl;
+    // print the line at once, the temporary stream flushes it at the end of the statement
+    QTextStream(stdout) << QString::fromStdString(line) << '\n';
 }
 
 void logDebug(const std::string &debugMessage)
