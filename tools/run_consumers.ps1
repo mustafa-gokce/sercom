@@ -6,9 +6,11 @@
 # The PowerShell twin of tools/run_consumers.sh for Windows, with the compiler, Ninja and Qt on the path of the README.
 # Example 28 adds the checkout with add_subdirectory and is configured with Qt disabled, so sercom must not ask for Qt.
 # CMake then warns that the two variables that disable Qt were not used, no find_package of Qt ran.
-# Example 29 takes the checkout through FETCHCONTENT_SOURCE_DIR_SERCOM in place of the download and uses Qt 5.12.12.
+# Example 29 takes the checkout through FETCHCONTENT_SOURCE_DIR_SERCOM in place of the download and builds with the Qt
+# of CMAKE_PREFIX_PATH, Qt 5.12 or newer or Qt 6.2 or newer, while the device simulator stays on Qt 5.12.12.
 # A third consumer builds the source of example 28 without a C++ standard of its own, sercom must require C++17 of it.
 # Both builds export their compile commands, and no command may hold -Werror or -Wold-style-cast of sercom.
+# No build may print a compiler warning, so sercom must build without one also on a newer Qt.
 # Example 29 runs on the first com0com pair against the device simulator and is skipped when the pair is missing.
 # CMAKE_PREFIX_PATH names the Qt and CXX the compiler, as CMake reads them.
 # It needs PowerShell 7 (pwsh), the Windows PowerShell 5.1 of the system is too old.
@@ -42,7 +44,8 @@ function print_usage {
     Write-Output "  --build-dir DIR    build directory of the projects (default $BUILD_DIRECTORY)"
     Write-Output "  BUILD_TYPE sets the build type (default $BUILD_TYPE), CMAKE_GENERATOR the generator (default"
     Write-Output "  $GENERATOR), TIMEOUT_SECONDS stops a program after that time (default $TIMEOUT_SECONDS), PORT_PAIR"
-    Write-Output "  names the com0com pair of example 29 (default $PORT_PAIR), CMAKE_PREFIX_PATH names Qt 5.12.12"
+    Write-Output "  names the com0com pair of example 29 (default $PORT_PAIR), CMAKE_PREFIX_PATH names the Qt of"
+    Write-Output '  example 29, Qt 5.12 or newer or Qt 6.2 or newer'
 }
 
 # parse the arguments
@@ -127,7 +130,7 @@ function wait_for_line([string] $file, [string] $text) {
     return $false
 }
 
-# configure and build a consumer project with its compile commands, stop on a failure
+# configure and build a consumer project with its compile commands and a build log, stop on a failure
 function build_project([string] $project, [string[]] $options) {
     Write-Output "build    $project"
     $projectBuildDirectory = Join-Path $BUILD_DIRECTORY $project
@@ -137,7 +140,8 @@ function build_project([string] $project, [string[]] $options) {
         [Console]::Error.WriteLine("failed   $project (configure exit code $LASTEXITCODE)")
         exit 1
     }
-    & cmake --build $projectBuildDirectory --parallel
+    $buildLogFile = Join-Path $BUILD_DIRECTORY "$project.build.log"
+    & cmake --build $projectBuildDirectory --parallel 2>&1 | Tee-Object -FilePath $buildLogFile
     if ($LASTEXITCODE -ne 0) {
         [Console]::Error.WriteLine("failed   $project (build exit code $LASTEXITCODE)")
         exit 1
@@ -171,7 +175,8 @@ function build_standard_probe {
         [Console]::Error.WriteLine("failed   $STANDARD_PROBE_PROJECT (configure exit code $LASTEXITCODE)")
         exit 1
     }
-    & cmake --build $probeBuildDirectory --parallel
+    $buildLogFile = Join-Path $BUILD_DIRECTORY "$STANDARD_PROBE_PROJECT.build.log"
+    & cmake --build $probeBuildDirectory --parallel 2>&1 | Tee-Object -FilePath $buildLogFile
     if ($LASTEXITCODE -ne 0) {
         [Console]::Error.WriteLine("failed   $STANDARD_PROBE_PROJECT (build exit code $LASTEXITCODE)")
         exit 1
@@ -191,6 +196,18 @@ function test_compile_commands([string] $project) {
         return $false
     }
     [Console]::Out.WriteLine("passed   ${project}: none of $($commands.Count) compile commands holds $flags")
+    return $true
+}
+
+# check that the build of a consumer project printed no compiler warning
+function test_build_output([string] $project) {
+    $buildLogFile = Join-Path $BUILD_DIRECTORY "$project.build.log"
+    $warningCount = @(Select-String -Path $buildLogFile -Pattern 'warning:').Count
+    if ($warningCount -ne 0) {
+        [Console]::Error.WriteLine("failed   ${project}: its build printed $warningCount warnings")
+        return $false
+    }
+    [Console]::Out.WriteLine("passed   ${project}: its build printed no warning")
     return $true
 }
 
@@ -251,6 +268,13 @@ $failedSteps = @()
 foreach ($project in @($ADD_SUBDIRECTORY_PROJECT, $FETCH_CONTENT_PROJECT)) {
     if (-not (test_compile_commands $project)) {
         $failedSteps += "$project compile commands"
+    }
+}
+
+# check the build output of the three consumers
+foreach ($project in @($ADD_SUBDIRECTORY_PROJECT, $FETCH_CONTENT_PROJECT, $STANDARD_PROBE_PROJECT)) {
+    if (-not (test_build_output $project)) {
+        $failedSteps += "$project warnings"
     }
 }
 
