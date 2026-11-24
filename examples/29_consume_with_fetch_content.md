@@ -10,7 +10,8 @@ tag from GitHub.
 ## What you will learn
 
 - How `FetchContent` fetches sercom at a tag, and why without its submodules.
-- How a project turns on the host library of sercom and what it needs for it: Qt 5.12.12.
+- How a project turns on the host library of sercom and which Qt it takes: Qt 5.12 or newer or
+  Qt 6.2 or newer, while the main build of sercom stays on Qt 5.12.12.
 - How a project includes `"core/include/Frame.h"` through the include directory of
   `sercom::settings`.
 - How a host tool of its own reaches a node address with the router of `DeviceClient`.
@@ -59,11 +60,14 @@ Open `examples/29_consume_with_fetch_content/CMakeLists.txt`.
   for its own tests only. The empty value means "none" since CMake 3.16 (policy CMP0097).
 - `FetchContent_MakeAvailable(sercom)` clones the tag, or takes the checkout of
   `FETCHCONTENT_SOURCE_DIR_SERCOM`, and adds it with `add_subdirectory`. sercom then finds Qt for
-  its host library and stops when the version is not 5.12.12.
-- `find_package(Qt5 ...)` finds Qt for this project too: `main()` uses `QCoreApplication`, the
-  event loop and the signals of `SerialPort` itself.
+  its host library, a Qt 6 before a Qt 5, and stops when it is older than 5.12, or a Qt 6 older
+  than 6.2 (Step 8).
+- `find_package(QT NAMES Qt6 Qt5 ...)` and `find_package(Qt${QT_VERSION_MAJOR} ...)` find the same
+  Qt for this project too: `main()` uses `QCoreApplication`, the event loop and the signals of
+  `SerialPort` itself.
 - `target_link_libraries` links `sercom::settings`, the three libraries the program uses with
-  `sercom::host` last, and the two Qt modules.
+  `sercom::host` last, and the two Qt modules as `Qt${QT_VERSION_MAJOR}::Core` and
+  `Qt${QT_VERSION_MAJOR}::SerialPort`, so the same file builds with Qt 5 and with Qt 6.
 
 ## Step 3: Read the includes
 
@@ -156,6 +160,45 @@ The configure step printed sercom's status block with the Qt of the host library
 -- >>> PROJECT_NAME        : sercom (sub)
 -- >>> QT_VERSION          : 5.12.12
 ```
+
+## Step 8: Build it with Qt 5.15 or Qt 6
+
+As a subproject sercom builds its host library with the Qt of the project around it: a Qt 5 from
+5.12 on or a Qt 6 from 6.2 on, the first Qt 6 with QtSerialPort. The main build of sercom, with
+its programs and tests, stays on Qt 5.12.12, so the simulator of Step 5 stays as it is.
+
+1. Install Qt 6.8.3 next to Qt 5.12.12, with QtSerialPort, an add-on module in Qt 6: `~/aqt/bin/aqt install-qt linux desktop 6.8.3 linux_gcc_64 -m qtserialport -O ~/Qt`
+2. Configure a new build directory with it: `cmake -S . -B build-qt6 -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/gcc_64 -DFETCHCONTENT_SOURCE_DIR_SERCOM=../..`
+3. Build the program: `cmake --build build-qt6`
+4. Run it against the simulator of Step 5: `build-qt6/consume_with_fetch_content /tmp/ttyV1`
+
+On Windows install `6.8.3 win64_mingw` with `-m qtserialport` and its compiler, MinGW 13.1
+(`python -m aqt install-tool windows desktop tools_mingw1310 qt.tools.win64_mingw1310 -O C:\Qt`),
+put `C:\Qt\Tools\mingw1310_64\bin` and `C:\Qt\6.8.3\mingw_64\bin` first on the path and configure
+with `-DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/mingw_64`.
+
+The status block names the Qt that sercom found:
+
+```
+-- >>> PROJECT_NAME        : sercom (sub)
+-- >>> QT_VERSION          : 6.8.3
+```
+
+The build prints no warning, and the program prints the two lines of Step 5. A Qt 5.15.2 on
+`CMAKE_PREFIX_PATH` gives `5.15.2` in the same line. A Qt that is too old stops the configure
+step, here a Qt 5.11.3:
+
+```
+CMake Error at <sercom>/CMakeLists.txt:768 (message):
+  The host library needs Qt 5.12 or newer or Qt 6.2 or newer but found Qt
+  5.11.3, point CMAKE_PREFIX_PATH at a newer Qt install such as
+  -DCMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/gcc_64 or
+  -DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/mingw_64
+```
+
+`<sercom>` stands for the full path of the sercom checkout. Qt itself also asks for a CMake: Qt
+6.9 and newer stop with `CMake 3.22 or higher is required to use Qt`, while Qt 5 and Qt 6.8 take
+the CMake 3.16 of this project.
 
 ## Try it yourself
 
