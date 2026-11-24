@@ -32,7 +32,8 @@ FetchContent_Declare(sercom
 FetchContent_MakeAvailable(sercom)
 
 # find Qt packages of the consumer
-find_package(Qt5 REQUIRED COMPONENTS Core SerialPort)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core SerialPort)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core SerialPort)
 
 # create consumer executable
 add_executable(${PROJECT_NAME}
@@ -43,6 +44,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     sercom::core
     sercom::app
     sercom::host
-    Qt5::Core
-    Qt5::SerialPort
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::SerialPort
 )
