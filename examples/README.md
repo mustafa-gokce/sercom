@@ -91,7 +91,7 @@ repository it takes the checkout around it; its guide shows the layout of a proj
 
 ## Building a consumer project
 1. Open a terminal, on Windows PowerShell 7 with the path of the README.
-2. Install the build tools once, as README.md shows in the section "Building the project"; example 28 needs no Qt, example 29 needs Qt 5.12.12.
+2. Install the build tools once, as README.md shows in the section "Building the project"; example 28 needs no Qt, example 29 needs Qt 5.12 or newer or Qt 6.2 or newer, its guide shows Qt 5.12.12 and Qt 6.8.3.
 3. Go to the directory of the project: `cd examples/28_consume_with_add_subdirectory` or `cd examples/29_consume_with_fetch_content`
 4. Configure example 28: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug`
 5. Configure example 29 with this checkout of sercom: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.12/gcc_64 -DFETCHCONTENT_SOURCE_DIR_SERCOM=../..`, on Windows with `-DCMAKE_PREFIX_PATH=C:/Qt/5.12.12/mingw73_64`
