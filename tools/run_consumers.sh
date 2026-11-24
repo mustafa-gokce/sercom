@@ -7,9 +7,11 @@
 #
 # Example 28 adds the checkout with add_subdirectory and is configured with Qt disabled, so sercom must not ask for Qt.
 # CMake then warns that the two variables that disable Qt were not used, no find_package of Qt ran.
-# Example 29 takes the checkout through FETCHCONTENT_SOURCE_DIR_SERCOM in place of the download and uses Qt 5.12.12.
+# Example 29 takes the checkout through FETCHCONTENT_SOURCE_DIR_SERCOM in place of the download and builds with the Qt
+# of CMAKE_PREFIX_PATH, Qt 5.12 or newer or Qt 6.2 or newer, while the device simulator stays on Qt 5.12.12.
 # A third consumer builds the source of example 28 without a C++ standard of its own, sercom must require C++17 of it.
 # Both builds export their compile commands, and no command may hold -Werror or -Wold-style-cast of sercom.
+# No build may print a compiler warning, so sercom must build without one also on a newer Qt.
 # Example 29 runs on a socat pseudo terminal pair against the device simulator and is skipped when socat is missing.
 # CMAKE_PREFIX_PATH names the Qt, CXX the compiler and CMAKE_GENERATOR the generator, as CMake reads them.
 #
@@ -34,7 +36,8 @@ print_usage() {
     echo "  sercom_device_sim  device simulator of the main build, example 29 pings it"
     echo "  --build-dir DIR    build directory of the projects (default ${BUILD_DIRECTORY})"
     echo "  BUILD_TYPE sets the build type (default ${BUILD_TYPE}), TIMEOUT_SECONDS stops a program after that"
-    echo "  time (default ${TIMEOUT_SECONDS}), CMAKE_PREFIX_PATH names Qt 5.12.12 for example 29"
+    echo "  time (default ${TIMEOUT_SECONDS}), CMAKE_PREFIX_PATH names the Qt of example 29, Qt 5.12 or newer or"
+    echo "  Qt 6.2 or newer"
 }
 
 # parse the arguments
@@ -94,14 +97,14 @@ wait_for_file() {
     return 1
 }
 
-# configure and build a consumer project with its compile commands
+# configure and build a consumer project with its compile commands and a build log
 build_project() {
     local project="$1"
     shift
     echo "build    ${project}"
     cmake -S "${SOURCE_DIRECTORY}/examples/${project}" -B "${BUILD_DIRECTORY}/${project}" \
         -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@"
-    cmake --build "${BUILD_DIRECTORY}/${project}" --parallel
+    cmake --build "${BUILD_DIRECTORY}/${project}" --parallel 2>&1 | tee "${BUILD_DIRECTORY}/${project}.build.log"
 }
 
 # write, configure and build a consumer of the example 28 source without a C++ standard of its own
@@ -124,7 +127,8 @@ target_link_libraries(${STANDARD_PROBE_PROJECT} PRIVATE
 EOF
     cmake -S "${probe_directory}" -B "${probe_directory}/build" -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
         -DCMAKE_DISABLE_FIND_PACKAGE_QT=ON -DCMAKE_DISABLE_FIND_PACKAGE_Qt5=ON
-    cmake --build "${probe_directory}/build" --parallel
+    cmake --build "${probe_directory}/build" --parallel 2>&1 \
+        | tee "${BUILD_DIRECTORY}/${STANDARD_PROBE_PROJECT}.build.log"
     echo "passed   ${STANDARD_PROBE_PROJECT}: the sercom headers build with the C++17 of sercom::settings"
 }
 
@@ -142,6 +146,18 @@ check_compile_commands() {
         return 1
     fi
     echo "passed   ${project}: none of ${command_count} compile commands holds -Werror or -Wold-style-cast"
+}
+
+# fail when the build of a consumer project printed a compiler warning
+check_build_output() {
+    local project="$1"
+    local warning_count
+    warning_count="$(grep -c -i 'warning:' "${BUILD_DIRECTORY}/${project}.build.log" || true)"
+    if [[ "${warning_count}" != "0" ]]; then
+        echo "failed   ${project}: its build printed ${warning_count} warnings" >&2
+        return 1
+    fi
+    echo "passed   ${project}: its build printed no warning"
 }
 
 # run the consumer project of example 28, its device and client run in memory
@@ -188,6 +204,11 @@ build_standard_probe
 failed_steps=()
 check_compile_commands "${ADD_SUBDIRECTORY_PROJECT}" || failed_steps+=("${ADD_SUBDIRECTORY_PROJECT} compile commands")
 check_compile_commands "${FETCH_CONTENT_PROJECT}" || failed_steps+=("${FETCH_CONTENT_PROJECT} compile commands")
+
+# check the build output of the three consumers
+for project in "${ADD_SUBDIRECTORY_PROJECT}" "${FETCH_CONTENT_PROJECT}" "${STANDARD_PROBE_PROJECT}"; do
+    check_build_output "${project}" || failed_steps+=("${project} warnings")
+done
 
 # run example 28
 skipped_count=0
